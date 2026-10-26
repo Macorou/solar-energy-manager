@@ -41,6 +41,7 @@ class DeviceConfig(Model):
     phases: Literal[1, 3] = 1
     voltage: float = Field(230, ge=100, le=300)
     charge_point_id: str = ''
+    allow_insecure_identity: bool = False
     connector_id: int = Field(1, ge=1)
     vehicle_id: str = ''
     gateway_id: str = ''

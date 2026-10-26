@@ -24,6 +24,8 @@ class DeviceState:
     temperature: float | None = None
     target_temperature: float | None = None
     measured_at: datetime | None = None
+    vehicle_connected: bool | None = None
+    energy_wh: float | None = None
 
 
 @dataclass(frozen=True)

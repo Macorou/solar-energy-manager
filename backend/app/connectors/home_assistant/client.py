@@ -78,7 +78,16 @@ class HomeAssistantSource:
                     await self.connect()
                     await websocket.send(json.dumps({'id':1,'type':'subscribe_events','event_type':'state_changed'}))
                     delay = 2
-                    async for raw in websocket:
+                    while self.running:
+                        try:
+                            raw=await asyncio.wait_for(websocket.recv(),max(5,min(15,self.max_age_s/2)))
+                        except TimeoutError:
+                            # HA last_reported advances even when an unchanged numeric value
+                            # produces no state_changed event. Preserve that provider time.
+                            await self.connect()
+                            result=callback(self.snapshot())
+                            if inspect.isawaitable(result): await result
+                            continue
                         message = json.loads(raw)
                         if message.get('type') == 'event':
                             data = message.get('event',{}).get('data',{})

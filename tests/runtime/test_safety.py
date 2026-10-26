@@ -42,3 +42,32 @@ def test_simulation_has_no_real_connector_or_settings_side_effect(tmp_path):
     assert result['simulation'] and result['commands'][0]['device_id']=='demo-tank'
     assert app.state.store.load_settings()==before
     assert app.state.coordinator.dispatcher.records=={}
+
+
+def test_duplicate_ocpp_connector_or_meter_cannot_double_allocate():
+    import pytest
+    from app.settings import SettingsDocument,DeviceConfig
+    device=DeviceConfig(id='a',name='a',kind='charger',charge_point_id='wallbox')
+    with pytest.raises(ValueError,match='OCPP'):
+        SettingsDocument(devices=[device,device.model_copy(update={'id':'b'})])
+    with pytest.raises(ValueError,match='mesure'):
+        SettingsDocument(home_assistant={'device_power_entities':{'a':'sensor.power','b':'sensor.power'}})
+
+
+@pytest.mark.asyncio
+async def test_expired_schedule_is_recorded_once_without_catchup(tmp_path):
+    from app.runtime.coordinator import Coordinator
+    from app.settings import SettingsDocument,VehicleConfig,ChargeProgram
+    from app.storage.database import SQLiteStore
+    from datetime import datetime,timezone
+    from zoneinfo import ZoneInfo
+    store=SQLiteStore(tmp_path/'db')
+    config=SettingsDocument(vehicles=[VehicleConfig(id='car')],schedules=[ChargeProgram(id='work',vehicle_id='car')])
+    store.save_settings(config.model_dump(mode='json'))
+    runtime=Coordinator(store)
+    before=datetime(2026,10,26,5,44,tzinfo=ZoneInfo('Europe/Paris')).astimezone(timezone.utc)
+    await runtime.tick(SiteSnapshot(before))
+    await runtime.tick(SiteSnapshot(before+timedelta(minutes=2)))
+    await runtime.tick(SiteSnapshot(before+timedelta(minutes=3)))
+    results=[e for e in store.events() if e['kind']=='schedule_incomplete']
+    assert len(results)==1 and results[0]['details']['program_id']=='work'

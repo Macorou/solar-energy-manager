@@ -166,6 +166,7 @@ class Coordinator:
             policies=self.policies(config,snapshot.at)
             occurrences=[o for p in config.schedules for o in occurrences_for(p,snapshot.at,
                 snapshot.at+timedelta(days=8),config.timezone)]
+            self.record_schedules(snapshot,occurrences,config)
             authorizations={d.id:select_authorization(d.vehicle_id,snapshot.at,occurrences,d.default_soc_target)
                             for d in config.devices if d.kind=='charger'}
             for key,record in self.dispatcher.records.items():
@@ -200,6 +201,22 @@ class Coordinator:
                 'expires_at':r.expires_at.isoformat()} for key,r in self.reservations.items()})
             self.last_tick=utcnow()
             return batch
+
+    def record_schedules(self,snapshot,occurrences,config):
+        tracked=self.store.get('schedule_results',{})
+        for occurrence in occurrences:
+            if occurrence.solar_start_at<=snapshot.at and occurrence.id not in tracked:
+                tracked[occurrence.id]={'program_id':occurrence.program_id,'vehicle_id':occurrence.vehicle_id,
+                    'deadline':occurrence.deadline_at.isoformat(),'target_soc':occurrence.target_soc,'result':'pending'}
+        for value in tracked.values():
+            if value['result']!='pending' or datetime.fromisoformat(value['deadline'])>snapshot.at: continue
+            telemetry=snapshot.vehicle_telemetry.get(value['vehicle_id'])
+            complete=bool(telemetry and telemetry.fresh(snapshot.at,config.peugeot.max_age_s)
+                          and telemetry.soc>=value['target_soc'])
+            value['result']='complete' if complete else 'incomplete'
+            self.store.append_event({'kind':'schedule_'+value['result'],'at':snapshot.at.isoformat(),
+                'details':{k:v for k,v in value.items() if k!='vehicle_id'}})
+        self.store.set('schedule_results',dict(list(tracked.items())[-2000:]))
 
     def enqueue(self,intent,config):
         existing=self.command_tasks.get(intent.device_id)

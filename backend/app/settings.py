@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator, model_valida
 
 
 class Model(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='forbid',allow_inf_nan=False)
 
 
 class RuntimeSettings(Model):
@@ -149,7 +149,8 @@ class SettingsDocument(Model):
     @field_validator('timezone')
     @classmethod
     def timezone_exists(cls, value):
-        ZoneInfo(value)
+        try: ZoneInfo(value)
+        except (KeyError,ValueError): raise ValueError('Fuseau horaire inconnu') from None
         return value
 
     @model_validator(mode='after')
@@ -162,4 +163,14 @@ class SettingsDocument(Model):
             raise ValueError('A program must reference a registered vehicle')
         if any(d.vehicle_id and d.vehicle_id not in vehicle_ids for d in self.devices):
             raise ValueError('Unknown associated vehicle')
+        connectors=[(d.charge_point_id,d.connector_id) for d in self.devices if d.kind=='charger' and d.charge_point_id]
+        if len(set(connectors))!=len(connectors): raise ValueError('Connecteur OCPP déjà associé')
+        meters=[v for v in self.home_assistant.device_power_entities.values() if v]
+        if len(set(meters))!=len(meters) or self.home_assistant.grid_entity in meters:
+            raise ValueError('Une mesure électrique ne peut représenter plusieurs postes')
+        for i,one in enumerate(self.schedules):
+            for two in self.schedules[i+1:]:
+                if (one.enabled and two.enabled and one.vehicle_id==two.vehicle_id and one.deadline==two.deadline
+                    and set(one.weekdays)&set(two.weekdays) and one.earliest_start!=two.earliest_start):
+                    raise ValueError('Fenêtres réseau incompatibles pour une même échéance')
         return self

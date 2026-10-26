@@ -38,3 +38,12 @@ def test_equal_deadline_uses_larger_goal():
     one=occurrences_for(ChargeProgram(id='work',vehicle_id='car'),now,datetime(2026,10,27,tzinfo=timezone.utc),'Europe/Paris')[0]
     two=replace(one,id='second',target_soc=90)
     assert select_authorization('car',one.network_start_at,[one,two],80).target_soc==90
+
+
+def test_incompatible_windows_for_same_vehicle_deadline_are_rejected():
+    import pytest
+    from app.settings import SettingsDocument,VehicleConfig
+    with pytest.raises(ValueError,match='incompatibles'):
+        SettingsDocument(vehicles=[VehicleConfig(id='car')],schedules=[
+            ChargeProgram(id='one',vehicle_id='car',earliest_start='22:00'),
+            ChargeProgram(id='two',vehicle_id='car',earliest_start='23:00',target_soc=90)])

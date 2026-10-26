@@ -63,4 +63,4 @@ export function App() {
     </main></div>
 }
 function sumPower(state:LiveState|null,kind:string) {const devices=state?.devices.filter(d=>d.config.kind===kind);return !devices?.length||devices.some(d=>d.state.observed_power?.value==null)?null:devices.reduce((sum,d)=>sum+(d.state.observed_power?.value||0),0)}
-function eventName(kind:string){return ({command_accepted:'Commande acceptée',command_unknown:'Résultat inconnu',command_observed:'Effet observé',manual:'Commande manuelle',armed:'Pilotage activé'} as Record<string,string>)[kind]||kind}
+function eventName(kind:string){return ({command_accepted:'Commande acceptée',command_unknown:'Résultat inconnu',command_observed:'Effet observé',manual:'Commande manuelle',armed:'Pilotage activé',schedule_incomplete:'Échéance non atteinte ou non vérifiable',schedule_complete:'Objectif atteint à l’échéance'} as Record<string,string>)[kind]||kind}

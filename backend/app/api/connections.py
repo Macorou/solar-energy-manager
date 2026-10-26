@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
 from pydantic import BaseModel, SecretStr
 from app.api.auth import require_auth
-from app.settings import HomeAssistantConfig
+from app.settings import HomeAssistantConfig,SettingsDocument
 from app.connectors.home_assistant.client import HomeAssistantSource
 
 router = APIRouter(prefix='/api/v1', dependencies=[Depends(require_auth)])
@@ -40,7 +40,9 @@ async def test_ha(body: HomeAssistantInput, request: Request):
 def configure_ha(body: HomeAssistantInput, request: Request):
     settings = request.app.state.store.load_settings()
     settings['home_assistant'] = body.config.model_dump(mode='json')
-    request.app.state.store.save_settings(settings)
+    try: checked=SettingsDocument.model_validate(settings)
+    except ValueError: raise HTTPException(422,'Association des mesures non valide') from None
+    request.app.state.store.save_settings(checked.model_dump(mode='json'))
     if body.token:
         request.app.state.secrets.set('ha_token',body.token.get_secret_value())
     return {'ok':True}

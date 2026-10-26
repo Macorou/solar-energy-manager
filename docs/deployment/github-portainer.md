@@ -1,13 +1,18 @@
 # Dépôt privé, images GHCR et Portainer
 
-Statut : stratégie de livraison validée ; image et Compose à produire pendant le développement. Aucune commande de déploiement présentée ici ne signifie qu’une image existe déjà.
+Statut : image `0.1.0` publiée en privé et téléchargée avec authentification dans GitHub Actions. La Stack n’a pas encore été déployée sur le serveur de l’utilisateur.
 
 ## Emplacements
 
 - Dépôt privé : https://github.com/Macorou/solar-energy-manager
 - Image cible : `ghcr.io/macorou/solar-energy-manager`
-- Version et digest : à renseigner uniquement après publication et vérification effectives.
-- Fichier de déploiement prévu : `compose.yaml`, sans construction requise dans Portainer.
+- Version : `ghcr.io/macorou/solar-energy-manager:0.1.0`, Linux amd64.
+- Digest publié et téléchargé : `sha256:3f55ee945f577b8a6f1a701d57ef8764a20cb46b8a385eacec5393de78230773`.
+- Fichier de déploiement : `compose.yaml`, sans construction requise dans Portainer.
+- [Tests de la version corrigée et du conteneur](https://github.com/Macorou/solar-energy-manager/actions/runs/40403255121).
+- [Contrôle réussi du paquet privé, du digest et de sa provenance](https://github.com/Macorou/solar-energy-manager/actions/runs/40404395725).
+
+Le premier workflow a envoyé l’image puis échoué sur une assertion de champ `repository` absent des métadonnées REST du conteneur. Le contrôle ciblé a confirmé `visibility=private`, le téléchargement authentifié du digest, le refus d’accès anonyme (HTTP 401) et le label OCI de source. L’association visible sur la page GitHub du paquet n’est pas revendiquée à partir du champ REST absent.
 
 ## Chaîne de livraison prévue
 

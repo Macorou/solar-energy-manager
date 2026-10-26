@@ -21,6 +21,7 @@ Les estimations d’attente OCPP sont explicitement étiquetées dans l’API et
 3. `uv` absent : environnement Python dédié, dépendances figées, mêmes tests repris sous Linux en CI. Coût : commandes locales différentes, compatibilité contrôlée par la CI.
 4. Tests navigateur placés dans `frontend/tests/e2e` pour la résolution npm ; types générés depuis OpenAPI et versionnés. Coût : chemins différents du plan, sans changement fonctionnel.
 5. Documentation de livraison préparée pendant l’attente de la CI. Le serveur est confirmé Intel/AMD64. Aucun accès Portainer n’est supposé disponible. Coût : le déploiement de l’installation reste à effectuer.
+6. Le champ repository n’est pas fourni dans la réponse REST du conteneur : vérification par visibilité privée, téléchargement authentifié du digest, refus anonyme et label OCI de source. Coût : l’association visible sur la page du paquet n’est pas affirmée par cette API ; le téléchargement et la provenance restent vérifiés.
 
 ## Points hors des essais disponibles
 

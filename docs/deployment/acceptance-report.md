@@ -11,13 +11,13 @@ Le logiciel livré est une première version à mettre en service. Il n’est pa
 | Ariston | Appareil simulé : capacité absente refusée, limites de température et absence de fausse confirmation. NUOS Plus Wi-Fi non testé. |
 | Home Assistant | Serveur WebSocket local et HTTP simulé : unités, signe, dates fournisseur, resynchronisation et indisponibilité après déconnexion. Aucune mesure de la maison utilisée. |
 | Interface | Formulaires et parcours sur API temporaire : compte, véhicule, borne, ballon, programme à 80 % à 05:45, deux plages HC, simulation isolée ; captures 1920 et 390 px. |
-| Conteneur/GHCR | Résultat et digest consignés dans le document de distribution après vérification du workflow. Pas de Docker local sur le PC de développement. |
+| Conteneur/GHCR | 60 tests Python, 4 tests d’interface, 2 parcours navigateur, construction et smoke test Docker réussis sous Linux. Image 0.1.0 privée, digest téléchargé avec authentification, accès anonyme refusé et provenance vérifiée. |
 | Portainer de l’utilisateur | Non déployé : adresse, accès et architecture du serveur non fournis. Compose et guide livrés. |
 | Installation physique | Non activée ; aucune commande envoyée au véhicule ou au ballon. |
 
 ## Paramètres à relever
 
-- Architecture du serveur Portainer : image initiale Linux amd64.
+- Architecture du serveur Portainer : Intel/AMD64 confirmé ; image Linux amd64.
 - Mesure réseau signée, production solaire, puissance dédiée du ballon, cadence et convention de signe.
 - Phases, courants minimal/maximal de la borne, puissance maximale du ballon et limite totale du site.
 - Identité/authentification OCPP, VIN et passerelle Ariston ; saisir les accès uniquement dans l’application ou Portainer.

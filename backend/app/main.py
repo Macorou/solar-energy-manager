@@ -16,6 +16,7 @@ from app.api.chargers import router as chargers_router
 from app.api.vehicles import router as vehicles_router
 from app.connectors.peugeot.client import PeugeotAdapter
 from app.settings import PeugeotConfig
+from app.api.water_heaters import router as water_heaters_router
 
 
 def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
@@ -53,6 +54,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.state.login_attempts = {}
     app.state.ocpp=OcppRegistry(store,lambda:store.load_settings().get('devices',[]),secret_store.get)
     app.state.peugeot=PeugeotAdapter(secret_store,PeugeotConfig.model_validate(store.load_settings()['peugeot']))
+    app.state.ariston_adapters={}
     register_server(app,app.state.ocpp)
     app.include_router(auth_router)
     app.include_router(connections_router)
@@ -60,6 +62,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.include_router(tariffs_router)
     app.include_router(chargers_router)
     app.include_router(vehicles_router)
+    app.include_router(water_heaters_router)
 
     @app.get('/api/v1/health/live')
     def health():

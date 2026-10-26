@@ -43,10 +43,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.tag }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
-          gh api users/Macorou/packages/container/solar-energy-manager --jq '{visibility, repository: .repository.full_name}' > package.json
+          gh api users/Macorou/packages/container/solar-energy-manager --jq '{visibility, html_url}' > package.json
           test "$(jq -r .visibility package.json)" = private
-          test "$(jq -r .repository package.json)" = Macorou/solar-energy-manager
           docker pull "ghcr.io/macorou/solar-energy-manager@$DIGEST"
+          source=$(docker image inspect "ghcr.io/macorou/solar-energy-manager@$DIGEST" --format '{{ index .Config.Labels "org.opencontainers.image.source" }}')
+          test "$source" = https://github.com/Macorou/solar-energy-manager
           status=$(curl -s -o /dev/null -w '%{http_code}' 'https://ghcr.io/token?service=ghcr.io&scope=repository:macorou/solar-energy-manager:pull')
           test "$status" = 403 -o "$status" = 401
           printf 'Image: ghcr.io/macorou/solar-energy-manager:%s\nDigest: %s\nPrivate: verified\nAuthenticated pull: verified\nAnonymous request: %s\n' "$VERSION" "$DIGEST" "$status" >> "$GITHUB_STEP_SUMMARY"

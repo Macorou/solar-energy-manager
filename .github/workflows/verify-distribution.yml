@@ -24,6 +24,9 @@ jobs:
           cat package.json
           test "$(jq -r .visibility package.json)" = private
           docker pull ghcr.io/macorou/solar-energy-manager@sha256:3f55ee945f577b8a6f1a701d57ef8764a20cb46b8a385eacec5393de78230773
+          source=$(docker image inspect ghcr.io/macorou/solar-energy-manager@sha256:3f55ee945f577b8a6f1a701d57ef8764a20cb46b8a385eacec5393de78230773 --format '{{ index .Config.Labels "org.opencontainers.image.source" }}')
+          test "$source" = https://github.com/Macorou/solar-energy-manager
+          echo "Verified OCI source: $source"
           status=$(curl -s -o /dev/null -w '%{http_code}' 'https://ghcr.io/token?service=ghcr.io&scope=repository:macorou/solar-energy-manager:pull')
           test "$status" = 403 -o "$status" = 401
           echo "Private package and authenticated digest pull verified; anonymous token HTTP $status" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,52 @@
+name: Publish private container
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: version
+        run: echo "tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/macorou/solar-energy-manager:${{ steps.version.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/Macorou/solar-energy-manager
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.tag }}
+      - name: Verify private package and authenticated pull
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.tag }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          gh api users/Macorou/packages/container/solar-energy-manager --jq '{visibility, repository: .repository.full_name}' > package.json
+          test "$(jq -r .visibility package.json)" = private
+          test "$(jq -r .repository package.json)" = Macorou/solar-energy-manager
+          docker pull "ghcr.io/macorou/solar-energy-manager@$DIGEST"
+          status=$(curl -s -o /dev/null -w '%{http_code}' 'https://ghcr.io/token?service=ghcr.io&scope=repository:macorou/solar-energy-manager:pull')
+          test "$status" = 403 -o "$status" = 401
+          printf 'Image: ghcr.io/macorou/solar-energy-manager:%s\nDigest: %s\nPrivate: verified\nAuthenticated pull: verified\nAnonymous request: %s\n' "$VERSION" "$DIGEST" "$status" >> "$GITHUB_STEP_SUMMARY"

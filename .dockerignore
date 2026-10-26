@@ -1,0 +1,17 @@
+.git
+.worktrees
+.superpowers
+.venv
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/test-results
+**/playwright-report
+data
+backups
+secrets
+.env*
+*.db
+*.key
+docs/assets

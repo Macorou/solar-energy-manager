@@ -11,6 +11,10 @@ La V1 est une préversion à mettre en service sur le matériel. Les contrôles 
 
 Le même port dessert le site et OCPP : `ws://IP_DU_SERVEUR:8080/ocpp/IDENTIFIANT_BORNE`, sous-protocole `ocpp1.6`. Configurer l’identifiant, le connecteur et le mot de passe identiques des deux côtés. Utiliser WSS et un reverse proxy supportant les WebSockets hors du LAN. Ne connecter qu’un contrôleur OCPP à la borne.
 
+Les mesures réseau et appareils doivent être rapprochées dans le temps (écart maximal de deux secondes pour une nouvelle allocation). Régler une cadence électrique adaptée, idéalement une à deux secondes, ou associer les puissances HA issues du même système de mesure. Le connecteur resynchronise les horodatages HA chaque seconde, même si les valeurs restent constantes. Lorsque les mesures ne sont pas cohérentes, le moteur conserve ou réduit une autorisation existante et attend avant de l’augmenter. Après une commande, la réservation attend aussi une mesure réseau ayant intégré son effet. Le SOC Peugeot et la température Ariston suivent leurs propres cadences cloud, plus lentes.
+
+Le délai de confirmation physique est réglable par appareil. Pour Ariston, la fenêtre effective reste au moins égale à deux intervalles de lecture plus trente secondes ; une relecture est également demandée après une commande acceptée. Le délai ne libère pas automatiquement la puissance réservée. L’état OCPP d’attente peut fournir une puissance estimée explicitement étiquetée ; une recharge sans mesure électrique reste inconnue.
+
 Le volume `solar_energy_data` contient base, accès chiffrés et clé. Le conteneur s’exécute sous UID/GID 10001, sans mode privilégié ni socket Docker. Un volume nommé neuf est initialisé avec les droits nécessaires. Avec un répertoire hôte, préparer ses droits pour UID 10001.
 
 Une seule instance doit utiliser ces données. Les profils OCPP expirent et sont renouvelés pendant une autorisation valide ; leur effet hors ligne dépend de la borne et doit être testé. La santé Docker indique seulement que le service répond. Les pannes de fournisseurs restent visibles dans l’application.

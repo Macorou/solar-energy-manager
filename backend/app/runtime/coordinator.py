@@ -35,6 +35,10 @@ class Coordinator:
                     datetime.fromisoformat(record['sent_at'])+timedelta(seconds=90))
         self.lock=asyncio.Lock()
         self.command_tasks={}; self.workers={}; self.cache={}; self.telemetry={}; self.errors={}
+        self.queued_intents={};self.refresh_tasks=set()
+        if store.get('queued_intents',{}):
+            store.append_event({'kind':'queued_commands_require_reconciliation'})
+        store.set('queued_intents',{})  # Recalculate from fresh state; never replay queued starts.
         self.ha=None; self.ha_signature=None; self.worker_signatures={}
         self.snapshot=SiteSnapshot(utcnow())
         self.reasons={}; self.authorizations={}; self.running=False; self.loop_task=None
@@ -48,7 +52,7 @@ class Coordinator:
 
     async def stop(self):
         self.running=False
-        jobs=[self.loop_task,*self.workers.values(),*self.command_tasks.values()]
+        jobs=[self.loop_task,*self.workers.values(),*self.command_tasks.values(),*self.refresh_tasks]
         for job in jobs:
             if job: job.cancel()
         await asyncio.gather(*(j for j in jobs if j),return_exceptions=True)
@@ -162,7 +166,10 @@ class Coordinator:
             snapshot=snapshot or await self.acquire(config)
             snapshot=replace(snapshot,reservations=tuple(self.reservations.values()))
             configs={d.id:d for d in config.devices}
-            for key in self.dispatcher.reconcile(snapshot,configs): self.reservations.pop(key,None)
+            for key in self.dispatcher.reconcile(snapshot,configs):
+                self.reservations.pop(key,None);self.errors.pop(key,None)
+            snapshot=replace(snapshot,transition_blocked=any(r['status']!='observed'
+                for r in self.dispatcher.records.values()))
             policies=self.policies(config,snapshot.at)
             occurrences=[o for p in config.schedules for o in occurrences_for(p,snapshot.at,
                 snapshot.at+timedelta(days=8),config.timezone)]
@@ -171,11 +178,15 @@ class Coordinator:
                             for d in config.devices if d.kind=='charger'}
             for key,record in self.dispatcher.records.items():
                 if record['status'] in ('sending','accepted','unknown'):
-                    age=(snapshot.at-datetime.fromisoformat(record['sent_at'])).total_seconds()
-                    if record['status']=='unknown' or age>90:
+                    confirmation=datetime.fromisoformat(record.get('confirm_by',record['expires_at'] or record['sent_at']))
+                    if record['status']=='unknown' or snapshot.at>confirmation:
                         # Pending physical effects are never retried as new starts.
                         if key in policies: policies[key]=replace(policies[key],mode='off')
                         self.errors[key]='Résultat de commande inconnu : vérification requise'
+                    elif record['action']=='suspend' and key in policies:
+                        policies[key]=replace(policies[key],mode='off')
+            for key,(queued,_) in self.queued_intents.items():
+                if queued.action=='suspend' and key in policies: policies[key]=replace(policies[key],mode='off')
             specs=[DeviceSpec(d.id,d.kind,min_power_w=d.min_power_w,max_power_w=d.max_power_w,
                 priority=d.priority) for d in config.devices]
             batch=self.engine.evaluate(snapshot,specs,policies,authorizations)
@@ -219,17 +230,40 @@ class Coordinator:
         self.store.set('schedule_results',dict(list(tracked.items())[-2000:]))
 
     def enqueue(self,intent,config):
+        if not config.armed or intent.device_id not in self.adapters: return
+        queued=self.queued_intents.get(intent.device_id)
+        if queued and queued[0].action=='suspend' and intent.action!='suspend':
+            self.engine.forget(intent.device_id);return
+        self.queued_intents[intent.device_id]=(intent,config.mode)
+        self.save_queue()
         existing=self.command_tasks.get(intent.device_id)
         if existing and not existing.done(): return
-        if not config.armed or intent.device_id not in self.adapters: return
         async def send():
-            # Re-read immediately before sending: a queued command cannot bypass a pause.
-            current=SettingsDocument.model_validate(self.store.load_settings())
-            device=next((d for d in current.devices if d.id==intent.device_id),None)
-            if not device or not device.armed or (intent.action!='suspend' and device.mode!=config.mode):
-                self.engine.forget(intent.device_id); return
-            await self.dispatcher.dispatch(intent,self.adapters[intent.device_id])
+            while intent.device_id in self.queued_intents:
+                command,expected_mode=self.queued_intents.pop(intent.device_id)
+                self.save_queue()
+                current=SettingsDocument.model_validate(self.store.load_settings())
+                device=next((d for d in current.devices if d.id==command.device_id),None)
+                if (not device or not device.armed or (command.expires_at and command.expires_at<=utcnow())
+                    or (command.action!='suspend' and device.mode!=expected_mode)):
+                    self.engine.forget(command.device_id); continue
+                window=max(device.confirmation_timeout_s,
+                    2*current.ariston.poll_interval_s+30 if device.kind=='water_heater' else 90)
+                result=await self.dispatcher.dispatch(command,self.adapters[command.device_id],window)
+                source=self.adapters[command.device_id]
+                if device.kind=='water_heater' and result.accepted and hasattr(source,'read_state'):
+                    task=asyncio.create_task(self.refresh_after_command(command.device_id,source))
+                    self.refresh_tasks.add(task);task.add_done_callback(self.refresh_tasks.discard)
         self.command_tasks[intent.device_id]=asyncio.create_task(send())
+
+    def save_queue(self):
+        self.store.set('queued_intents',{key:{'intent':asdict(intent)|{'expires_at':intent.expires_at.isoformat()
+            if intent.expires_at else None},'mode':mode} for key,(intent,mode) in self.queued_intents.items()})
+
+    async def refresh_after_command(self,device_id,source):
+        try: self.cache[device_id]=await asyncio.wait_for(source.read_state(),25)
+        except asyncio.CancelledError: raise
+        except Exception: self.errors[device_id]='Relecture après commande indisponible'
 
     def public_state(self):
         config=SettingsDocument.model_validate(self.store.load_settings())
@@ -244,7 +278,8 @@ class Coordinator:
             'solar_budget_w':solar_budget_w(replace(self.snapshot,at=now)),
             'off_peak':is_off_peak(now,config.off_peak,config.timezone),'errors':self.errors,
             'devices':[{'config':d.model_dump(mode='json'),
-                'state':asdict(self.snapshot.device_states.get(d.id,DeviceState(d.id))),
+                'state':asdict(self.snapshot.device_states.get(d.id,DeviceState(d.id)))|
+                    {'observed_power':sample(self.snapshot.device_states.get(d.id,DeviceState(d.id)).observed_power)},
                 'reason':self.reasons.get(d.id,'En attente de mesures'),
                 'command':self.dispatcher.records.get(d.id),
                 'reservation_w':self.reservations[d.id].power_w if d.id in self.reservations else 0,

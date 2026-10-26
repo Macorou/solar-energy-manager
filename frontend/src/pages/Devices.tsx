@@ -3,6 +3,7 @@ import type {Device,Settings,Vehicle} from '../api/types'
 import {CloudSettingsForm,cloudDefaults} from '../components/Editors'
 import {Icon} from '../components/Icon'
 import {api} from '../api/client'
+import {createId} from '../api/id'
 export type Run=(operation:()=>Promise<unknown>,message?:string)=>Promise<void>
 const modes={off:'Arrêt',solar:'Solaire',planned:'Planifié',off_peak_solar:'HC/HP + solaire',manual:'Manuel temporaire'}
 export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:Settings)=>Promise<void>;run:Run;kind:Device['kind']}) {
@@ -13,11 +14,11 @@ export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:
   const [probe,setProbe]=useState<Record<string,string>>({})
   const devices=settings.devices.filter(d=>d.kind===kind)
   function createDevice() {
-    setEditing({id:crypto.randomUUID(),name:kind==='charger'?'Wallbox Pulsar Plus':'Ariston NUOS',kind,mode:'off',
+    setEditing({id:createId(),name:kind==='charger'?'Wallbox Pulsar Plus':'Ariston NUOS',kind,mode:'off',
       armed:false,capabilities_verified:false,offline_behavior_verified:false,priority:settings.devices.length+1,
       min_power_w:kind==='charger'?1380:700,max_power_w:kind==='charger'?3700:700,min_current_a:6,max_current_a:16,
       phases:1,voltage:230,charge_point_id:'',allow_insecure_identity:false,connector_id:1,vehicle_id:kind==='charger'?(settings.vehicles[0]?.id||''):'',
-      gateway_id:'',target:kind==='charger'?null:55,default_soc_target:80,cloud:{...cloudDefaults}})
+      gateway_id:'',target:kind==='charger'?null:55,default_soc_target:80,confirmation_timeout_s:kind==='charger'?90:300,cloud:{...cloudDefaults}})
   }
   return <><div className="section-title"><p className="subtitle">{kind==='charger'?'Enregistrez vos bornes OCPP et associez chaque véhicule.':'Une demande native de chauffe, avec sa puissance électrique mesurée.'}</p>
     <button className="primary" onClick={createDevice}><Icon name="plus" size={17}/>Ajouter {kind==='charger'?'une borne':'un ballon'}</button></div>
@@ -44,6 +45,7 @@ export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:
           <label>Priorité (1 = premier)<input required type="number" min="1" max="100" value={editing.priority} onChange={e=>setEditing({...editing,priority:Number(e.target.value)})}/></label>
           <label>Puissance minimale (W)<input required type="number" min="1" value={editing.min_power_w} onChange={e=>setEditing({...editing,min_power_w:Number(e.target.value)})}/></label>
           <label>Puissance maximale (W)<input required type="number" min="1" value={editing.max_power_w} onChange={e=>setEditing({...editing,max_power_w:Number(e.target.value)})}/></label>
+          <label>Délai de confirmation physique (s)<input required type="number" min="30" max="3600" value={editing.confirmation_timeout_s} onChange={e=>setEditing({...editing,confirmation_timeout_s:Number(e.target.value)})}/></label>
           {kind==='charger'?<><label>Identifiant de la borne OCPP<input required value={editing.charge_point_id} onChange={e=>setEditing({...editing,charge_point_id:e.target.value})}/></label>
             <label>Numéro de connecteur<input type="number" min="1" required value={editing.connector_id} onChange={e=>setEditing({...editing,connector_id:Number(e.target.value)})}/></label>
             <label>Véhicule associé<select required value={editing.vehicle_id} onChange={e=>setEditing({...editing,vehicle_id:e.target.value})}><option value="">Choisir</option>{settings.vehicles.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
@@ -56,7 +58,7 @@ export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:
         {kind==='charger'&&<label className="check"><input type="checkbox" checked={editing.allow_insecure_identity} onChange={e=>setEditing({...editing,allow_insecure_identity:e.target.checked})}/>Autoriser l’identité OCPP sans mot de passe sur le réseau local de confiance</label>}
         <CloudSettingsForm value={editing.cloud} onChange={cloud=>setEditing({...editing,cloud})}/>
         <button className="primary">Enregistrer l’appareil</button></form></section>}
-    {kind==='charger'&&<section className="panel"><div className="section-title"><h2>Véhicules</h2><button onClick={()=>setVehicle({id:crypto.randomUUID(),name:'Peugeot e-208 2020',vin:'',capacity_kwh:null,efficiency:.9})}>Ajouter un véhicule</button></div>
+    {kind==='charger'&&<section className="panel"><div className="section-title"><h2>Véhicules</h2><button onClick={()=>setVehicle({id:createId(),name:'Peugeot e-208 2020',vin:'',capacity_kwh:null,efficiency:.9})}>Ajouter un véhicule</button></div>
       {settings.vehicles.map(v=><div className="list-row" key={v.id}><div><strong>{v.name}</strong><span className="hint">{v.vin?'VIN renseigné':'VIN à renseigner'}</span></div><button onClick={()=>setVehicle(v)}>Modifier</button></div>)}
       {vehicle&&<form onSubmit={e=>{e.preventDefault();run(async()=>{await save({...settings,vehicles:[...settings.vehicles.filter(v=>v.id!==vehicle.id),vehicle]});setVehicle(null)},'Véhicule enregistré')}}>
         <div className="form-grid"><label>Nom du véhicule<input required value={vehicle.name} onChange={e=>setVehicle({...vehicle,name:e.target.value})}/></label><label>VIN Peugeot<input value={vehicle.vin} onChange={e=>setVehicle({...vehicle,vin:e.target.value.trim().toUpperCase()})}/></label>

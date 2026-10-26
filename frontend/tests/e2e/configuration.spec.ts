@@ -51,3 +51,24 @@ test('configure locally, plan 80 percent at 05:45, keep real and simulated data 
   await expect(page.getByRole('heading',{name:'Départ travail'})).toBeVisible()
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 })
+
+test('creates devices on an insecure HTTP LAN origin without randomUUID',async({page})=>{
+  await page.request.post('/api/v1/setup',{data:{token:'test-bootstrap-only',username:'admin',password:'a-secure-test-password'}})
+  await page.route('http://192.0.2.1/**',async route=>{
+    const url=new URL(route.request().url())
+    const headers={...route.request().headers()}
+    if(headers.origin)headers.origin='http://127.0.0.1:8088'
+    const response=await route.fetch({url:'http://127.0.0.1:8088'+url.pathname+url.search,headers})
+    await route.fulfill({response})
+  })
+  await page.goto('http://192.0.2.1/')
+  expect(await page.evaluate(()=>window.isSecureContext)).toBe(false)
+  expect(await page.evaluate(()=>typeof crypto.randomUUID)).toBe('undefined')
+  await page.getByLabel('Mot de passe',{exact:true}).fill('a-secure-test-password')
+  await page.getByRole('button',{name:'Se connecter',exact:true}).click()
+  await page.getByRole('button',{name:'Bornes et véhicules',exact:true}).click()
+  await page.getByRole('button',{name:'Ajouter un véhicule',exact:true}).click()
+  await page.getByLabel('Nom du véhicule').fill('Véhicule HTTP LAN')
+  await page.getByRole('button',{name:'Enregistrer le véhicule'}).click()
+  await expect(page.getByRole('status')).toHaveText('Véhicule enregistré')
+})

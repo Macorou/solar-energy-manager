@@ -4,7 +4,7 @@ import math
 import uuid
 from app.domain.commands import CommandIntent
 from app.domain.devices import Reservation
-from app.engine.budget import solar_budget_w
+from app.engine.budget import solar_budget_w,power_coherent
 from app.engine.hysteresis import Timers
 from app.simulation.clock import Clock
 
@@ -42,6 +42,14 @@ class EnergyEngine:
         tolerance_spent = 0
         reasons, commands, reservations = {}, [], []
         pending = {r.device_id:r.power_w for r in snapshot.reservations}
+        committed={s.id:max(measured.get(s.id,0),pending.get(s.id,0),self.requested.get(s.id,0)) for s in specs}
+        coherent=power_coherent(snapshot)
+        if not coherent and grid_valid and all_power_valid and snapshot.site_limit_w is not None:
+            # Mixed frames can maintain or reduce an existing authorization, never increase it.
+            global_remaining=max(0,sum(committed.values())+min(0,snapshot.site_limit_w-snapshot.grid.value))
+            solar_remaining=max(0,sum(measured.values())-snapshot.grid.value-snapshot.export_margin_w)
+        global_remaining-=sum(committed.values())
+        solar_remaining-=sum(committed.values())
 
         def active(spec):
             return measured.get(spec.id,0)>20 or self.requested.get(spec.id,0)>0 or pending.get(spec.id,0)>0
@@ -54,6 +62,8 @@ class EnergyEngine:
 
         for spec in sorted(specs,key=order):
             if spec.kind=='water_heater': spec=replace(spec,min_power_w=spec.max_power_w)
+            site_available=global_remaining+committed.get(spec.id,0)
+            solar_available=solar_remaining+committed.get(spec.id,0)
             policy = policies.get(spec.id)
             state = snapshot.device_states.get(spec.id)
             previous = self.requested.get(spec.id)
@@ -93,42 +103,45 @@ class EnergyEngine:
                     reason = 'Chauffe heures creuses' if network else 'Surplus solaire'
                 else:
                     reason = 'Surplus solaire'
-            hard_valid = grid_valid and snapshot.site_limit_w is not None and global_remaining>=spec.min_power_w>0
-            if eligible and hard_valid and (network or solar is not None):
+            hard_valid = grid_valid and all_power_valid and snapshot.site_limit_w is not None and site_available>=spec.min_power_w>0
+            if eligible and hard_valid and (network or solar is not None or (running and not coherent)):
                 if network:
-                    desired = min(spec.max_power_w,global_remaining)
+                    desired = min(spec.max_power_w,site_available)
                     self.timers.reached(spec.id+':stop',False,0,mono)
                 elif running:
                     tolerance = max(0,min(policy.import_tolerance_w,shared_tolerance-tolerance_spent))
-                    deficient = solar_remaining+tolerance < spec.min_power_w
+                    deficient = solar_available+tolerance < spec.min_power_w
                     stopped = self.timers.reached(spec.id+':stop',deficient,policy.stop_delay_s,mono)
                     minimum_run = mono-self.running_since.get(spec.id,mono)<policy.min_run_s
                     if deficient and stopped and not minimum_run:
                         reason = 'Surplus insuffisant : suspension'
                     else:
-                        desired = min(spec.max_power_w,global_remaining,
-                            max(spec.min_power_w,solar_remaining))
+                        desired = min(spec.max_power_w,site_available,
+                            max(spec.min_power_w,solar_available))
                         reason = 'Passage de nuage : temporisation' if deficient else 'Surplus solaire'
                 else:
-                    enough = solar_remaining>=max(spec.min_power_w,policy.start_surplus_w)
+                    enough = coherent and solar_available>=max(spec.min_power_w,policy.start_surplus_w)
                     ready = self.timers.reached(spec.id+':start',enough,policy.start_delay_s,mono)
                     cooldown = mono-self.stopped_at.get(spec.id,-math.inf)>=policy.restart_delay_s
                     if ready and cooldown:
-                        desired = min(spec.max_power_w,global_remaining,solar_remaining)
+                        desired = min(spec.max_power_w,site_available,solar_available)
                     else:
                         remaining = self.timers.remaining(spec.id+':start',policy.start_delay_s,mono)
                         reason = f'Attente de surplus stable ({remaining:.0f} s)' if enough else 'Surplus insuffisant'
             elif eligible:
                 reason = 'Mesure réseau indisponible ou limite de puissance'
             if desired and spec.kind=='water_heater':
-                desired = spec.max_power_w if global_remaining>=spec.max_power_w else 0
+                desired = spec.max_power_w if site_available>=spec.max_power_w else 0
+            if not coherent and desired:
+                desired=min(desired,previous or 0)
+                reason='Attente de mesures électriques cohérentes : aucune augmentation'
             if desired < spec.min_power_w:
                 desired = 0
-            occupied = max(desired,measured.get(spec.id,0),pending.get(spec.id,0))
+            occupied = max(desired,committed.get(spec.id,0))
             if not network:
-                tolerance_spent += max(0,desired-max(0,solar_remaining))
-            global_remaining = max(0,global_remaining-occupied)
-            solar_remaining = max(0,solar_remaining-occupied)
+                tolerance_spent += max(0,desired-max(0,solar_available))
+            global_remaining-=occupied-committed.get(spec.id,0)
+            solar_remaining-=occupied-committed.get(spec.id,0)
             reasons[spec.id] = reason
             if not policy or not policy.armed:
                 continue

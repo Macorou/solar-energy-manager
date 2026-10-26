@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone,timedelta
 from app.domain.commands import CommandResult
 
 
@@ -14,7 +14,7 @@ class Dispatcher:
 
     def save(self): self.store.set('runtime_commands',self.records)
 
-    async def dispatch(self,intent,adapter):
+    async def dispatch(self,intent,adapter,confirmation_timeout_s=90):
         async with self.locks.setdefault(intent.device_id,asyncio.Lock()):
             prior=self.records.get(intent.device_id)
             if prior and prior['id']==intent.id:
@@ -24,6 +24,7 @@ class Dispatcher:
             record={'id':intent.id,'device_id':intent.device_id,'action':intent.action,
                 'power_w':intent.limit_w or 0,'sent_at':now.isoformat(),
                 'expires_at':intent.expires_at.isoformat() if intent.expires_at else None,
+                'confirm_by':(now+timedelta(seconds=confirmation_timeout_s)).isoformat(),
                 'reason':intent.reason,'status':'sending'}
             self.records[intent.device_id]=record
             self.save()  # Durable before the network side effect.
@@ -49,6 +50,10 @@ class Dispatcher:
             power=state.observed_power if state else None
             if not power or not power.usable(snapshot.at,snapshot.sample_max_age_s): continue
             if power.measured_at <= datetime.fromisoformat(record['sent_at']): continue
+            grid=snapshot.grid
+            if (not grid or not grid.usable(snapshot.at,snapshot.sample_max_age_s)
+                or grid.measured_at<power.measured_at
+                or (grid.measured_at-power.measured_at).total_seconds()>2): continue
             desired=record['power_w']
             config=configs.get(key)
             matched=(power.value<=20 if not desired else 20<power.value<=desired+max(100,desired*.1))

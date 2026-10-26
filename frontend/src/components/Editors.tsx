@@ -1,5 +1,6 @@
 import {useState} from 'react'
 import type {Cloud,Program} from '../api/types'
+import {createId} from '../api/id'
 
 export const cloudDefaults:Cloud={start_surplus_w:0,start_delay_s:60,import_tolerance_w:0,stop_delay_s:180,min_run_s:300,restart_delay_s:120}
 const fields:[keyof Cloud,string][]=[['start_surplus_w','Seuil de démarrage (W)'],['start_delay_s','Surplus stable avant démarrage (s)'],
@@ -13,7 +14,7 @@ export function CloudSettingsForm({value,onChange}:{value:Cloud;onChange:(value:
 const days=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']
 export function ChargeProgramEditor({vehicles,initial,onSave,onCancel}:{vehicles:{id:string;name:string}[];initial?:Program;
   onSave:(value:Program)=>void;onCancel?:()=>void}) {
-  const [value,set]=useState<Program>(initial||{id:crypto.randomUUID(),name:'',vehicle_id:vehicles[0]?.id||'',weekdays:[0,1,2,3,4],
+  const [value,set]=useState<Program>(initial||{id:createId(),name:'',vehicle_id:vehicles[0]?.id||'',weekdays:[0,1,2,3,4],
     earliest_start:'22:00',deadline:'05:45',target_soc:80,solar_early:true,solar_horizon_hours:24,enabled:true})
   return <form onSubmit={e=>{e.preventDefault();onSave(value)}} className="editor">
     <div className="form-grid"><label>Nom du programme<input required value={value.name} onChange={e=>set({...value,name:e.target.value})}/></label>

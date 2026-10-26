@@ -16,4 +16,5 @@ class SiteSnapshot:
     site_limit_w: float | None = None
     export_margin_w: float = 100
     sample_max_age_s: float = 30
+    transition_blocked: bool = False
 

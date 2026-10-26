@@ -16,7 +16,7 @@ export function DeviceCard({device,telemetry,onAction}:{device:LiveDevice;teleme
         <p>Objectif {car?(device.authorization?.target_soc||config.default_soc_target)+' %':(config.target??'—')+' °C'}</p>
         <span className={'freshness '+(fresh?'':'old')}>{fresh?'Mesure disponible':'Mesure indisponible ou ancienne'}</span>
         {car&&<span className="hint">{date(telemetry?.measured_at)}</span>}</div></div>
-    <div className="device-readings"><div><Icon name="bolt"/><div><strong>{watts(state.observed_power?.value)}</strong><span>Puissance mesurée</span></div></div>
+    <div className="device-readings"><div><Icon name="bolt"/><div><strong>{watts(state.observed_power?.usable?state.observed_power.value:null)}</strong><span>{state.observed_power?.quality==='estimated'?'Puissance estimée · état OCPP':'Puissance mesurée'}</span></div></div>
       <div><strong>{config.priority}</strong><span>Priorité de démarrage</span></div></div>
     <div className="reason"><span className="status-dot"/>{device.reason}</div>
     {command&&<div className="command-status">Demande {watts(command.power_w)} · {({sending:'envoi en cours',accepted:'acceptée, en attente de mesure',observed:'effet observé',unknown:'résultat inconnu'} as Record<string,string>)[command.status]||command.status}</div>}

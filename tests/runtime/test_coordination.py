@@ -45,7 +45,8 @@ async def test_concurrent_ticks_send_only_one_start_and_reserve_until_new_measur
     assert runtime.dispatcher.records['tank']['status']=='accepted'
     now=utcnow()+timedelta(seconds=1)
     sample=Sample(600,'W','test',now,now)
-    observed=replace(snapshot,at=now,device_states={'tank':DeviceState('tank',sample,connected=True)})
+    observed=replace(snapshot,at=now,grid=replace(snapshot.grid,measured_at=now,received_at=now),
+        device_states={'tank':DeviceState('tank',sample,connected=True)})
     await runtime.tick(observed)
     assert 'tank' not in runtime.reservations
     assert runtime.dispatcher.records['tank']['status']=='observed'
@@ -84,3 +85,60 @@ def test_generic_settings_cannot_bypass_arming_and_manual_is_local(tmp_path):
     assert client.post('/api/v1/devices/one/manual',json={'duration_minutes':30}).status_code==200
     result=client.get('/api/v1/settings').json()['devices']
     assert result[0]['mode']=='manual' and result[1]['mode']=='off'
+
+
+@pytest.mark.asyncio
+async def test_pause_during_pending_start_is_sent_after_start_finishes(tmp_path):
+    runtime,adapter,snapshot=environment(tmp_path)
+    entered,release=asyncio.Event(),asyncio.Event()
+    async def execute(intent):
+        adapter.calls.append(intent)
+        if intent.action=='set_power': entered.set();await release.wait()
+        return CommandResult(intent.id,True)
+    adapter.execute=execute
+    await runtime.tick(snapshot)
+    await entered.wait()
+    settings=runtime.store.load_settings();settings['devices'][0]['mode']='off';runtime.store.save_settings(settings)
+    await runtime.tick(snapshot)
+    release.set()
+    await asyncio.gather(*runtime.command_tasks.values())
+    assert [c.action for c in adapter.calls]==['set_power','suspend']
+    assert runtime.dispatcher.records['tank']['action']=='suspend'
+
+
+@pytest.mark.asyncio
+async def test_ariston_confirmation_waits_for_cloud_poll_and_keeps_reservation(tmp_path):
+    runtime,adapter,snapshot=environment(tmp_path)
+    settings=runtime.store.load_settings();settings['devices'][0]['target']=55;runtime.store.save_settings(settings)
+    snapshot=replace(snapshot,device_states={'tank':replace(snapshot.device_states['tank'],observed_state='off',target_temperature=55)})
+    await runtime.tick(snapshot);await asyncio.gather(*runtime.command_tasks.values())
+    later=snapshot.at+timedelta(seconds=91)
+    power=Sample(600,'W','test',later,later)
+    grid=Sample(-400,'W','test',later,later)
+    stale_cloud=replace(snapshot,at=later,grid=grid,device_states={'tank':replace(snapshot.device_states['tank'],observed_power=power)})
+    batch=await runtime.tick(stale_cloud)
+    assert not any(c.action=='suspend' for c in batch.commands)
+    assert 'tank' in runtime.reservations
+    at_poll=later+timedelta(seconds=30)
+    fresh=replace(stale_cloud,at=at_poll,grid=replace(grid,measured_at=at_poll,received_at=at_poll),
+        device_states={'tank':replace(stale_cloud.device_states['tank'],observed_state='on',
+            observed_power=replace(power,measured_at=at_poll,received_at=at_poll))})
+    await runtime.tick(fresh)
+    assert runtime.dispatcher.records['tank']['status']=='observed'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('device_first',[True,False])
+async def test_mixed_measurement_transition_cannot_release_reserved_watts(tmp_path,device_first):
+    runtime,adapter,snapshot=environment(tmp_path)
+    await runtime.tick(snapshot);await asyncio.gather(*runtime.command_tasks.values())
+    later=utcnow()+timedelta(seconds=10)
+    new_power=Sample(600,'W','test',later,later)
+    new_grid=Sample(-400,'W','test',later,later)
+    mixed=replace(snapshot,at=later,grid=snapshot.grid if device_first else new_grid,
+        device_states={'tank':replace(snapshot.device_states['tank'],observed_power=new_power if device_first else snapshot.device_states['tank'].observed_power)})
+    await runtime.tick(mixed)
+    assert 'tank' in runtime.reservations
+    coherent=replace(mixed,grid=new_grid,device_states={'tank':replace(mixed.device_states['tank'],observed_power=new_power)})
+    await runtime.tick(coherent)
+    assert runtime.dispatcher.records['tank']['status']=='observed'

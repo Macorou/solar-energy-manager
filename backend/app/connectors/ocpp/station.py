@@ -39,6 +39,8 @@ class Station(ChargePoint):
             power=old.observed_power
             if status=='Available':
                 power=Sample(0,'W','OCPP état Available',utcnow(),utcnow(),Quality.ESTIMATED)
+                if not self.registry.authorized(config) and (self.id,connector_id) not in self.registry.active:
+                    self.registry.pending_start.pop(config.id,None);self.registry.save_pending()
             self.registry.states[config.id]=replace(old,connected=True,observed_state=status,
                 fault=None if error_code=='NoError' and status!='Faulted' else error_code,
                 observed_power=power,vehicle_connected=status not in ('Available','Unavailable'),measured_at=utcnow())
@@ -50,6 +52,9 @@ class Station(ChargePoint):
         if not config:
             return call_result.StartTransaction(transaction_id=0,id_tag_info={'status':'Invalid'})
         transaction=self.registry.transaction(self.id,connector_id,{'timestamp':timestamp,'meter_start':meter_start})
+        pending=self.registry.pending_start.pop(config.id,None);self.registry.save_pending()
+        cancelled=bool(pending and pending['state']=='cancel_requested') or not self.registry.authorized(config)
+        if cancelled and self.registry.on_transaction: self.registry.on_transaction(config.id)
         old=self.registry.states.get(config.id,DeviceState(config.id))
         self.registry.states[config.id]=replace(old,connected=True,vehicle_connected=True,observed_state='Charging')
         return call_result.StartTransaction(transaction_id=transaction,
@@ -61,6 +66,7 @@ class Station(ChargePoint):
             if key[0]==self.id and value['transaction_id']==transaction_id:
                 config=self.config(key[1])
                 if config:
+                    self.registry.pending_start.pop(config.id,None);self.registry.save_pending()
                     old=self.registry.states.get(config.id,DeviceState(config.id))
                     self.registry.states[config.id]=replace(old,observed_state='Finishing',
                         observed_power=Sample(0,'W','OCPP fin de transaction',utcnow(),utcnow(),Quality.ESTIMATED))

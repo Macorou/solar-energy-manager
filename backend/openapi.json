@@ -1838,6 +1838,13 @@
             "title": "Default Soc Target",
             "default": 80
           },
+          "confirmation_timeout_s": {
+            "type": "integer",
+            "maximum": 3600.0,
+            "minimum": 30.0,
+            "title": "Confirmation Timeout S",
+            "default": 90
+          },
           "cloud": {
             "$ref": "#/components/schemas/CloudSettings"
           }

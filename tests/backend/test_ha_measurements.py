@@ -78,7 +78,12 @@ async def test_unchanged_power_gets_new_provider_report_time_without_state_chang
     async def handler(ws):
         await ws.send(json.dumps({'type':'auth_required'}));await ws.recv()
         await ws.send(json.dumps({'type':'auth_ok'}));await ws.recv()
-        await ws.wait_closed()
+        try:
+            while True:
+                await ws.send(json.dumps({'type':'event','event':{'data':{'entity_id':'sensor.unrelated',
+                    'new_state':{'entity_id':'sensor.unrelated','state':'1'}}}}))
+                await asyncio.sleep(.1)
+        except websockets.ConnectionClosed: pass
     async with websockets.serve(handler,'127.0.0.1',0) as server:
         port=server.sockets[0].getsockname()[1]
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:

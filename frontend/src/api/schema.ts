@@ -898,6 +898,11 @@ export interface components {
              * @default 80
              */
             default_soc_target: number;
+            /**
+             * Confirmation Timeout S
+             * @default 90
+             */
+            confirmation_timeout_s: number;
             cloud?: components["schemas"]["CloudSettings"];
         };
         /** HTTPValidationError */

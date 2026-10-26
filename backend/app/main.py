@@ -59,6 +59,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.state.peugeot=PeugeotAdapter(secret_store,PeugeotConfig.model_validate(store.load_settings()['peugeot']))
     app.state.ariston_adapters={}
     app.state.coordinator=Coordinator(store,app)
+    app.state.ocpp.on_transaction=app.state.coordinator.engine.forget
     register_server(app,app.state.ocpp)
     app.include_router(auth_router)
     app.include_router(connections_router)

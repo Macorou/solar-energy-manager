@@ -44,6 +44,7 @@ def pause(device_id:str,request:Request):
     request.app.state.store.set('paused_modes',modes)
     device.mode='off'
     request.app.state.store.save_settings(config.model_dump(mode='json'))
+    request.app.state.coordinator.engine.forget(device_id)
     return {'ok':True,'status':'stop_requested'}
 
 

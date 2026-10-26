@@ -4,7 +4,7 @@ from ocpp.v16 import call
 from app.settings import DeviceConfig
 from app.domain.devices import DeviceState,CapabilityReport
 from app.domain.commands import CommandResult
-from app.domain.measurements import Quality,utcnow
+from app.domain.measurements import Quality,utcnow,Sample
 from .profiles import build_profile
 
 
@@ -14,6 +14,8 @@ class OcppRegistry:
         self.stations,self.states,self.probes,self.metadata={}, {}, {}, {}
         self.active={}
         self.allowed_until={}
+        self.pending_start=store.get('ocpp_pending_start',{})
+        self.on_transaction=None
         for key,value in store.get('ocpp_active',{}).items():
             station,connector=key.rsplit(':',1)
             self.active[(station,int(connector))]=value
@@ -31,6 +33,12 @@ class OcppRegistry:
         if not config or config.charge_point_id not in self.stations:
             power=replace(state.observed_power,quality=Quality.UNAVAILABLE) if state.observed_power else None
             return replace(state,connected=False,observed_power=power)
+        if (state.observed_state in ('Available','Preparing','SuspendedEV','SuspendedEVSE','Finishing')
+            and (not state.observed_power or not state.observed_power.usable(utcnow(),30))):
+            # A current protocol state can support an explicit idle estimate.
+            # Charging without a power sample always remains unknown.
+            state=replace(state,observed_power=Sample(0,'W',
+                'OCPP estimation état '+state.observed_state,utcnow(),utcnow(),Quality.ESTIMATED))
         return state
 
     def authorized(self,config):
@@ -39,6 +47,8 @@ class OcppRegistry:
 
     def save_transactions(self):
         self.store.set('ocpp_active',{f'{cp}:{connector}':value for (cp,connector),value in self.active.items()})
+
+    def save_pending(self): self.store.set('ocpp_pending_start',self.pending_start)
 
     def transaction(self,cp,connector,payload):
         key=f'{cp}:{connector}:{payload["timestamp"]}:{payload["meter_start"]}'
@@ -85,6 +95,9 @@ class ChargerAdapter:
         try:
             if intent.action=='suspend':
                 self.registry.allowed_until.pop(self.config.id,None)
+                if self.config.id in self.registry.pending_start:
+                    self.registry.pending_start[self.config.id]['state']='cancel_requested'
+                    self.registry.save_pending()
                 if not transaction:
                     state=await self.read_state()
                     zero=bool(state.observed_power and state.observed_power.value==0)
@@ -96,11 +109,17 @@ class ChargerAdapter:
             if result.status!='Accepted':
                 return CommandResult(intent.id,False,error='Limite de courant refusée',checked_at=utcnow())
             self.registry.allowed_until[self.config.id]=intent.expires_at or utcnow()+timedelta(seconds=90)
-            if not transaction:
+            if not transaction and self.config.id not in self.registry.pending_start:
+                self.registry.pending_start[self.config.id]={'state':'sending','at':utcnow().isoformat()}
+                self.registry.save_pending()
                 result=await station.call(call.RemoteStartTransaction(id_tag='SEM',connector_id=self.config.connector_id))
                 if result.status!='Accepted':
                     self.registry.allowed_until.pop(self.config.id,None)
+                    self.registry.pending_start.pop(self.config.id,None);self.registry.save_pending()
                     return CommandResult(intent.id,False,error='Démarrage refusé',checked_at=utcnow())
+                if self.config.id in self.registry.pending_start:
+                    self.registry.pending_start[self.config.id]['state']='accepted'
+                    self.registry.save_pending()
             return CommandResult(intent.id,True,False,checked_at=utcnow())
         except Exception:
             return CommandResult(intent.id,False,error='Échange OCPP non confirmé',checked_at=utcnow())

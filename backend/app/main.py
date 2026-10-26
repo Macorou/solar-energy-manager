@@ -8,6 +8,8 @@ from app.storage.database import SQLiteStore
 from app.storage.secrets import SecretStore
 from app.api.auth import router as auth_router, require_auth
 from app.api.connections import router as connections_router
+from app.api.schedules import router as schedules_router
+from app.api.tariffs import router as tariffs_router
 
 
 def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
@@ -45,6 +47,8 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.state.login_attempts = {}
     app.include_router(auth_router)
     app.include_router(connections_router)
+    app.include_router(schedules_router)
+    app.include_router(tariffs_router)
 
     @app.get('/api/v1/health/live')
     def health():

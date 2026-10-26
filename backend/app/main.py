@@ -102,4 +102,10 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         store.save_settings(body.model_dump(mode='json'))
         return {'ok': True}
 
+    static_dir=Path(os.environ.get('SEM_STATIC_DIR',str(Path(__file__).resolve().parents[2] / 'frontend' / 'dist')))
+    if not static_dir.exists():
+        static_dir=Path(__file__).resolve().parents[3]/'frontend'/'dist'
+    if static_dir.is_dir():
+        from fastapi.staticfiles import StaticFiles
+        app.mount('/',StaticFiles(directory=static_dir,html=True),name='web')
     return app

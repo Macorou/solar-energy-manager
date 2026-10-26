@@ -1,0 +1,38 @@
+# Accès et données de l’installation
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.token
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+data/
+secrets/
+backups/
+work/
+
+# Dépendances et fichiers générés
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+node_modules/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+
+# Éditeurs et système
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

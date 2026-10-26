@@ -13,6 +13,9 @@ from app.api.tariffs import router as tariffs_router
 from app.connectors.ocpp.registry import OcppRegistry
 from app.connectors.ocpp.server import register_server
 from app.api.chargers import router as chargers_router
+from app.api.vehicles import router as vehicles_router
+from app.connectors.peugeot.client import PeugeotAdapter
+from app.settings import PeugeotConfig
 
 
 def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
@@ -49,12 +52,14 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.state.runtime_settings = settings
     app.state.login_attempts = {}
     app.state.ocpp=OcppRegistry(store,lambda:store.load_settings().get('devices',[]),secret_store.get)
+    app.state.peugeot=PeugeotAdapter(secret_store,PeugeotConfig.model_validate(store.load_settings()['peugeot']))
     register_server(app,app.state.ocpp)
     app.include_router(auth_router)
     app.include_router(connections_router)
     app.include_router(schedules_router)
     app.include_router(tariffs_router)
     app.include_router(chargers_router)
+    app.include_router(vehicles_router)
 
     @app.get('/api/v1/health/live')
     def health():

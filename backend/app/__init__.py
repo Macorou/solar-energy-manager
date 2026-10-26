@@ -1,0 +1,1 @@
+"""Independent home energy manager."""

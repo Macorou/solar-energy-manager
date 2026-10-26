@@ -7,6 +7,7 @@ from app.settings import RuntimeSettings, SettingsDocument
 from app.storage.database import SQLiteStore
 from app.storage.secrets import SecretStore
 from app.api.auth import router as auth_router, require_auth
+from app.api.connections import router as connections_router
 
 
 def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
@@ -43,6 +44,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.state.runtime_settings = settings
     app.state.login_attempts = {}
     app.include_router(auth_router)
+    app.include_router(connections_router)
 
     @app.get('/api/v1/health/live')
     def health():

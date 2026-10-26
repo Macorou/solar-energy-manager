@@ -52,6 +52,7 @@ def add(body:DeviceConfig,request:Request):
 @router.put('/water-heaters/{device_id}')
 def update(device_id:str,body:DeviceConfig,request:Request):
     config,device=find_device(request,device_id,'water_heater')
+    if device.armed: raise HTTPException(409,'Désactiver avant de modifier la configuration matérielle')
     if body.id!=device_id or body.kind!='water_heater': raise HTTPException(422,'Identité invalide')
     config.devices=[body.model_copy(update={'armed':False,'capabilities_verified':False,
         'offline_behavior_verified':False}) if d.id==device_id else d for d in config.devices]

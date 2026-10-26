@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 import os
 import secrets
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, Request, HTTPException
 from app.settings import RuntimeSettings, SettingsDocument
 from app.storage.database import SQLiteStore
 from app.storage.secrets import SecretStore
@@ -17,6 +17,9 @@ from app.api.vehicles import router as vehicles_router
 from app.connectors.peugeot.client import PeugeotAdapter
 from app.settings import PeugeotConfig
 from app.api.water_heaters import router as water_heaters_router
+from app.api.devices import router as devices_router
+from app.api.simulation import router as simulation_router
+from app.runtime.coordinator import Coordinator
 
 
 def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
@@ -55,6 +58,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.state.ocpp=OcppRegistry(store,lambda:store.load_settings().get('devices',[]),secret_store.get)
     app.state.peugeot=PeugeotAdapter(secret_store,PeugeotConfig.model_validate(store.load_settings()['peugeot']))
     app.state.ariston_adapters={}
+    app.state.coordinator=Coordinator(store,app)
     register_server(app,app.state.ocpp)
     app.include_router(auth_router)
     app.include_router(connections_router)
@@ -63,6 +67,8 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.include_router(chargers_router)
     app.include_router(vehicles_router)
     app.include_router(water_heaters_router)
+    app.include_router(devices_router)
+    app.include_router(simulation_router)
 
     @app.get('/api/v1/health/live')
     def health():
@@ -70,7 +76,8 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
     @app.get('/api/v1/system/status', dependencies=[Depends(require_auth)])
     def status():
-        return {'version': '0.1.0', 'simulation': False, 'runtime': 'not_started'}
+        return {'version': '0.1.0', 'simulation': False,
+                'runtime': 'running' if app.state.coordinator.running else 'not_started'}
 
     @app.get('/api/v1/settings', dependencies=[Depends(require_auth)])
     def read_settings():
@@ -78,6 +85,20 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
     @app.put('/api/v1/settings', dependencies=[Depends(require_auth)])
     def write_settings(body: SettingsDocument):
+        previous=SettingsDocument.model_validate(store.load_settings())
+        old={d.id:d for d in previous.devices}
+        new={d.id:d for d in body.devices}
+        protected=('armed','capabilities_verified','offline_behavior_verified')
+        identity=('kind','charge_point_id','connector_id','vehicle_id','gateway_id','min_power_w',
+                  'max_power_w','phases','voltage','min_current_a','max_current_a','allow_insecure_identity')
+        for device in body.devices:
+            prior=old.get(device.id)
+            if any(getattr(device,p) != (getattr(prior,p) if prior else False) for p in protected):
+                raise HTTPException(409,'Utiliser la procédure dédiée d’activation ou de désactivation')
+            if prior and prior.armed and any(getattr(device,p)!=getattr(prior,p) for p in identity):
+                raise HTTPException(409,'Désactiver avant de modifier les caractéristiques de l’appareil')
+        if any(d.armed and d.id not in new for d in previous.devices):
+            raise HTTPException(409,'Désactiver avant suppression')
         store.save_settings(body.model_dump(mode='json'))
         return {'ok': True}
 

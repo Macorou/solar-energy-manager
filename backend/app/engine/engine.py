@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass,replace
 from datetime import timedelta
 import math
 import uuid
@@ -33,8 +33,10 @@ class EnergyEngine:
         measured = {key: max(0,state.observed_power.value or 0) if state.observed_power else 0
                     for key,state in snapshot.device_states.items()}
         grid_valid = bool(snapshot.grid and snapshot.grid.usable(now,snapshot.sample_max_age_s))
+        all_power_valid=all(state.observed_power and state.observed_power.usable(now,snapshot.sample_max_age_s)
+                            for state in snapshot.device_states.values())
         global_remaining = max(0,snapshot.site_limit_w-(snapshot.grid.value-sum(measured.values()))) \
-            if grid_valid and snapshot.site_limit_w is not None else 0
+            if grid_valid and all_power_valid and snapshot.site_limit_w is not None else 0
         solar_remaining = solar or 0
         shared_tolerance = max((p.import_tolerance_w for p in policies.values()),default=0)
         tolerance_spent = 0
@@ -51,6 +53,7 @@ class EnergyEngine:
             return (not protected,spec.priority,deadline,spec.id)
 
         for spec in sorted(specs,key=order):
+            if spec.kind=='water_heater': spec=replace(spec,min_power_w=spec.max_power_w)
             policy = policies.get(spec.id)
             state = snapshot.device_states.get(spec.id)
             previous = self.requested.get(spec.id)
@@ -69,7 +72,9 @@ class EnergyEngine:
                 eligible, reason = False, 'Arrêt demandé'
             elif state.target_reached:
                 eligible, reason = False, 'Objectif atteint'
-            elif spec.kind=='charger' and policy.vehicle_id:
+            elif spec.kind=='charger' and state.vehicle_connected is False:
+                eligible, reason = False, 'Véhicule non branché'
+            elif spec.kind=='charger' and policy.vehicle_id and policy.mode!='manual':
                 telemetry = snapshot.vehicle_telemetry.get(policy.vehicle_id)
                 if not telemetry or not telemetry.fresh(now,policy.soc_max_age_s):
                     eligible, reason = False, 'Batterie indisponible ou trop ancienne'

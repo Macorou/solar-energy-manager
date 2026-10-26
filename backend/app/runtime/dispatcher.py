@@ -1,0 +1,62 @@
+import asyncio
+from dataclasses import asdict
+from datetime import datetime, timezone
+from app.domain.commands import CommandResult
+
+
+class Dispatcher:
+    def __init__(self,store,timeout_s=25):
+        self.store,self.timeout_s=store,timeout_s
+        self.records=store.get('runtime_commands',{})
+        for record in self.records.values():
+            if record['status'] in ('sending','accepted'): record['status']='unknown'
+        self.locks={}
+
+    def save(self): self.store.set('runtime_commands',self.records)
+
+    async def dispatch(self,intent,adapter):
+        async with self.locks.setdefault(intent.device_id,asyncio.Lock()):
+            prior=self.records.get(intent.device_id)
+            if prior and prior['id']==intent.id:
+                return CommandResult(intent.id,prior['status'] in ('accepted','observed'),
+                                     prior['status']=='observed',error='already_dispatched')
+            now=datetime.now(timezone.utc)
+            record={'id':intent.id,'device_id':intent.device_id,'action':intent.action,
+                'power_w':intent.limit_w or 0,'sent_at':now.isoformat(),
+                'expires_at':intent.expires_at.isoformat() if intent.expires_at else None,
+                'reason':intent.reason,'status':'sending'}
+            self.records[intent.device_id]=record
+            self.save()  # Durable before the network side effect.
+            try:
+                result=await asyncio.wait_for(adapter.execute(intent),self.timeout_s)
+                record['status']='accepted' if result.accepted else 'unknown'
+                record['error']=result.error
+            except asyncio.CancelledError:
+                record['status']='unknown'; self.save(); raise
+            except Exception:
+                record['status']='unknown'
+                result=CommandResult(intent.id,False,error='command_result_unknown')
+            self.save()
+            self.store.append_event({'kind':'command_'+record['status'],'device_id':intent.device_id,
+                'details':{'action':intent.action,'power_w':intent.limit_w,'reason':intent.reason}})
+            return result
+
+    def reconcile(self,snapshot,configs):
+        observed=[]
+        for key,record in self.records.items():
+            if record['status']=='observed': continue
+            state=snapshot.device_states.get(key)
+            power=state.observed_power if state else None
+            if not power or not power.usable(snapshot.at,snapshot.sample_max_age_s): continue
+            if power.measured_at <= datetime.fromisoformat(record['sent_at']): continue
+            desired=record['power_w']
+            config=configs.get(key)
+            matched=(power.value<=20 if not desired else 20<power.value<=desired+max(100,desired*.1))
+            if desired and config and config.kind=='water_heater' and config.target is not None:
+                matched=matched and state.target_temperature==config.target and state.observed_state=='on'
+            if matched:
+                record['status']='observed'; observed.append(key)
+                self.store.append_event({'kind':'command_observed','device_id':key,
+                    'details':{'power_w':power.value,'action':record['action']}})
+        if observed: self.save()
+        return observed

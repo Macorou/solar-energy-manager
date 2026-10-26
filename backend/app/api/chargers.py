@@ -46,6 +46,7 @@ def add(body:DeviceConfig,request:Request):
 @router.put('/{device_id}')
 def update(device_id:str,body:DeviceConfig,request:Request):
     config,old=find_device(request,device_id)
+    if old.armed: raise HTTPException(409,'Désactiver avant de modifier la configuration matérielle')
     if body.id!=device_id or body.kind!='charger':
         raise HTTPException(422,'Identité non valide')
     config.devices=[body.model_copy(update={'armed':False,'capabilities_verified':False,

@@ -1,27 +1,66 @@
 import type {LiveDevice,Telemetry} from '../api/types'
 import {watts,date} from '../api/client'
 import {Icon} from './Icon'
-export function DeviceCard({device,telemetry,onAction}:{device:LiveDevice;telemetry?:Telemetry;
-  onAction:(id:string,action:string)=>void}) {
+import {DeviceIllustration} from './DeviceIllustration'
+
+export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{device:LiveDevice;telemetry?:Telemetry;
+  onAction:(id:string,action:string)=>void;timezone?:string}) {
   const {config,state,command}=device
   const car=config.kind==='charger'
-  const value=car?telemetry?.soc:state.temperature
   const fresh=car?telemetry?.fresh:state.connected
-  return <article className={'device-card '+(car?'ev':'tank')}>
-    <div className="card-heading"><div><span className="eyebrow">{car?'MOBILITÉ ÉLECTRIQUE':'EAU CHAUDE SANITAIRE'}</span><h2>{config.name}</h2></div>
-      <span className={'badge '+(config.armed?'green':'neutral')}>{config.armed?'Pilotage activé':'Observation'}</span></div>
-    <div className="device-visual"><div className="device-icon"><Icon name={car?'car':'drop'} size={92}/><span>{car?'OCPP 1.6J':'Commande native'}</span></div>
-      <div className="device-metric"><div className="big-number">{value==null?'—':Math.round(value)}<small>{car?'%':'°C'}</small></div>
-        <div className="meter"><i style={{width:Math.min(100,value||0)+'%'}}/></div>
-        <p>Objectif {car?(device.authorization?.target_soc||config.default_soc_target)+' %':(config.target??'—')+' °C'}</p>
-        <span className={'freshness '+(fresh?'':'old')}>{fresh?'Mesure disponible':'Mesure indisponible ou ancienne'}</span>
-        {car&&<span className="hint">{date(telemetry?.measured_at)}</span>}</div></div>
-    <div className="device-readings"><div><Icon name="bolt"/><div><strong>{watts(state.observed_power?.usable?state.observed_power.value:null)}</strong><span>{state.observed_power?.quality==='estimated'?'Puissance estimée · état OCPP':'Puissance mesurée'}</span></div></div>
-      <div><strong>{config.priority}</strong><span>Priorité de démarrage</span></div></div>
-    <div className="reason"><span className="status-dot"/>{device.reason}</div>
+  const raw=car?telemetry?.soc:state.temperature
+  const value=fresh&&raw!=null&&Number.isFinite(raw)?raw:null
+  const power=state.observed_power?.usable&&Number.isFinite(state.observed_power.value)?state.observed_power.value:null
+  const observedRunning=state.connected&&power!=null&&power>20&&['Charging','on'].includes(state.observed_state)
+  const pending=command&&['sending','accepted'].includes(command.status)
+  const badge=state.fault||command?.status==='unknown'?['red','À vérifier','info']:
+    observedRunning?['blue',car?'En charge':'En chauffe','bolt']:
+    pending?['amber','En attente de confirmation','clock']:
+    !config.armed?['neutral','Observation','eye']:
+    !state.connected?['neutral','Hors connexion','link']:['amber','En attente','clock']
+  const target=car?(device.authorization?.target_soc??config.default_soc_target):config.target
+  const deadline=car&&device.authorization?.expires_at?new Date(device.authorization.expires_at)
+    .toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:timezone}):null
+  const automatic=config.mode!=='off'&&config.mode!=='manual'
+  return <article className={'device-card '+(car?'ev':'tank')} aria-label={config.name}>
+    <div className="card-heading"><h2>{car?'Voiture électrique':'Ballon d’eau chaude'}</h2>
+      <span className={'badge '+badge[0]}><Icon name={badge[2]} size={16}/>{badge[1]}</span></div>
+    <p className="device-name">{config.name}</p>
+    <div className="device-card-body">
+      <div className="device-art"><DeviceIllustration kind={config.kind}/></div>
+      <div className="device-controls">
+        <div className="big-number">{value==null?'—':Math.round(value)}<small>{car?'%':'°C'}</small></div>
+        <div className="meter"><i style={{width:Math.max(0,Math.min(100,value??0))+'%'}}/></div>
+        <p className="device-target">Objectif {target??'—'} {car?'%':'°C'}{deadline&&<> à {deadline}</>}</p>
+        {!fresh&&<span className="freshness old">Mesure indisponible ou ancienne</span>}
+        <div className="mode-switch" aria-label="Mode de pilotage">
+          <button className={automatic?'selected automatic':''} aria-pressed={automatic} disabled={!config.armed} onClick={()=>onAction(config.id,'resume')}><Icon name="leaf" size={14}/>Automatique</button>
+          <button className={config.mode==='manual'?'selected':''} aria-pressed={config.mode==='manual'} disabled={!config.armed} onClick={()=>onAction(config.id,'manual')} title="Démarrage temporaire pendant 30 minutes"><Icon name="hand" size={14}/>Manuel</button>
+          <button className={config.mode==='off'?'selected':''} aria-pressed={config.mode==='off'} disabled={!config.armed} onClick={()=>onAction(config.id,'pause')}><Icon name="pause" size={14}/>Pause</button>
+        </div>
+        <div className="device-reading"><Icon name={car?'bolt':'calendar'} size={26}/><div>
+          <strong>{watts(power)}</strong><span>{state.observed_power?.quality==='estimated'?'Puissance estimée · état OCPP':car?'Puissance de charge actuelle':'Puissance de chauffe actuelle'}</span>
+        </div></div>
+        <button className={'start-now '+(car?'charge':'heat')} disabled={!config.armed} title="Commande manuelle temporaire de 30 minutes" onClick={()=>onAction(config.id,'manual')}><Icon name="play" size={16}/>{car?'Charger maintenant':'Chauffer maintenant'}</button>
+      </div>
+    </div>
+    <div className="device-feedback"><span className="reason"><span className="status-dot"/>{device.reason}</span><span className="device-priority">Priorité {config.priority}</span></div>
     {command&&<div className="command-status">Demande {watts(command.power_w)} · {({sending:'envoi en cours',accepted:'acceptée, en attente de mesure',observed:'effet observé',unknown:'résultat inconnu'} as Record<string,string>)[command.status]||command.status}</div>}
-    <div className="actions equal"><button disabled={!config.armed} onClick={()=>onAction(config.id,'resume')}>Automatique</button>
-      <button disabled={!config.armed} onClick={()=>onAction(config.id,'manual')}>Manuel · 30 min</button>
-      <button disabled={!config.armed} onClick={()=>onAction(config.id,'pause')}>Pause</button></div>
+    {car&&fresh&&<span className="measure-date">Batterie relevée le {date(telemetry?.measured_at)}</span>}
+  </article>
+}
+
+export function UnconfiguredDeviceCard({kind,onConfigure}:{kind:'charger'|'water_heater';onConfigure:()=>void}) {
+  const car=kind==='charger'
+  return <article className={'device-card unconfigured '+(car?'ev':'tank')}>
+    <div className="card-heading"><h2>{car?'Voiture électrique':'Ballon d’eau chaude'}</h2><span className="badge neutral">À configurer</span></div>
+    <p className="device-name">{car?'Votre borne et votre véhicule':'Votre eau chaude sanitaire'}</p>
+    <div className="device-card-body"><div className="device-art"><DeviceIllustration kind={kind}/></div><div className="device-controls">
+      <div className="big-number">—<small>{car?'%':'°C'}</small></div><div className="meter"/>
+      <p className="device-target">{car?'Connectez votre voiture et sa borne.':'Connectez votre ballon d’eau chaude.'}</p>
+      <p className="hint setup-copy">Les mesures et les commandes apparaîtront après la configuration.</p>
+      <button className={'start-now '+(car?'charge':'heat')} onClick={onConfigure}><Icon name="plus" size={17}/>Configurer {car?'la voiture':'le ballon'}</button>
+    </div></div>
+    <div className="device-feedback"><span className="reason"><span className="status-dot"/>Pilotage désactivé pendant la configuration</span></div>
   </article>
 }

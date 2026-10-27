@@ -2,14 +2,15 @@ import {useEffect,useState} from 'react'
 import {api,date,watts} from './api/client'
 import type {Settings,LiveState,EventRow} from './api/types'
 import {Icon} from './components/Icon'
-import {PowerFlow} from './components/PowerFlow'
-import {DeviceCard} from './components/DeviceCard'
+import {Overview} from './components/Overview'
 import {Devices} from './pages/Devices'
 import {Planning} from './pages/Planning'
 import {SettingsPage} from './pages/Settings'
-const navigation=[['overview','Vue d’ensemble','home'],['chargers','Bornes et véhicules','car'],['water','Eau chaude','drop'],
-  ['planning','Planning','calendar'],['history','Historique','history'],['settings','Réglages et connexions','settings']]
+const navigation=[['overview','Vue d’ensemble','home'],['chargers','Voiture','car'],['water','Eau chaude','drop'],
+  ['planning','Planning','calendar'],['history','Historique','chart'],['settings','Réglages','settings']]
 export function App() {
+  const [clock,setClock]=useState(()=>new Date())
+  useEffect(()=>{const timer=setInterval(()=>setClock(new Date()),30000);return()=>clearInterval(timer)},[])
   const [settings,setSettings]=useState<Settings|null>(null),[state,setState]=useState<LiveState|null>(null)
   const [configured,setConfigured]=useState<boolean|null>(null),[auth,setAuth]=useState(false),[page,setPage]=useState('overview')
   const [message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false)
@@ -36,24 +37,23 @@ export function App() {
         {!configured&&<label>Code de première installation<input name="token" type="password" required autoComplete="off"/><small>Disponible dans /data/bootstrap-token depuis la console Portainer.</small></label>}
         <label>Identifiant<input name="username" required autoComplete="username" defaultValue="admin"/></label><label>Mot de passe<input name="password" type="password" minLength={configured?1:12} required autoComplete={configured?'current-password':'new-password'}/></label>
         <button className="primary" disabled={busy}>{configured?'Se connecter':'Créer mon compte'}</button></form>}<p className="hint">Application auto-hébergée · vos réglages restent sur votre serveur.</p></main></div>
-  const title=navigation.find(n=>n[0]===page)?.[1]
+  const title=page==='overview'?'Pilotage énergie':page==='chargers'?'Bornes et véhicules':page==='settings'?'Réglages et connexions':navigation.find(n=>n[0]===page)?.[1]
   function action(id:string,action:string){run(()=>api(`/devices/${id}/${action}`,'POST',action==='manual'?{duration_minutes:30}:undefined),'Demande enregistrée ; le résultat sera confirmé par les mesures.')}
   return <div className="app-shell"><aside className="sidebar"><div className="brand"><Icon name="sun" size={31}/><span>solar<span>energy manager</span></span></div><div className="sidebar-label">VOTRE ÉNERGIE</div>
     <nav>{navigation.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setError('');setMessage('')}}><Icon name={icon}/><span>{label}</span></button>)}</nav>
-    <div className="sidebar-bottom"><span className="status-dot"/><span>Auto-hébergé · v0.1.0</span><button onClick={()=>run(async()=>{await api('/auth/logout','POST');setAuth(false)})}>Déconnexion</button></div></aside>
-    <main className="main"><header><div><span className="eyebrow">SOLAR ENERGY MANAGER</span><h1>{title}</h1></div><div className="header-status"><span className={'badge '+(state?.off_peak?'green':'neutral')}>{state?.off_peak?'Heures creuses':'Heures pleines'}</span><span className="hint">{date(state?.at)}</span></div></header>
+    <div className="sidebar-bottom"><span className="status-dot"/><span>Auto-hébergé · v0.1.1</span><button onClick={()=>run(async()=>{await api('/auth/logout','POST');setAuth(false)})}>Déconnexion</button></div></aside>
+    <main className="main"><header className="dashboard-header"><div><div className="dashboard-title"><h1>{title}</h1>{page==='overview'&&<span className="header-tag">PILOTAGE LOCAL</span>}</div>
+      <div className="dashboard-context"><span className="solar-context"><Icon name="sun" size={16}/>Solaire <b>{watts(state?.solar?.usable?state.solar.value:null)}</b></span>
+        {state&&<span className={'tariff-context '+(state.off_peak?'off-peak':'')}>{state.off_peak?'Heures creuses':'Heures pleines'}</span>}
+        {page==='overview'&&<button className="text-button" onClick={()=>{setDemo(!demo);setDemoResult(null)}}>{demo?'Fermer la démonstration':'Explorer une simulation'}</button>}</div></div>
+      <div className="dashboard-clock"><Icon name="sun" size={26}/><time dateTime={clock.toISOString()}><span>{clock.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:settings.timezone})}</span><strong>{clock.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:settings.timezone})}</strong></time></div></header>
       {error&&<div role="alert" className="alert error"><strong>Action à vérifier</strong><span>{error}</span><button onClick={()=>setError('')} aria-label="Fermer l’erreur">×</button></div>}
       {message&&<div role="status" className="alert success">{message}</div>}{busy&&<div className="busy" role="status">En cours…</div>}
       <fieldset disabled={busy} className="page-content">
-      {page==='overview'&&<><div className="welcome-line"><p className="subtitle">Chaque watt solaire trouve sa place.</p><button onClick={()=>{setDemo(!demo);setDemoResult(null)}}>{demo?'Fermer la démonstration':'Explorer une simulation'}</button></div>
+      {page==='overview'&&<>
         {demo&&<section className="panel demo"><span className="badge amber">SIMULATION · DONNÉES FICTIVES</span><h2>Et si le soleil produisait davantage ?</h2><p>Ce calcul isolé n’envoie aucune commande et ne modifie aucun réglage.</p><label>Surplus simulé : {watts(surplus)}<input type="range" min="0" max="8000" step="100" value={surplus} onChange={e=>setSurplus(Number(e.target.value))}/></label>
           <button onClick={()=>run(async()=>setDemoResult(await api('/simulation','POST',{surplus_w:surplus})))}>Calculer la répartition simulée</button>{demoResult&&<div className="simulation-result">{Object.entries(demoResult.reasons).map(([id,reason])=><p key={id}><strong>{id==='demo-car'?'Voiture':'Ballon'} : {watts(demoResult.commands.find(c=>c.device_id===id)?.limit_w||0)}</strong> · {reason}</p>)}</div>}</section>}
-        <div className="stat-grid">{[['sun','Production solaire',state?.solar?.usable?state.solar.value:null],['grid','Réseau signé',state?.grid?.usable?state.grid.value:null],['car','Bornes de recharge',sumPower(state,'charger')],['drop','Eau chaude',sumPower(state,'water_heater')]].map(([icon,label,value])=><div className="stat-card" key={String(label)}><span className={'stat-icon '+icon}><Icon name={String(icon)} size={30}/></span><div><span>{label}</span><strong>{watts(value as number|null)}</strong></div></div>)}</div>
-        {!settings.devices.length&&<div className="notice onboarding"><Icon name="link" size={28}/><div><strong>Votre installation est prête à être configurée</strong><p>Renseignez les mesures et les appareils. Le pilotage reste désactivé pendant la configuration.</p></div><button className="primary" onClick={()=>setPage('settings')}>Configurer les connexions</button></div>}
-        <PowerFlow state={state}/><div className="device-grid">{state?.devices.map(d=><DeviceCard key={d.config.id} device={d} telemetry={state.vehicles[d.config.vehicle_id]} onAction={action}/>)}</div>
-        {state&&Object.keys(state.errors).length>0&&<section className="panel"><h2>Points à vérifier</h2>{Object.entries(state.errors).map(([id,text])=><p key={id}>{settings.devices.find(d=>d.id===id)?.name||id} : {text}</p>)}</section>}
-        <div className="overview-bottom"><section className="panel"><div className="section-title"><h2>Vos prochains rendez-vous</h2><button onClick={()=>setPage('planning')}>Voir le planning →</button></div>{settings.schedules.length?settings.schedules.map(p=><div className="list-row" key={p.id}><span>{p.name}</span><strong>{p.target_soc} % · {p.deadline}</strong></div>):<p className="hint">Aucun programme enregistré. Le solaire reste disponible selon le mode de chaque appareil.</p>}</section>
-          <section className="panel connection-card"><Icon name="home" size={30}/><h2>Home Assistant</h2><p>{connections.home_assistant?'Accès aux mesures enregistré':'Connectez les mesures de votre maison'}</p><span className="hint">Intégration de retour et EDF Tempo prévus après la base.</span></section></div></>}
+        <Overview settings={settings} state={state} connections={connections} onAction={action} onNavigate={setPage}/></>}
       {page==='chargers'&&<Devices settings={settings} save={save} run={run} kind="charger"/>}
       {page==='water'&&<Devices settings={settings} save={save} run={run} kind="water_heater"/>}
       {page==='planning'&&<Planning settings={settings} save={save} run={run}/>}
@@ -62,5 +62,4 @@ export function App() {
       </fieldset><footer>Solar Energy Manager <span>Décisions locales · connexions cloud indiquées par appareil</span></footer>
     </main></div>
 }
-function sumPower(state:LiveState|null,kind:string) {const devices=state?.devices.filter(d=>d.config.kind===kind);return !devices?.length||devices.some(d=>!d.state.observed_power?.usable)?null:devices.reduce((sum,d)=>sum+(d.state.observed_power?.value||0),0)}
 function eventName(kind:string){return ({command_accepted:'Commande acceptée',command_unknown:'Résultat inconnu',command_observed:'Effet observé',manual:'Commande manuelle',armed:'Pilotage activé',schedule_incomplete:'Échéance non atteinte ou non vérifiable',schedule_complete:'Objectif atteint à l’échéance'} as Record<string,string>)[kind]||kind}

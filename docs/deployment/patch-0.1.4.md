@@ -13,7 +13,11 @@ Pas de changement des connecteurs Ariston/OCPP, du graphisme, des identifiants e
 
 ## Mise à jour de la Stack existante
 
-Image prévue : `ghcr.io/macorou/solar-energy-manager:0.1.4`, Linux amd64. Vérifier la réussite du workflow de publication avant de la sélectionner.
+Image publiée en privé : `ghcr.io/macorou/solar-energy-manager:0.1.4`, Linux amd64.
+
+Digest : `sha256:d027e386c08e948f9b057056a34abe4f1665670bff0b3ecb652ddf135443d5c4`.
+
+[Publication et contrôles réussis](https://github.com/Macorou/solar-energy-manager/actions/runs/40585681244) pour le commit `4dabbd38ae31d2d007fa772105289164e28efa9c` : 87 tests Python, 20 tests UI, quatre parcours navigateur, schémas/build, validation Compose, construction du conteneur et test Docker de démarrage/persistance. Paquet privé et téléchargement authentifié vérifiés. Revue indépendante sans défaut actionnable dans ce périmètre. Aucun déploiement ni essai physique effectué sur le serveur utilisateur.
 
 Dans Portainer, conserver le nom de la Stack, le volume de données, le port existant 8090 et les autres variables. Modifier uniquement `SEM_VERSION=0.1.4` si cette variable est utilisée, ou l’image en `ghcr.io/macorou/solar-energy-manager:0.1.4`. Redéployer avec téléchargement de l’image, puis actualiser complètement le navigateur. Les accès et réglages restent dans le volume existant.
 

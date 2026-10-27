@@ -42,5 +42,5 @@ Files: `frontend/src/components/DeviceCard.tsx`, son test et les types si néces
 
 - [x] Version 0.1.4, régénérer OpenAPI/types, notes ciblées et Compose pour l’utilisateur.
 - [x] Revue indépendante du diff : aucun défaut actionnable relevé ; 23 tests ciblés réexécutés par le reviewer.
-- [ ] Commit/push sur la branche existante, tag neuf v0.1.4 ; attendre CI et publication privée GHCR, vérifier le digest et les tests Docker en CI.
-- [ ] Livrer la référence exacte et les instructions de redéploiement, sans agir sur Portainer.
+- [x] Commit/push sur la branche existante, tag neuf v0.1.4 ; CI et publication privée GHCR réussies, digest et tests Docker vérifiés : run 40585681244, commit 4dabbd38ae31d2d007fa772105289164e28efa9c.
+- [x] Référence exacte et instructions de redéploiement préparées dans `docs/deployment/patch-0.1.4.md` et les fichiers de livraison ; aucune action sur Portainer.

@@ -1,25 +1,27 @@
 # Dépôt privé, images GHCR et Portainer
 
-Statut : image `0.1.0` publiée en privé et téléchargée avec authentification dans GitHub Actions. La Stack n’a pas encore été déployée sur le serveur de l’utilisateur.
+Statut : image `0.1.2` publiée en privé et téléchargée avec authentification dans GitHub Actions. Elle corrige l’interface pour reprendre le concept initial. La Stack n’a pas encore été déployée sur le serveur de l’utilisateur.
 
 ## Emplacements
 
 - Dépôt privé : https://github.com/Macorou/solar-energy-manager
-- Image cible : `ghcr.io/macorou/solar-energy-manager`
-- Version : `ghcr.io/macorou/solar-energy-manager:0.1.0`, Linux amd64.
-- Digest publié et téléchargé : `sha256:3f55ee945f577b8a6f1a701d57ef8764a20cb46b8a385eacec5393de78230773`.
+- Image : `ghcr.io/macorou/solar-energy-manager:0.1.2`, Linux amd64.
+- Digest publié et téléchargé : `sha256:3bc97c32bd913b7d611f89bab4f8975bd911d268a7f516fef16bfc7a6cd620d4`.
+- Préversion et fichiers d’installation : https://github.com/Macorou/solar-energy-manager/releases/tag/v0.1.2
 - Fichier de déploiement : `compose.yaml`, sans construction requise dans Portainer.
-- [Tests de la version corrigée et du conteneur](https://github.com/Macorou/solar-energy-manager/actions/runs/40403255121).
-- [Contrôle réussi du paquet privé, du digest et de sa provenance](https://github.com/Macorou/solar-energy-manager/actions/runs/40404395725).
+- [Contrôles Linux, Docker, publication et distribution privée réussis](https://github.com/Macorou/solar-energy-manager/actions/runs/40460638853).
+- [Revue et vérifications de la correction visuelle](../development-review-ui-0.1.1.md).
 
-Le premier workflow a envoyé l’image puis échoué sur une assertion de champ `repository` absent des métadonnées REST du conteneur. Le contrôle ciblé a confirmé `visibility=private`, le téléchargement authentifié du digest, le refus d’accès anonyme (HTTP 401) et le label OCI de source. L’association visible sur la page GitHub du paquet n’est pas revendiquée à partir du champ REST absent.
+Le workflow vérifie `visibility=private`, le téléchargement authentifié du digest, le refus d’accès anonyme et le label OCI de source. L’association visible sur la page du paquet n’est pas déduite du champ REST `repository`, absent pour ce conteneur.
+
+La version 0.1.0 reste disponible. Le tag de préparation 0.1.1 a échoué au contrôle de largeur Linux avant la publication d’une image ; la correction finale est 0.1.2, sans déplacement de ce tag. Pour mettre à jour une Stack existante, conserver le volume et définir `SEM_VERSION=0.1.2`.
 
 ## Chaîne de livraison prévue
 
 1. Développer et tester une étape dans le dépôt privé.
 2. Exécuter les vérifications backend, interface et conteneur dans GitHub Actions.
 3. Pour une version approuvée, construire et publier l’image avec le `GITHUB_TOKEN` du workflow et le droit `packages: write`.
-4. Vérifier que le paquet GHCR est privé, lié au dépôt et téléchargeable avec un accès autorisé.
+4. Vérifier que le paquet GHCR est privé, téléchargeable avec un accès autorisé et porteur du label OCI de source attendu.
 5. Référencer la version ou le digest vérifié dans le Compose.
 6. Déployer cette image depuis une Stack Portainer avec son volume de données.
 

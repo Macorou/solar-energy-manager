@@ -40,6 +40,6 @@ Files: `backend/app/api/water_heaters.py`, `connectors/ariston/client.py`,
 
 - [x] Version 0.1.5, notes de déploiement et schémas à jour.
 - [x] Vitest/build, revue indépendante ciblée sur le diff et les cinq risques : deux défauts importants corrigés en une passe RED→GREEN, suite complète verte.
-- [ ] Publication privée par un tag neuf ; vérifier CI et téléchargement.
-- [ ] Fournir la référence exacte et la procédure utilisateur de sortie du
+- [x] Publication privée par un tag neuf ; vérifier CI et téléchargement : v0.1.5 / 686fc10, run 40592551168 réussi, paquet privé et téléchargement authentifié vérifiés.
+- [x] Fournir la référence exacte et la procédure utilisateur de sortie du
   défaut après vérification de l'arrêt ; ne rien acquitter sur la production.

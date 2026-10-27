@@ -20,8 +20,14 @@ de données ni commande sur l'installation réelle n'est effectuée par l'assist
 
 ## Mise à jour de la Stack existante
 
-Image cible : `ghcr.io/macorou/solar-energy-manager:0.1.5`, privée, Linux amd64.
-La publication et ses vérifications seront consignées après réussite.
+Image publiée : `ghcr.io/macorou/solar-energy-manager:0.1.5`, privée, Linux amd64.
+
+Digest : `sha256:e2cb287212f981d35fe592d389a5be36562d60cf63d37f7f8a33d6b7b37785b1`.
+
+[Publication et contrôles réussis](https://github.com/Macorou/solar-energy-manager/actions/runs/40592551168)
+pour le commit `686fc10bd3cfc35db9b69be711ac7b02c8ce403a` : tests logiciels,
+quatre parcours navigateur, validation Compose, construction et test Docker de
+démarrage/persistance/non-root, paquet privé et téléchargement authentifié vérifiés.
 
 Conserver le nom de la Stack, le volume existant, le port **8090**, les accès et
 les autres réglages. Modifier seulement `SEM_VERSION=0.1.5` si cette variable est

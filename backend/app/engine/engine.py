@@ -135,6 +135,10 @@ class EnergyEngine:
             if not coherent and desired:
                 desired=min(desired,previous or 0)
                 reason='Attente de mesures électriques cohérentes : aucune augmentation'
+            if desired and not running and policy.start_not_before and now<policy.start_not_before:
+                desired=0
+                remaining=(policy.start_not_before-now).total_seconds()
+                reason=f'Temporisation native avant démarrage ({remaining:.0f} s)'
             if desired < spec.min_power_w:
                 desired = 0
             occupied = max(desired,committed.get(spec.id,0))

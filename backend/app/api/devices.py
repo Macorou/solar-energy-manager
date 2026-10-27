@@ -32,7 +32,6 @@ def manual(device_id:str,body:ManualRequest,request:Request):
     request.app.state.store.save_settings(config.model_dump(mode='json'))
     request.app.state.store.append_event({'kind':'manual','device_id':device_id,
         'details':{'duration_minutes':body.duration_minutes,'origin':'web'}})
-    request.app.state.coordinator.engine.forget(device_id)
     return {'ok':True,'until':values[device_id]['until']}
 
 

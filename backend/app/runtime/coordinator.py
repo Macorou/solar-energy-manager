@@ -161,9 +161,12 @@ class Coordinator:
                 device.mode=entry.get('previous_mode','off') if entry else 'off'
                 manuals.pop(device.id,None); changed=True
             cloud=device.cloud.model_dump()
+            last_command=getattr(self.adapters.get(device.id),'last_command',None)
             policies[device.id]=DevicePolicy(device.id,device.mode,**cloud,target=device.target,
                 armed=device.armed,vehicle_id=device.vehicle_id,soc_max_age_s=config.peugeot.max_age_s,
-                manual_until=until,off_peak=is_off_peak(now,config.off_peak,config.timezone))
+                manual_until=until,off_peak=is_off_peak(now,config.off_peak,config.timezone),
+                start_not_before=last_command+timedelta(seconds=60)
+                    if device.kind=='water_heater' and last_command else None)
         if changed:
             self.store.set('manual_controls',manuals)
             self.store.save_settings(config.model_dump(mode='json'))
@@ -177,7 +180,8 @@ class Coordinator:
             configs={d.id:d for d in config.devices}
             for key in self.dispatcher.reconcile(snapshot,configs):
                 self.reservations.pop(key,None);self.errors.pop(key,None)
-            snapshot=replace(snapshot,transition_blocked=any(r['status']!='observed'
+            snapshot=replace(snapshot,reservations=tuple(self.reservations.values()),
+                transition_blocked=any(r['status']!='observed'
                 for r in self.dispatcher.records.values()))
             policies=self.policies(config,snapshot.at)
             occurrences=[o for p in config.schedules for o in occurrences_for(p,snapshot.at,
@@ -185,6 +189,7 @@ class Coordinator:
             self.record_schedules(snapshot,occurrences,config)
             authorizations={d.id:select_authorization(d.vehicle_id,snapshot.at,occurrences,d.default_soc_target)
                             for d in config.devices if d.kind=='charger'}
+            waiting_manual_stops=set()
             for key,record in self.dispatcher.records.items():
                 if record['status'] in ('sending','accepted','unknown'):
                     confirmation=datetime.fromisoformat(record.get('confirm_by',record['expires_at'] or record['sent_at']))
@@ -194,11 +199,17 @@ class Coordinator:
                         self.errors[key]='Résultat de commande inconnu : vérification requise'
                     elif record['action']=='suspend' and key in policies:
                         policies[key]=replace(policies[key],mode='off')
+                        if configs[key].kind=='water_heater' and configs[key].mode=='manual':
+                            waiting_manual_stops.add(key)
             for key,(queued,_) in self.queued_intents.items():
                 if queued.action=='suspend' and key in policies: policies[key]=replace(policies[key],mode='off')
             specs=[DeviceSpec(d.id,d.kind,min_power_w=d.min_power_w,max_power_w=d.max_power_w,
                 priority=d.priority) for d in config.devices]
             batch=self.engine.evaluate(snapshot,specs,policies,authorizations)
+            if waiting_manual_stops:
+                batch=replace(batch,reasons=batch.reasons|{key:
+                    'Chauffe demandée : attente de confirmation de l’arrêt précédent'
+                    for key in waiting_manual_stops})
             self.reasons=batch.reasons
             self.authorizations=authorizations
             for reservation in batch.reservations:

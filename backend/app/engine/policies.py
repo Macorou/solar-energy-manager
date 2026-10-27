@@ -18,4 +18,5 @@ class DevicePolicy:
     soc_max_age_s: float = 1800
     manual_until: datetime | None = None
     off_peak: bool = False
+    start_not_before: datetime | None = None
 

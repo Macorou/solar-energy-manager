@@ -27,7 +27,9 @@ Après fonctionnement de la base : intégration de remontée vers Home Assistant
 
 Les données, horaires et priorités illustrés sont fictifs et modifiables. Ces images ne prouvent aucune connexion matérielle.
 
-Patch 0.1.5 : la connexion Ariston reste disponible lors d'un changement de mode ; correction du faux refus `unsupported_native_control` pendant l'initialisation. Voir [les détails et la mise à jour](docs/deployment/patch-0.1.5.md).
+Patch 0.1.6 : correction du cycle de chauffe après un ancien arrêt en attente, avec confirmation croisée Ariston/HA, temporisation native avant départ et conservation des demandes manuelles. Voir [les détails et la mise à jour](docs/deployment/patch-0.1.6.md).
+
+Le patch 0.1.5 est inclus : la connexion Ariston reste disponible lors d'un changement de mode ; correction du faux refus `unsupported_native_control` pendant l'initialisation. Voir [les détails](docs/deployment/patch-0.1.5.md).
 
 Le patch 0.1.4 est inclus : les puissances inchangées confirmées par Home Assistant restent utilisables pour le pilotage manuel et automatique. Le dernier SOC Peugeot connu reste affiché avec sa date et « Donnée ancienne » lorsque nécessaire. Voir [les détails](docs/deployment/patch-0.1.4.md).
 

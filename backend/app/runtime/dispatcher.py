@@ -45,17 +45,30 @@ class Dispatcher:
     def reconcile(self,snapshot,configs):
         observed=[]
         for key,record in self.records.items():
-            if record['status']=='observed': continue
+            if record['status'] in ('observed','sending'): continue
             state=snapshot.device_states.get(key)
             power=state.observed_power if state else None
             if not power or not power.usable(snapshot.at,snapshot.sample_max_age_s): continue
-            if power.measured_at <= datetime.fromisoformat(record['sent_at']): continue
-            grid=snapshot.grid
-            if (not grid or not grid.usable(snapshot.at,snapshot.sample_max_age_s)
-                or grid.measured_at<power.measured_at
-                or (grid.measured_at-power.measured_at).total_seconds()>2): continue
+            sent=datetime.fromisoformat(record['sent_at'])
             desired=record['power_w']
             config=configs.get(key)
+            heater_stop=bool(config and config.kind=='water_heater' and not desired
+                and record['action']=='suspend')
+            native_stop=bool(heater_stop and state.connected and not state.fault
+                and state.observed_state=='off' and state.measured_at
+                and sent<state.measured_at<=snapshot.at
+                and (snapshot.at-state.measured_at).total_seconds()<=snapshot.sample_max_age_s
+                and power.checked_at and power.checked_at>sent and 0<=power.value<=20)
+            grid=snapshot.grid
+            if not grid or not grid.usable(snapshot.at,snapshot.sample_max_age_s): continue
+            if heater_stop:
+                # A fresh native OFF read plus checked idle HA power can confirm
+                # an unchanged zero; this never confirms the effect of a start.
+                if not native_stop: continue
+                if (grid.availability_at<power.checked_at
+                    or (grid.availability_at-power.checked_at).total_seconds()>2): continue
+            elif (power.measured_at<=sent or grid.measured_at<power.measured_at
+                  or (grid.measured_at-power.measured_at).total_seconds()>2): continue
             matched=(power.value<=20 if not desired else 20<power.value<=desired+max(100,desired*.1))
             if desired and config and config.kind=='water_heater' and config.target is not None:
                 matched=matched and state.target_temperature==config.target and state.observed_state=='on'

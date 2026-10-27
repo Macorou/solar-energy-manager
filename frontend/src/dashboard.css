@@ -123,6 +123,7 @@ button.start-now:disabled {opacity:.5}
 .timeline {margin-top:14px}
 .timeline-axis {display:grid;grid-template-columns:109px repeat(4,1fr) 0;align-items:center;margin-bottom:8px;font-size:9px;color:#8c96a5}
 .timeline-axis span:not(:first-child) {transform:translateX(-50%);text-align:center;white-space:nowrap}
+.timeline-axis span:last-child {width:max-content;transform:translateX(-100%);text-align:right}
 .timeline-row {display:grid;grid-template-columns:109px minmax(0,1fr);gap:0;align-items:start;margin-bottom:10px}
 .timeline-label {display:flex;align-items:center;gap:10px;color:#4b5d75;padding-top:1px;min-width:0}
 .timeline-label>svg {flex-shrink:0;color:#328bdd}
@@ -219,6 +220,15 @@ button.start-now:disabled {opacity:.5}
   .timeline-label>span {font-size:9px}
   .timeline-axis {grid-template-columns:90px repeat(4,1fr) 0}
   .timeline-row {grid-template-columns:90px minmax(0,1fr)}
+}
+@media(min-width:801px) and (max-width:980px) {
+  .device-grid {grid-template-columns:1fr}
+  .device-card-body {grid-template-columns:44% 56%}
+  .card-heading h2 {font-size:22px}
+  .device-art .car-illustration {max-width:300px}
+  .mode-switch button {font-size:12px}
+  .overview-bottom {grid-template-columns:1fr}
+  .connection-card .section-title {flex-wrap:nowrap}
 }
 @media(max-width:800px) {
   .sidebar {position:relative;width:100%;padding:13px 14px 8px}

@@ -54,7 +54,14 @@ def resume(device_id:str,request:Request):
     if not device.armed: raise HTTPException(409,'Appareil non activé')
     record=request.app.state.coordinator.dispatcher.records.get(device_id)
     if record and record['status']=='unknown': raise HTTPException(409,'Vérifier et acquitter le résultat inconnu')
-    device.mode=request.app.state.store.get('paused_modes',{}).get(device_id,'solar')
+    automatic_modes=('solar','planned','off_peak_solar')
+    manuals=request.app.state.store.get('manual_controls',{})
+    previous_manual=manuals.get(device_id,{}).get('previous_mode') if device.mode=='manual' else None
+    previous_pause=request.app.state.store.get('paused_modes',{}).get(device_id)
+    device.mode=next((mode for mode in (device.mode,previous_manual,previous_pause)
+                      if mode in automatic_modes),'solar')
+    manuals.pop(device_id,None)
+    request.app.state.store.set('manual_controls',manuals)
     request.app.state.store.save_settings(config.model_dump(mode='json'))
     request.app.state.coordinator.engine.forget(device_id)
     return {'ok':True}

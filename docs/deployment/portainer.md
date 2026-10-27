@@ -22,3 +22,9 @@ Une seule instance doit utiliser ces données. Les profils OCPP expirent et sont
 Pour arrêter le pilotage d’un appareil, utiliser **Pause**, attendre sa mesure d’arrêt puis **Désactiver après arrêt**. Une déconnexion n’est jamais une confirmation d’arrêt physique. Une chauffe sanitaire imposée par le fabricant peut rester hors du contrôle du gestionnaire.
 
 Référence : [ajouter une Stack Portainer](https://docs.portainer.io/user/docker/stacks/add).
+
+## Mise à jour vers l’interface 0.1.1
+
+Dans la Stack existante, définir `SEM_VERSION=0.1.1` si cette variable est utilisée, ou remplacer la référence de l’image par `ghcr.io/macorou/solar-energy-manager:0.1.1`. Le Compose courant utilise 0.1.1 par défaut. Redéployer en demandant le téléchargement de la nouvelle image ; conserver le volume existant, les ports, l’URL publique et les cookies déjà configurés. Une actualisation complète du navigateur recharge les nouveaux fichiers de l’interface.
+
+Le correctif conserve le format de données et les connexions. Il restaure la composition du concept initial et corrige la reprise du mode Automatique ainsi que les légendes des programmes passant minuit. Les essais matériels de première mise en service restent nécessaires s’ils n’ont pas encore été réalisés.

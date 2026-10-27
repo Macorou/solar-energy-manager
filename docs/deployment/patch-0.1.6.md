@@ -32,8 +32,15 @@ ni essai physique sur le ballon n'est effectué par l'assistant.
 
 ## Mise à jour
 
-Image cible privée Linux amd64 : `ghcr.io/macorou/solar-energy-manager:0.1.6`.
-Publication et digest à consigner après validation.
+Image publiée privée Linux amd64 : `ghcr.io/macorou/solar-energy-manager:0.1.6`.
+
+Digest : `sha256:b49274749495e201a95eae4d367a2006f8b200d8c0981e0fe3a2ef9c7008ae42`.
+
+[Publication et contrôles réussis](https://github.com/Macorou/solar-energy-manager/actions/runs/40595797729)
+pour le commit `6b6efa3f6e1117cfdf46b646d01fa9ed502e00c9` : 131 tests Python,
+20 tests UI, quatre parcours navigateur, validation Compose, construction et test
+Docker de démarrage/persistance/non-root, visibilité privée et téléchargement
+authentifié vérifiés. La demande anonyme au registre est refusée comme prévu.
 
 Dans la Stack existante, changer uniquement `SEM_VERSION=0.1.6` si cette variable
 est utilisée, ou `image: ghcr.io/macorou/solar-energy-manager:0.1.6`.

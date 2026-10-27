@@ -39,5 +39,5 @@ Files: `runtime/dispatcher.py`, `runtime/coordinator.py`, `engine/policies.py`,
 ### Task 2 — Distribution
 
 - [x] Version 0.1.6 et guide de mise à jour sans nouvelle boucle désarmer/réarmer.
-- [ ] Tag neuf, CI complète, image privée et téléchargement authentifié vérifiés.
-- [ ] Fournir les résultats, référence exacte et limites de validation matérielle.
+- [x] Tag neuf v0.1.6 /6b6efa3, CI40595797729 réussie, image privée et téléchargement authentifié vérifiés.
+- [x] Fournir les résultats, référence exacte et limites de validation matérielle dans le guide de mise à jour.

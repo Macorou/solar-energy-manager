@@ -32,3 +32,9 @@ La vérification supplémentaire des largeurs 320, 390, 768, 801, 980, 1024, 128
 Après correction : 69 tests Python réussis et 1 test Docker réservé à Linux CI ; 11 tests frontend réussis ; construction TypeScript/Vite réussie. Les trois parcours navigateur couvrent la configuration, l’origine HTTP LAN et le rendu de référence isolé avec les largeurs supplémentaires. Sous Windows, les cas réussissent mais la fermeture du serveur de test nécessite d’arrêter la session de test possédée ; Linux CI vérifie la fin complète du parcours et le conteneur avant publication.
 
 L’intégration de retour vers Home Assistant et EDF Tempo restent prévues après validation de la base.
+
+## Contrôle Linux et version publiée
+
+Le tag de préparation v0.1.1 a échoué avant publication : à 320 px, la police de repli Linux donnait une navigation de 325 px. Aucun conteneur 0.1.1 n’a été publié par ce workflow. Le dépassement a été reproduit sous Windows avec Verdana : les boutons « Eau chaude » et « Réglages » agrandissaient les colonnes de navigation. Les colonnes mobiles utilisent maintenant minmax(0, 1fr), et les icônes passent au-dessus du texte sur les très petits écrans. Le scénario Verdana est ajouté au parcours. La livraison finale utilise 0.1.2, sans déplacer le tag v0.1.1 déjà enregistré. Le dessin, les commandes et la composition restent ceux validés pendant cette revue.
+
+Le stress Verdana a aussi confirmé que les valeurs en kW devaient disposer de davantage de largeur dans les indicateurs à 320 px. Les marges, icônes et chiffres y sont ajustés, sans changer la composition de bureau. Après correction : 69 tests Python réussis (1 Docker en attente de CI), 11 tests frontend réussis, 3 parcours navigateur réussis avec les neuf largeurs et le stress de police, construction réussie.

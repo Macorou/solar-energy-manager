@@ -1,6 +1,6 @@
 services:
   solar-energy-manager:
-    image: ghcr.io/macorou/solar-energy-manager:${SEM_VERSION:-0.1.1}
+    image: ghcr.io/macorou/solar-energy-manager:${SEM_VERSION:-0.1.2}
     restart: unless-stopped
     init: true
     ports:

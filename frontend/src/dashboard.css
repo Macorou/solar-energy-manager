@@ -235,7 +235,7 @@ button.start-now:disabled {opacity:.5}
   .sidebar .brand {padding:0 6px;height:32px}
   .sidebar .brand>span {font-size:21px}
   .sidebar .brand>span>span {font-size:7px}
-  .sidebar nav {margin-top:12px;padding:0;gap:4px;grid-template-columns:repeat(3,1fr)}
+  .sidebar nav {margin-top:12px;padding:0;gap:4px;grid-template-columns:repeat(3,minmax(0,1fr))}
   .sidebar nav button {border-radius:7px;padding:8px 9px;font-size:11px;min-height:36px;gap:8px}
   .sidebar nav button>svg {height:18px;width:18px}
   .sidebar nav button.active {box-shadow:inset 3px 0 #2e91ee}
@@ -302,6 +302,13 @@ button.start-now:disabled {opacity:.5}
 }
 @media(max-width:370px) {
   .main {padding-left:11px;padding-right:11px}
+  .sidebar nav button {min-width:0;flex-direction:column;justify-content:center;gap:4px;padding:8px 4px;font-size:10px}
+  .sidebar nav button>span {min-width:0;overflow-wrap:anywhere}
+  .stat-card {padding:12px 10px;gap:8px}
+  .stat-card .stat-icon {width:29px}
+  .stat-card .stat-icon>svg {width:27px;height:30px}
+  .stat-card strong {font-size:22px}
+  .connection-card .section-title {flex-wrap:wrap}
   .device-card {padding-left:13px;padding-right:13px}
   .card-heading h2 {font-size:18px}
   .card-heading .badge {font-size:8px;padding:5px 6px}

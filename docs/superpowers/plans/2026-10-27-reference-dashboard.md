@@ -41,9 +41,9 @@
 
 **Files:** modifier le parcours `frontend/tests/e2e/configuration.spec.ts`, versions et Compose ; ajouter notes de correction et captures dans les livrables.
 
-**Interfaces:** consomme l’application construite et le serveur temporaire isolé existant ; produit captures vérifiées, commit, PR actualisée et image privée 0.1.1.
+**Interfaces:** consomme l’application construite et le serveur temporaire isolé existant ; produit captures vérifiées, commit, PR actualisée et image privée 0.1.2.
 
 - [ ] Adapter le parcours aux libellés du concept ; vérifier les quatre indicateurs, les illustrations, les commandes désactivées et le planning réel.
 - [ ] Exécuter les parcours sur ordinateur et mobile, inspecter les captures à 1280 et 390 px, puis corriger les écarts observés.
 - [ ] Exécuter la suite Python et demander une revue finale ciblée ; corriger les erreurs matérielles relevées avec leurs tests.
-- [ ] Publier le commit et une image privée 0.1.1 ; vérifier le workflow, le téléchargement authentifié, le Compose et la préversion. Conserver la branche et le worktree pour la PR.
+- [ ] Publier le commit et une image privée 0.1.2 ; vérifier le workflow, le téléchargement authentifié, le Compose et la préversion. Conserver la branche et le worktree pour la PR.

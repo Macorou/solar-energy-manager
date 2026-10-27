@@ -27,11 +27,11 @@ Après fonctionnement de la base : intégration de remontée vers Home Assistant
 
 Les données, horaires et priorités illustrés sont fictifs et modifiables. Ces images ne prouvent aucune connexion matérielle.
 
-Interface 0.1.1, corrigée pour reprendre la composition du concept initial :
+Interface 0.1.2, corrigée pour reprendre la composition du concept initial :
 
-![Tableau de bord illustré 0.1.1 — données fictives de test](docs/assets/dashboard-0.1.1.png)
+![Tableau de bord illustré 0.1.2 — données fictives de test](docs/assets/dashboard-0.1.2.png)
 
-[Version mobile](docs/assets/dashboard-0.1.1-mobile.png) · [Concept de référence](docs/assets/pilotage-energie-concept-v1.png) · [Revue et vérifications de la correction](docs/development-review-ui-0.1.1.md)
+[Version mobile](docs/assets/dashboard-0.1.2-mobile.png) · [Concept de référence](docs/assets/pilotage-energie-concept-v1.png) · [Revue et vérifications de la correction](docs/development-review-ui-0.1.2.md)
 
 ## Sources et dépendances
 

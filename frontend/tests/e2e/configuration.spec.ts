@@ -50,9 +50,9 @@ test('configure locally, plan 80 percent at 05:45, keep real and simulated data 
   await page.getByRole('button',{name:'Fermer la démonstration'}).click()
   expect(await (await page.request.get('/api/v1/settings')).json()).toEqual(settings)
   const directory=process.env.SEM_SCREENSHOT_DIR||'test-results'
-  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.1-desktop.png'),fullPage:true})
+  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.2-desktop.png'),fullPage:true})
   await page.setViewportSize({width:390,height:844})
-  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.1-mobile.png'),fullPage:true})
+  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.2-mobile.png'),fullPage:true})
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
   await page.getByRole('button',{name:'Planning',exact:true}).click()
   await expect(page.getByRole('heading',{name:'Départ travail'})).toBeVisible()
@@ -103,19 +103,24 @@ test('reference composition with clearly labelled fictional telemetry remains is
   await expect(page.getByRole('region',{name:'Maison',exact:true})).toContainText('1,1 kW')
   await page.locator('.header-tag').evaluate(element=>element.textContent='MAQUETTE · DONNÉES FICTIVES')
   const directory=process.env.SEM_SCREENSHOT_DIR||'test-results'
-  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.1-reference.png'),fullPage:true})
+  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.2-reference.png'),fullPage:true})
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(1280)
   await page.setViewportSize({width:390,height:844})
-  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.1-reference-mobile.png'),fullPage:true})
+  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.2-reference-mobile.png'),fullPage:true})
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
   for(const width of [320,768,801,980,1024,1440,1920]) {
     await page.setViewportSize({width,height:900})
     const layout=await page.evaluate(()=>({width:document.documentElement.scrollWidth,
       overflowing:[...document.querySelectorAll('.device-card,.mode-switch,.stat-card,.timeline-panel,.connection-card')]
         .filter(element=>element.scrollWidth>element.clientWidth+1).map(element=>element.className)}))
-    expect(layout.width).toBeLessThanOrEqual(width)
-    expect(layout.overflowing).toEqual([])
+    expect(layout.width,JSON.stringify({viewport:width,...layout})).toBeLessThanOrEqual(width)
+    expect(layout.overflowing,JSON.stringify({viewport:width,...layout})).toEqual([])
   }
+  // Wider fallback fonts must not let the mobile navigation enlarge its grid.
+  await page.setViewportSize({width:320,height:900})
+  const fontProbe=await page.addStyleTag({content:':root{font-family:Verdana,sans-serif}'})
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+  await fontProbe.evaluate(element=>element.remove())
   await page.unroute('**/api/v1/settings')
   expect(await (await page.request.get('/api/v1/settings')).json()).toEqual(realSettings)
 })

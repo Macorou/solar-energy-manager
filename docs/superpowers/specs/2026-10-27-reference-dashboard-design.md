@@ -12,4 +12,4 @@ Référence explicite : photo fournie par l’utilisateur le 27 octobre 2026. L�
 
 Approche retenue : corriger les composants React et le CSS de l’application existante. Une image de fond statique ne fournirait ni commandes accessibles ni mesures réelles ; une nouvelle application dupliquerait inutilement le système existant. Le brief et sa référence sont fournis directement par l’utilisateur, sans choix de produit restant à demander.
 
-Validation : tests des valeurs dérivées et des commandes, construction TypeScript, parcours navigateur de configuration, captures à 1280 et 390 pixels comparées à la référence. Livrer une image Docker 0.1.1 distincte de 0.1.0, avec Compose mis à jour.
+Validation : tests des valeurs dérivées et des commandes, construction TypeScript, parcours navigateur de configuration, captures à 1280 et 390 pixels comparées à la référence. Livrer une image Docker 0.1.2 distincte de 0.1.0, avec Compose mis à jour.

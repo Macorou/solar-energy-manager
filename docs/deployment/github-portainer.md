@@ -1,20 +1,20 @@
 # Dépôt privé, images GHCR et Portainer
 
-Statut : image `0.1.2` publiée en privé et téléchargée avec authentification dans GitHub Actions. Elle corrige l’interface pour reprendre le concept initial. La Stack n’a pas encore été déployée sur le serveur de l’utilisateur.
+Statut : image `0.1.3` publiée en privé et téléchargée avec authentification dans GitHub Actions. Elle reprend les dessins exacts de la voiture et du ballon du concept initial. Le déploiement sur le Portainer de l’utilisateur n’a pas été vérifié ici.
 
 ## Emplacements
 
 - Dépôt privé : https://github.com/Macorou/solar-energy-manager
-- Image : `ghcr.io/macorou/solar-energy-manager:0.1.2`, Linux amd64.
-- Digest publié et téléchargé : `sha256:3bc97c32bd913b7d611f89bab4f8975bd911d268a7f516fef16bfc7a6cd620d4`.
-- Préversion et fichiers d’installation : https://github.com/Macorou/solar-energy-manager/releases/tag/v0.1.2
+- Image : `ghcr.io/macorou/solar-energy-manager:0.1.3`, Linux amd64.
+- Digest publié et téléchargé : `sha256:6541744e1ea6bd9761efb0187e4306b349b7d34e852d1f2e87a221ab4cb97af8`.
+- Préversion et fichiers d’installation : https://github.com/Macorou/solar-energy-manager/releases/tag/v0.1.3
 - Fichier de déploiement : `compose.yaml`, sans construction requise dans Portainer.
-- [Contrôles Linux, Docker, publication et distribution privée réussis](https://github.com/Macorou/solar-energy-manager/actions/runs/40460638853).
+- [Contrôles Linux, Docker, publication et distribution privée réussis](https://github.com/Macorou/solar-energy-manager/actions/runs/40463554465).
 - [Revue et vérifications de la correction visuelle](../development-review-ui-0.1.1.md).
 
 Le workflow vérifie `visibility=private`, le téléchargement authentifié du digest, le refus d’accès anonyme et le label OCI de source. L’association visible sur la page du paquet n’est pas déduite du champ REST `repository`, absent pour ce conteneur.
 
-La version 0.1.0 reste disponible. Le tag de préparation 0.1.1 a échoué au contrôle de largeur Linux avant la publication d’une image ; la correction finale est 0.1.2, sans déplacement de ce tag. Pour mettre à jour une Stack existante, conserver le volume et définir `SEM_VERSION=0.1.2`.
+Les versions 0.1.0 et 0.1.2 restent disponibles. Le tag de préparation 0.1.1 a échoué au contrôle de largeur Linux avant la publication d’une image ; la correction finale est 0.1.3, sans déplacement de ce tag. Pour mettre à jour une Stack existante, conserver le volume et définir `SEM_VERSION=0.1.3`.
 
 ## Chaîne de livraison prévue
 

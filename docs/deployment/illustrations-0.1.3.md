@@ -9,3 +9,5 @@ Les contours, la perspective, le câble bleu, le thermomètre, les tuyaux et les
 Vérifications locales : empreintes identiques de la source et de sa copie ; 11 tests frontend réussis ; construction TypeScript/Vite avec l’image embarquée ; 3 parcours navigateur réussis, incluant les neuf largeurs et le stress de police. Captures ordinateur et téléphone inspectées. Aucun changement au pilotage énergétique ni aux accès des connecteurs ; aucune commande réelle effectuée.
 
 L’image Docker 0.1.3 et le Compose permettent la mise à jour en conservant le même volume de données.
+
+Publication privée réussie : [workflow Linux et Docker](https://github.com/Macorou/solar-energy-manager/actions/runs/40463554465), commit `ebec32a8d00a14f535fb3c5425c63b72a1cf2dc8`, digest `sha256:6541744e1ea6bd9761efb0187e4306b349b7d34e852d1f2e87a221ab4cb97af8`. Le téléchargement authentifié, le refus anonyme et la provenance ont été vérifiés.

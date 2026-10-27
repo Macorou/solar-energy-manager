@@ -12,22 +12,26 @@ class AristonAdapter:
     def __init__(self, config, username='', password='', device=None):
         self.config, self.username, self.password = config, username, password
         self.device, self.library = device, None
+        self.initialized = False
         self.report = None
         self.state = DeviceState(config.id)
         self.lock = asyncio.Lock()
         self.last_command = None
 
     async def connect(self):
-        if not self.device:
-            if not self.username or not self.password: raise RuntimeError('not_configured')
-            self.library = Ariston()
-            if not await self.library.async_connect(self.username,self.password):
-                raise RuntimeError('connection_failed')
-            self.device = await self.library.async_hello(self.config.gateway_id)
-            if not self.device: raise RuntimeError('device_unsupported')
-        # Settings are useful for native limits; optional failures never suppress main data.
-        try: await self.device.async_update_settings()
-        except Exception: pass
+        async with self.lock:
+            if not self.device:
+                if not self.username or not self.password: raise RuntimeError('not_configured')
+                self.library = Ariston()
+                if not await self.library.async_connect(self.username,self.password):
+                    raise RuntimeError('connection_failed')
+                self.device = await self.library.async_hello(self.config.gateway_id)
+                if not self.device: raise RuntimeError('device_unsupported')
+            if not self.initialized:
+                # Cancellation must leave initialization retryable, even after discovery.
+                try: await self.device.async_update_settings()
+                except Exception: pass
+                self.initialized=True
         return await self.read_state()
 
     async def read_state(self):
@@ -54,12 +58,17 @@ class AristonAdapter:
             supported += ['start','suspend']
         if self.device and callable(getattr(self.device,'async_set_water_heater_temperature',None)):
             supported += ['set_temperature']
-        self.report = CapabilityReport(tuple(supported),tuple(c for c in
+        report = CapabilityReport(tuple(supported),tuple(c for c in
             ('start','suspend','set_temperature','modulate_power') if c not in supported),
             datetime.now(timezone.utc),False)
-        return self.report
+        if self.device: self.report=report
+        return report
 
     async def execute(self, intent):
+        if not self.initialized:
+            try: await self.connect()
+            except Exception:
+                return CommandResult(intent.id,False,error='native_connection_unavailable')
         async with self.lock:
             report = self.report or await self.probe_capabilities()
             action = 'suspend' if intent.action == 'suspend' else 'start'

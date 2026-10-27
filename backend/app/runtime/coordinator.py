@@ -75,17 +75,16 @@ class Coordinator:
         self.worker_signatures[key]=signature
         self.workers[key]=asyncio.create_task(coroutine)
 
-    async def poll_ariston(self,device):
-        from types import SimpleNamespace
-        source=ariston_adapter(SimpleNamespace(app=self.app),device)
-        self.adapters[device.id]=source
+    async def poll_ariston(self,device,source):
         while self.running:
             try:
-                state=await asyncio.wait_for(source.connect() if not source.device else source.read_state(),25)
-                self.cache[device.id]=state
+                state=await asyncio.wait_for(source.connect() if not source.initialized else source.read_state(),25)
+                if self.adapters.get(device.id) is source: self.cache[device.id]=state
                 if source.device and not source.report: await source.probe_capabilities()
             except asyncio.CancelledError: raise
-            except Exception: self.cache[device.id]=DeviceState(device.id,fault='provider_unavailable')
+            except Exception:
+                if self.adapters.get(device.id) is source:
+                    self.cache[device.id]=DeviceState(device.id,fault='provider_unavailable')
             await asyncio.sleep(SettingsDocument.model_validate(self.store.load_settings()).ariston.poll_interval_s)
 
     async def poll_vehicle(self,vehicle):
@@ -118,8 +117,13 @@ class Coordinator:
             for device in config.devices:
                 if device.kind=='charger': self.adapters[device.id]=ChargerAdapter(self.app.state.ocpp,device)
                 elif self.running:
-                    self.worker('dhw_'+device.id,device.model_dump_json()+config.ariston.model_dump_json(),
-                                self.poll_ariston(device))
+                    from types import SimpleNamespace
+                    source=ariston_adapter(SimpleNamespace(app=self.app),device)
+                    if self.adapters.get(device.id) is not source:
+                        self.cache.pop(device.id,None)
+                        self.adapters[device.id]=source
+                    self.worker('dhw_'+device.id,id(source),
+                                self.poll_ariston(device,source))
             self.app.state.peugeot.config=config.peugeot
             for vehicle in config.vehicles:
                 if self.running:
@@ -136,6 +140,9 @@ class Coordinator:
             else: state=self.cache.get(device.id,DeviceState(device.id))
             if device.kind=='water_heater' and state.measured_at and (now-state.measured_at).total_seconds()>config.ariston.max_age_s:
                 state=replace(state,connected=False,fault='stale_cloud_state')
+            if device.kind=='water_heater':
+                state=replace(state,target_reached=bool(state.temperature is not None and device.target is not None
+                                                       and state.temperature>=device.target))
             power=self.ha.device_power(device.id) if self.ha else None
             states[device.id]=replace(state,observed_power=power or state.observed_power)
         base=self.ha.snapshot() if self.ha else SiteSnapshot(now)
@@ -263,9 +270,13 @@ class Coordinator:
             if intent.expires_at else None},'mode':mode} for key,(intent,mode) in self.queued_intents.items()})
 
     async def refresh_after_command(self,device_id,source):
-        try: self.cache[device_id]=await asyncio.wait_for(source.read_state(),25)
+        try:
+            state=await asyncio.wait_for(source.read_state(),25)
+            if self.adapters.get(device_id) is source: self.cache[device_id]=state
         except asyncio.CancelledError: raise
-        except Exception: self.errors[device_id]='Relecture après commande indisponible'
+        except Exception:
+            if self.adapters.get(device_id) is source:
+                self.errors[device_id]='Relecture après commande indisponible'
 
     def public_state(self):
         config=SettingsDocument.model_validate(self.store.load_settings())

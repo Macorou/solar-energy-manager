@@ -11,10 +11,16 @@ router=APIRouter(prefix='/api/v1',dependencies=[Depends(require_auth)])
 
 def adapter(request, device):
     adapters = request.app.state.ariston_adapters
-    if device.id not in adapters or adapters[device.id].config != device:
-        config=SettingsDocument.model_validate(request.app.state.store.load_settings())
+    config=SettingsDocument.model_validate(request.app.state.store.load_settings())
+    password=request.app.state.secrets.get('ariston_password') or ''
+    current=adapters.get(device.id)
+    if (not current or current.config.gateway_id!=device.gateway_id
+        or current.username!=config.ariston.username or current.password!=password):
         adapters[device.id]=AristonAdapter(device,config.ariston.username,
-            request.app.state.secrets.get('ariston_password') or '')
+            password)
+    else:
+        # Operating modes and targets do not change the cloud session identity.
+        current.config=device
     return adapters[device.id]
 
 

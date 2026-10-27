@@ -50,9 +50,9 @@ test('configure locally, plan 80 percent at 05:45, keep real and simulated data 
   await page.getByRole('button',{name:'Fermer la démonstration'}).click()
   expect(await (await page.request.get('/api/v1/settings')).json()).toEqual(settings)
   const directory=process.env.SEM_SCREENSHOT_DIR||'test-results'
-  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.2-desktop.png'),fullPage:true})
+  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.3-desktop.png'),fullPage:true})
   await page.setViewportSize({width:390,height:844})
-  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.2-mobile.png'),fullPage:true})
+  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.3-mobile.png'),fullPage:true})
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
   await page.getByRole('button',{name:'Planning',exact:true}).click()
   await expect(page.getByRole('heading',{name:'Départ travail'})).toBeVisible()
@@ -103,10 +103,10 @@ test('reference composition with clearly labelled fictional telemetry remains is
   await expect(page.getByRole('region',{name:'Maison',exact:true})).toContainText('1,1 kW')
   await page.locator('.header-tag').evaluate(element=>element.textContent='MAQUETTE · DONNÉES FICTIVES')
   const directory=process.env.SEM_SCREENSHOT_DIR||'test-results'
-  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.2-reference.png'),fullPage:true})
+  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.3-reference.png'),fullPage:true})
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(1280)
   await page.setViewportSize({width:390,height:844})
-  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.2-reference-mobile.png'),fullPage:true})
+  await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.3-reference-mobile.png'),fullPage:true})
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
   for(const width of [320,768,801,980,1024,1440,1920]) {
     await page.setViewportSize({width,height:900})

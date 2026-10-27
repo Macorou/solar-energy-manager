@@ -72,7 +72,7 @@ button.text-button:hover {color:#267bc9;background:transparent;text-decoration:u
 .badge>svg {flex-shrink:0}
 .device-card-body {display:grid;grid-template-columns:48% 52%;align-items:center;min-height:262px;flex:1;gap:0;padding:8px 0 5px}
 .device-art {display:flex;align-items:center;justify-content:center;min-width:0;height:100%}
-.device-art svg {display:block;width:100%;height:auto;overflow:visible;max-height:275px}
+.device-art svg {display:block;width:100%;height:auto;overflow:hidden;max-height:275px}
 .device-art .car-illustration {width:109%;max-width:340px;margin-left:-10px;margin-right:-6px;flex-shrink:0}
 .device-art .tank-illustration {max-width:174px;height:267px;width:100%}
 .device-controls {min-width:0;padding:8px 0 0 7px}

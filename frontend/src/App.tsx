@@ -41,7 +41,7 @@ export function App() {
   function action(id:string,action:string){run(()=>api(`/devices/${id}/${action}`,'POST',action==='manual'?{duration_minutes:30}:undefined),'Demande enregistrée ; le résultat sera confirmé par les mesures.')}
   return <div className="app-shell"><aside className="sidebar"><div className="brand"><Icon name="sun" size={31}/><span>solar<span>energy manager</span></span></div><div className="sidebar-label">VOTRE ÉNERGIE</div>
     <nav>{navigation.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setError('');setMessage('')}}><Icon name={icon}/><span>{label}</span></button>)}</nav>
-    <div className="sidebar-bottom"><span className="status-dot"/><span>Auto-hébergé · v0.1.2</span><button onClick={()=>run(async()=>{await api('/auth/logout','POST');setAuth(false)})}>Déconnexion</button></div></aside>
+    <div className="sidebar-bottom"><span className="status-dot"/><span>Auto-hébergé · v0.1.3</span><button onClick={()=>run(async()=>{await api('/auth/logout','POST');setAuth(false)})}>Déconnexion</button></div></aside>
     <main className="main"><header className="dashboard-header"><div><div className="dashboard-title"><h1>{title}</h1>{page==='overview'&&<span className="header-tag">PILOTAGE LOCAL</span>}</div>
       <div className="dashboard-context"><span className="solar-context"><Icon name="sun" size={16}/>Solaire <b>{watts(state?.solar?.usable?state.solar.value:null)}</b></span>
         {state&&<span className={'tariff-context '+(state.off_peak?'off-peak':'')}>{state.off_peak?'Heures creuses':'Heures pleines'}</span>}

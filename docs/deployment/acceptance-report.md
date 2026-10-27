@@ -12,7 +12,7 @@ Le logiciel livré est une première version à mettre en service. Il n’est pa
 | Home Assistant | Serveur WebSocket local et HTTP simulé : unités, signe, dates fournisseur, resynchronisation et indisponibilité après déconnexion. Aucune mesure de la maison utilisée. |
 | Interface | Formulaires et parcours sur API temporaire : compte, véhicule, borne, ballon, programme à 80 % à 05:45, deux plages HC, simulation isolée ; captures 1920 et 390 px. |
 | Conteneur/GHCR | 60 tests Python, 4 tests d’interface, 2 parcours navigateur, construction et smoke test Docker réussis sous Linux. Image 0.1.0 privée, digest téléchargé avec authentification, accès anonyme refusé et provenance vérifiée. |
-| Portainer de l’utilisateur | Non déployé : adresse, accès et architecture du serveur non fournis. Compose et guide livrés. |
+| Portainer de l’utilisateur | Non déployé : adresse et accès au serveur non fournis. Architecture Intel/AMD64 confirmée ; Compose et guide livrés. |
 | Installation physique | Non activée ; aucune commande envoyée au véhicule ou au ballon. |
 
 ## Paramètres à relever

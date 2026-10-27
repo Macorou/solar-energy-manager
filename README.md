@@ -27,7 +27,9 @@ Après fonctionnement de la base : intégration de remontée vers Home Assistant
 
 Les données, horaires et priorités illustrés sont fictifs et modifiables. Ces images ne prouvent aucune connexion matérielle.
 
-Interface 0.1.3, corrigée pour reprendre la composition du concept initial :
+Patch 0.1.4 : les puissances inchangées confirmées par Home Assistant restent utilisables pour le pilotage manuel et automatique. Le dernier SOC Peugeot connu reste affiché avec sa date et « Donnée ancienne » lorsque nécessaire. Voir [les détails et la mise à jour](docs/deployment/patch-0.1.4.md).
+
+L’interface conserve la composition et les dessins de la version 0.1.3 :
 
 ![Tableau de bord illustré 0.1.3 — données fictives de test](docs/assets/dashboard-0.1.3.png)
 

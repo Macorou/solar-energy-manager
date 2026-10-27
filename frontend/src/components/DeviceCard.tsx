@@ -1,5 +1,5 @@
 import type {LiveDevice,Telemetry} from '../api/types'
-import {watts,date} from '../api/client'
+import {watts} from '../api/client'
 import {Icon} from './Icon'
 import {DeviceIllustration} from './DeviceIllustration'
 
@@ -9,7 +9,11 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
   const car=config.kind==='charger'
   const fresh=car?telemetry?.fresh:state.connected
   const raw=car?telemetry?.soc:state.temperature
-  const value=fresh&&raw!=null&&Number.isFinite(raw)?raw:null
+  const known=raw!=null&&Number.isFinite(raw)&&(!car||(raw>=0&&raw<=100))
+  const value=known&&(car||fresh)?raw:null
+  const measured=telemetry?.measured_at?new Date(telemetry.measured_at):null
+  const batteryDate=measured&&Number.isFinite(measured.getTime())?
+    measured.toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short',timeZone:timezone}):null
   const power=state.observed_power?.usable&&Number.isFinite(state.observed_power.value)?state.observed_power.value:null
   const observedRunning=state.connected&&power!=null&&power>20&&['Charging','on'].includes(state.observed_state)
   const pending=command&&['sending','accepted'].includes(command.status)
@@ -32,7 +36,7 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
         <div className="big-number">{value==null?'—':Math.round(value)}<small>{car?'%':'°C'}</small></div>
         <div className="meter"><i style={{width:Math.max(0,Math.min(100,value??0))+'%'}}/></div>
         <p className="device-target">Objectif {target??'—'} {car?'%':'°C'}{deadline&&<> à {deadline}</>}</p>
-        {!fresh&&<span className="freshness old">Mesure indisponible ou ancienne</span>}
+        {!fresh&&<span className="freshness old">{car?(value!=null?'Donnée ancienne':'Batterie indisponible'):'Mesure indisponible ou ancienne'}</span>}
         <div className="mode-switch" aria-label="Mode de pilotage">
           <button className={automatic?'selected automatic':''} aria-pressed={automatic} disabled={!config.armed} onClick={()=>onAction(config.id,'resume')}><Icon name="leaf" size={14}/>Automatique</button>
           <button className={config.mode==='manual'?'selected':''} aria-pressed={config.mode==='manual'} disabled={!config.armed} onClick={()=>onAction(config.id,'manual')} title="Démarrage temporaire pendant 30 minutes"><Icon name="hand" size={14}/>Manuel</button>
@@ -46,7 +50,7 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
     </div>
     <div className="device-feedback"><span className="reason"><span className="status-dot"/>{device.reason}</span><span className="device-priority">Priorité {config.priority}</span></div>
     {command&&<div className="command-status">Demande {watts(command.power_w)} · {({sending:'envoi en cours',accepted:'acceptée, en attente de mesure',observed:'effet observé',unknown:'résultat inconnu'} as Record<string,string>)[command.status]||command.status}</div>}
-    {car&&fresh&&<span className="measure-date">Batterie relevée le {date(telemetry?.measured_at)}</span>}
+    {car&&value!=null&&<span className="measure-date">{batteryDate?<>Batterie relevée le <time dateTime={telemetry!.measured_at!}>{batteryDate}</time></>:'Date de mesure indisponible'}</span>}
   </article>
 }
 

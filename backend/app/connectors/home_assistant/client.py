@@ -82,11 +82,13 @@ class HomeAssistantSource:
                     refresh_at=asyncio.get_running_loop().time()+interval
                     while self.running:
                         try:
-                            remaining=max(.001,refresh_at-asyncio.get_running_loop().time())
+                            remaining=refresh_at-asyncio.get_running_loop().time()
+                            if remaining <= 0:
+                                raise TimeoutError
                             raw=await asyncio.wait_for(websocket.recv(),remaining)
                         except TimeoutError:
-                            # HA last_reported advances even when an unchanged numeric value
-                            # produces no state_changed event. Preserve that provider time.
+                            # Confirm HA's available values even if their value timestamps
+                            # have not changed. Busy unrelated events must not starve this read.
                             await self.connect()
                             refresh_at=asyncio.get_running_loop().time()+interval
                             result=callback(self.snapshot())

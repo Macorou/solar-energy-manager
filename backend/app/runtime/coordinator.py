@@ -3,7 +3,7 @@ from dataclasses import asdict,replace
 from datetime import datetime,timedelta,timezone
 from app.settings import SettingsDocument
 from app.domain.devices import DeviceSpec,DeviceState,Reservation
-from app.domain.measurements import utcnow
+from app.domain.measurements import Quality,utcnow
 from app.domain.site import SiteSnapshot
 from app.domain.commands import CommandIntent
 from app.engine.engine import EnergyEngine
@@ -95,6 +95,8 @@ class Coordinator:
                 self.errors.pop('vehicle_'+vehicle.id,None)
             except asyncio.CancelledError: raise
             except Exception as error:
+                if vehicle.id in self.telemetry:
+                    self.telemetry[vehicle.id]=replace(self.telemetry[vehicle.id],quality=Quality.UNAVAILABLE)
                 # Only known provider codes can reach the public state.
                 code=str(error)
                 self.errors['vehicle_'+vehicle.id]=code if code in ('not_configured','reconnect_required',

@@ -15,7 +15,8 @@ def test_power_units_sign_and_timestamp_are_preserved():
     power = normalize_power(state, now, invert=True)
     assert power.value == -1500
     assert power.measured_at == old
-    assert not power.usable(now,30)
+    assert power.usable(now,30)
+    assert not power.usable(now+timedelta(seconds=31),30)
     state['state'] = 'unavailable'
     assert normalize_power(state, now).value is None
 
@@ -63,7 +64,7 @@ async def test_real_websocket_updates_and_disconnect_invalidate_source():
         await http.aclose()
 
 
-async def test_unchanged_power_gets_new_provider_report_time_without_state_changed():
+async def test_unchanged_power_is_rechecked_without_state_changed():
     from app.connectors.home_assistant.client import HomeAssistantSource
     from app.settings import HomeAssistantConfig
     count=0
@@ -74,7 +75,7 @@ async def test_unchanged_power_gets_new_provider_report_time_without_state_chang
         count+=1
         return httpx.Response(200,json=[{'entity_id':'sensor.grid','state':'-500',
             'attributes':{'unit_of_measurement':'W'},'last_updated':old.isoformat(),
-            'last_reported':(old if count==1 else datetime.now(timezone.utc)).isoformat()}])
+            'last_reported':old.isoformat()}])
     async def handler(ws):
         await ws.send(json.dumps({'type':'auth_required'}));await ws.recv()
         await ws.send(json.dumps({'type':'auth_ok'}));await ws.recv()
@@ -90,10 +91,11 @@ async def test_unchanged_power_gets_new_provider_report_time_without_state_chang
             source=HomeAssistantSource(HomeAssistantConfig(url=f'http://127.0.0.1:{port}',grid_entity='sensor.grid'),
                 'test-token',http=http,max_age_s=5)
             async def callback(snapshot):
-                if snapshot.grid.usable(datetime.now(timezone.utc),5): changed.set()
+                if count>=2 and snapshot.grid.usable(datetime.now(timezone.utc),5): changed.set()
             runner=asyncio.create_task(source.subscribe(callback))
             try:
                 await asyncio.wait_for(changed.wait(),7)
                 assert count>=2 and source.snapshot().grid.value==-500
+                assert source.snapshot().grid.measured_at==old
             finally:
                 await source.close();runner.cancel();await asyncio.gather(runner,return_exceptions=True)

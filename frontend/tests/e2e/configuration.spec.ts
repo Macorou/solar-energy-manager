@@ -1,5 +1,6 @@
 import {test,expect} from '@playwright/test'
 import path from 'node:path'
+
 test('configure locally, plan 80 percent at 05:45, keep real and simulated data separate',async({page})=>{
   await page.setViewportSize({width:1280,height:900})
   await page.goto('/')
@@ -123,4 +124,38 @@ test('reference composition with clearly labelled fictional telemetry remains is
   await fontProbe.evaluate(element=>element.remove())
   await page.unroute('**/api/v1/settings')
   expect(await (await page.request.get('/api/v1/settings')).json()).toEqual(realSettings)
+})
+
+test('old known battery and unchanged idle power remain readable on desktop and mobile',async({page})=>{
+  await page.request.post('/api/v1/setup',{data:{token:'test-bootstrap-only',username:'admin',password:'a-secure-test-password'}})
+  await page.request.post('/api/v1/auth/login',{data:{username:'admin',password:'a-secure-test-password'}})
+  const settings=await (await page.request.get('/api/v1/settings')).json()
+  const live=await (await page.request.get('/api/v1/state')).json()
+  const measured_at='2026-10-26T15:52:17Z',checked_at=new Date().toISOString()
+  const sample=(value:number)=>({value,measured_at,checked_at,quality:'fresh',usable:true})
+  const vehicle={id:'old-battery-test',name:'Voiture de test',vin:'',capacity_kwh:null,efficiency:.9}
+  const config={id:'idle-test',name:'Borne de test',kind:'charger',armed:true,mode:'solar',priority:1,default_soc_target:80,vehicle_id:vehicle.id}
+  const tank={...config,id:'tank-test',name:'Ballon de test',kind:'water_heater',target:55,priority:2}
+  settings.vehicles=[vehicle];settings.devices=[config,tank];settings.schedules=[]
+  live.grid=sample(1000);live.solar=sample(0)
+  live.devices=[config,tank].map(device=>({config:device,
+    state:{connected:true,observed_power:sample(0),observed_state:device.kind==='charger'?'Preparing':'off',temperature:48,target_temperature:55,fault:null},
+    command:null,reservation_w:0,authorization:null,reason:'Valeur inchangée confirmée par HA'}))
+  live.vehicles={[vehicle.id]:{soc:75,range_km:214,measured_at,fresh:false}}
+  await page.route('**/api/v1/state',route=>route.fulfill({json:live}))
+  await page.route('**/api/v1/settings',route=>route.fulfill({json:settings}))
+  await page.goto('/')
+  const car=page.getByRole('article',{name:'Borne de test'})
+  for(const width of [1440,390]){
+    await page.setViewportSize({width,height:900})
+    await expect(car.locator('.big-number')).toHaveText('75%')
+    await expect(car.getByText('Donnée ancienne',{exact:true})).toBeVisible()
+    await expect(car.locator('.measure-date')).toContainText('26/10/2026')
+    await expect(car.locator('.measure-date')).toContainText('16:52')
+    await expect(car.locator('.device-reading strong')).toHaveText('0 W')
+    await expect(car.getByText('En charge',{exact:true})).toHaveCount(0)
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    await page.locator('.header-tag').evaluate(element=>element.textContent='TEST · DONNÉES FICTIVES')
+    await page.screenshot({path:path.join(process.env.SEM_SCREENSHOT_DIR||'test-results',`solar-energy-manager-v0.1.4-${width}.png`),fullPage:true})
+  }
 })

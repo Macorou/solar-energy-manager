@@ -23,5 +23,5 @@ def normalize_power(state: dict, received_at: datetime, invert=False) -> Sample:
         quality = Quality.FRESH if measured_at else Quality.UNAVAILABLE
     except (ValueError, KeyError, TypeError):
         value, measured_at, quality = None, None, Quality.UNAVAILABLE
-    return Sample(value, 'W', entity_id, measured_at, received_at, quality)
+    return Sample(value, 'W', entity_id, measured_at, received_at, quality, checked_at=received_at)
 

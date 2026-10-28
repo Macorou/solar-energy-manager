@@ -1140,53 +1140,6 @@
         }
       }
     },
-    "/api/v1/devices/{device_id}/soc-reference": {
-      "post": {
-        "summary": "Confirm Soc",
-        "operationId": "confirm_soc_api_v1_devices__device_id__soc_reference_post",
-        "parameters": [
-          {
-            "name": "device_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Device Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SocReferenceRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/devices/{device_id}/manual": {
       "post": {
         "summary": "Manual",
@@ -2364,28 +2317,6 @@
           "token"
         ],
         "title": "Setup"
-      },
-      "SocReferenceRequest": {
-        "properties": {
-          "soc": {
-            "type": "number",
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Soc"
-          },
-          "session_id": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Session Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "soc",
-          "session_id"
-        ],
-        "title": "SocReferenceRequest"
       },
       "ValidationError": {
         "properties": {

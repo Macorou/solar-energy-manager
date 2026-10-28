@@ -42,6 +42,18 @@ it('never interprets an offline charger as a physically disconnected car',()=>{
   expect(screen.queryByText(/Voiture : Débranchée/)).toBeNull()
 })
 
+it('shows the last Peugeot battery without requesting a manually confirmed percentage',()=>{
+  const device={config:{id:'ev',name:'Wallbox',kind:'charger',armed:false,priority:1,default_soc_target:80},
+    state:{observed_state:'Preparing',connected:true,vehicle_connected:true,observed_power:null},
+    reason:'Attente du planning',command:null,authorization:null,
+    charging:{id:'plug',active:true,energy_kwh:0,cost_eur:0,cost_partial:false,solar_percent:null,
+      soc:75,soc_estimated:true,soc_usable:true,soc_reference_missing:true,effective_price_per_kwh:null}} as unknown as LiveDevice
+  render(<DeviceCard device={device} telemetry={{soc:75,fresh:false,range_km:214,measured_at:'2026-10-26T15:52:17Z'}} onAction={()=>{}}/>)
+  expect(document.querySelector('.big-number')?.textContent).toBe('75%')
+  expect(screen.queryByRole('spinbutton')).toBeNull()
+  expect(screen.queryByRole('button',{name:'Confirmer pour cette recharge'})).toBeNull()
+})
+
 it('shows the manual default target rather than the unrelated scheduled target and deadline',()=>{
   const device={config:{id:'ev',name:'EV',kind:'charger',armed:true,mode:'manual',priority:1,default_soc_target:80},
     state:{observed_state:'Preparing',connected:true,vehicle_connected:true},reason:'Commande manuelle',command:null,

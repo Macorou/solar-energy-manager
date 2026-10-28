@@ -71,11 +71,27 @@ def test_counter_reset_never_decreases_energy_and_marks_soc_unreliable(tmp_path)
     assert tracker.summary('ev')['soc_usable'] is False
 
 
-def test_new_old_soc_without_covered_energy_history_is_not_trusted(tmp_path):
+@pytest.mark.parametrize('quality',[Quality.FRESH,Quality.STALE,Quality.UNAVAILABLE])
+def test_last_peugeot_soc_is_the_automatic_reference_even_before_meter_history(tmp_path,quality):
+    tracker,_,cfg=setup_tracker(tmp_path);now=utcnow();old=now-timedelta(days=2)
+    for seconds,energy in [(0,10000),(30,12000)]:
+        snapshot=frame(now+timedelta(seconds=seconds),energy,stamp=old)
+        snapshot=replace(snapshot,vehicle_telemetry={'car':replace(snapshot.vehicle_telemetry['car'],
+            received_at=old,quality=quality)})
+        tracker.update(snapshot,cfg)
+        assert tracker.summary('ev')['soc_usable'] is True
+    assert tracker.summary('ev')['soc']==80
+    assert tracker.summary('ev')['soc_reference_missing'] is False
+    assert tracker.summary('ev')['soc_reference_source']=='vehicle'
+    assert tracker.target_reached('ev',80)
+
+
+def test_newer_peugeot_soc_before_history_replaces_reference_and_keeps_known_energy(tmp_path):
     tracker,_,cfg=setup_tracker(tmp_path);now=utcnow()
-    tracker.update(frame(now,10000,stamp=now-timedelta(hours=1)),cfg)
-    assert tracker.summary('ev')['soc_usable'] is False
-    assert tracker.summary('ev')['soc_reference_missing'] is True
+    tracker.update(frame(now,10000,stamp=now-timedelta(hours=2)),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),12000,soc=76,stamp=now-timedelta(hours=1)),cfg)
+    assert tracker.summary('ev')['soc']==81
+    assert tracker.summary('ev')['soc_usable'] is True
 
 
 def test_terminal_counter_after_available_is_reconciled_into_last_session(tmp_path):
@@ -129,37 +145,51 @@ async def test_schedule_does_not_count_untracked_old_soc_as_verified_completion(
     assert store.get('schedule_results')['due']['result']=='incomplete'
 
 
-def test_user_confirmed_initial_soc_is_bound_to_current_plug_session(tmp_path):
+def test_persisted_manual_reference_is_replaced_by_last_peugeot_even_if_older(tmp_path):
     tracker,store,cfg=setup_tracker(tmp_path);now=utcnow();old=now-timedelta(hours=1)
     tracker.update(frame(now,10000,stamp=old),cfg)
-    tracker.confirm_soc('ev',75,now)
+    # A session persisted by 0.1.10 may contain a more recent manual anchor.
+    tracker.sessions['ev']['anchor']={'soc':20,'at':now.timestamp(),'energy':0.,'covered':True,'source':'manual'}
+    tracker.sessions['ev']['reached_target']=90;tracker.sessions['ev']['reached_at']=now.timestamp()
+    store.set('charging_sessions',tracker.sessions)
+    from app.runtime.charging import ChargingTracker
+    tracker=ChargingTracker(store)
     tracker.update(frame(now+timedelta(seconds=30),12000,stamp=old),cfg)
     assert tracker.summary('ev')['soc']==80
     assert tracker.summary('ev')['soc_usable'] is True
-    tracker.update(frame(now+timedelta(seconds=60),12000,stamp=old,plugged=False),cfg)
-    tracker.update(frame(now+timedelta(seconds=90),12000,stamp=old),cfg)
-    assert tracker.summary('ev')['soc_usable'] is False
+    assert tracker.summary('ev')['soc_reference_source']=='vehicle'
+    assert not tracker.target_reached('ev',90)
 
 
-def test_soc_confirmation_api_requires_current_session_and_does_not_send_a_command(tmp_path):
+def test_persisted_uncovered_peugeot_reference_survives_repeat_reboot_and_replug(tmp_path):
+    tracker,store,cfg=setup_tracker(tmp_path);now=utcnow();old=now-timedelta(hours=1)
+    tracker.update(frame(now,10000,stamp=old),cfg)
+    tracker.sessions['ev']['anchor']['covered']=False
+    store.set('charging_sessions',tracker.sessions)
+    from app.runtime.charging import ChargingTracker
+    tracker=ChargingTracker(store)
+    tracker.update(frame(now+timedelta(seconds=30),12000,stamp=old),cfg)
+    assert tracker.summary('ev')['soc']==80
+    tracker=ChargingTracker(store)
+    tracker.update(frame(now+timedelta(seconds=60),12000,stamp=old),cfg)
+    assert tracker.summary('ev')['soc']==80
+    tracker.update(frame(now+timedelta(seconds=90),12000,stamp=old,plugged=False),cfg)
+    tracker.update(frame(now+timedelta(seconds=120),12000,stamp=old),cfg)
+    assert tracker.summary('ev')['soc']==75
+    assert tracker.summary('ev')['soc_usable'] is True
+
+
+def test_manual_soc_reference_api_is_no_longer_available(tmp_path):
     from fastapi.testclient import TestClient
     from app.main import create_app
     from app.settings import RuntimeSettings
     app=create_app(RuntimeSettings(data_dir=tmp_path/'api'));client=TestClient(app)
     url='/api/v1/devices/ev/soc-reference'
-    assert client.post(url,json={'soc':75,'session_id':'untrusted'}).status_code==401
     assert client.post('/api/v1/setup',json={'token':(tmp_path/'api'/'bootstrap-token').read_text(),
         'username':'admin','password':'a-secure-test-password'}).status_code==200
     _,_,cfg=setup_tracker(tmp_path);app.state.store.save_settings(cfg.model_dump(mode='json'))
-    now=utcnow();snapshot=frame(now,10000,stamp=now-timedelta(hours=1))
-    runtime=app.state.coordinator;runtime.snapshot=snapshot;runtime.charging.update(snapshot,cfg)
-    session_id=runtime.charging.summary('ev')['id']
-    assert client.post(url,json={'soc':101,'session_id':session_id}).status_code==422
-    assert client.post(url,json={'soc':75,'session_id':'other-session'}).status_code==409
-    assert client.post(url,json={'soc':75,'session_id':session_id}).status_code==200
-    assert runtime.command_tasks=={}
-    runtime.charging.update(frame(now+timedelta(seconds=1),10000,stamp=now-timedelta(hours=1),plugged=False),cfg)
-    assert client.post(url,json={'soc':75,'session_id':session_id}).status_code==409
+    assert client.post(url,json={'soc':75,'session_id':'arbitrary'}).status_code in (404,405)
+    assert app.state.coordinator.command_tasks=={}
 
 
 def test_pure_solar_cost_does_not_require_a_grid_tariff(tmp_path):
@@ -174,7 +204,7 @@ def test_pure_solar_cost_does_not_require_a_grid_tariff(tmp_path):
 async def test_runtime_stops_manual_car_at_estimated_target_even_with_repeated_old_api(tmp_path):
     from app.runtime.coordinator import Coordinator
     from app.domain.commands import CommandResult
-    tracker,store,cfg=setup_tracker(tmp_path);now=utcnow();old=now
+    tracker,store,cfg=setup_tracker(tmp_path);now=utcnow();old=now-timedelta(days=2)
     cfg.devices[0].armed=True;cfg.devices[0].mode='manual'
     cfg.devices[0].min_power_w=1380;cfg.devices[0].max_power_w=3700
     cfg.vehicles[0].capacity_kwh=.4  # Small simulated battery:20Wh means5%.

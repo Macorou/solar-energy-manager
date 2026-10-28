@@ -6,6 +6,7 @@ assuming uniform delivery inside each meter interval; it is never a billing mete
 import math
 import uuid
 from datetime import datetime, timezone
+from app.domain.measurements import Quality
 
 
 def finite(value):
@@ -122,23 +123,30 @@ class ChargingTracker:
     def soc(self,session,snapshot,config,device,state,vehicle):
         raw=snapshot.vehicle_telemetry.get(device.vehicle_id)
         now=snapshot.at.timestamp()
-        if raw and raw.usable(snapshot.at,config.peugeot.max_age_s):
+        # Upgrade 0.1.10 sessions: Peugeot is now the only source of reference.
+        if session['anchor'] and session['anchor'].get('source')=='manual':
+            session['anchor']=None
+            session['reached_target']=None;session['reached_at']=None
+        valid=(raw and finite(raw.soc) and 0<=raw.soc<=100
+            and raw.measured_at and raw.measured_at.tzinfo and raw.measured_at<=snapshot.at
+            and raw.quality!=Quality.ESTIMATED)
+        if valid:
             stamp=raw.measured_at.timestamp()
             if not session['anchor'] or stamp>session['anchor']['at']:
-                covered=bool(session['points'] and stamp>=session['points'][0][0]-2)
-                session['anchor']={'soc':raw.soc,'at':stamp,'energy':None,'covered':covered,'source':'vehicle'}
+                session['anchor']={'soc':raw.soc,'at':stamp,'energy':None,'source':'vehicle'}
                 # Real later measurements override the estimate, with 1% hysteresis.
                 if (session['reached_target'] is not None and session.get('reached_at') is not None
                     and stamp>session['reached_at'] and raw.soc<session['reached_target']-1):
                     session['reached_target']=None;session['reached_at']=None
         anchor=session['anchor']; session['soc_usable']=False
+        session['soc']=anchor['soc'] if anchor else None
+        session['soc_estimated']=bool(anchor and (not raw or not raw.fresh(snapshot.at,config.peugeot.max_age_s)))
         idle=state.observed_state in ('Available','Preparing','SuspendedEV','SuspendedEVSE','Finishing')
-        if anchor and not anchor.get('covered',False):
-            session['soc']=anchor['soc'];session['soc_estimated']=True
-            return
         if anchor and vehicle and vehicle.capacity_kwh and session['points']:
             base=anchor.get('energy')
             if base is None:
+                # An older Peugeot reading starts from the first available index.
+                # Only observed energy is added; nothing before that index is invented.
                 base=energy_at(session['points'],anchor['at'])
                 if anchor['at']<=session['points'][-1][0]: anchor['energy']=base
             gain=max(0,session['energy_wh']-base)
@@ -147,19 +155,10 @@ class ChargingTracker:
             session['soc_usable']=bool(state.connected and (session.get('soc_gap_at') is None or
                 anchor['at']>=session['soc_gap_at']) and
                 (idle or (session['last_at'] is not None and now-session['last_at']<=max(90,config.sample_max_age_s))))
-        elif (raw and raw.fresh(snapshot.at,config.peugeot.max_age_s)
+        elif (anchor and state.connected
+              and (session.get('soc_gap_at') is None or anchor['at']>=session['soc_gap_at'])
               and (idle or now-session['started_at']<=90)):
-            session['soc']=raw.soc;session['soc_estimated']=False;session['soc_usable']=True
-
-    def confirm_soc(self,device_id,value,now,session_id=None):
-        session=self.sessions.get(device_id)
-        if (not finite(value) or not 0<=value<=100 or not session or not session['active']
-            or session_id is not None and session_id!=session['id'] or session['last_at'] is None
-            or not 0<=now.timestamp()-session['last_at']<=90):
-            raise ValueError('Session branchée et index récent requis')
-        session['anchor']={'soc':float(value),'at':now.timestamp(),'energy':None,'covered':True,'source':'manual'}
-        session['reached_target']=None;session['reached_at']=None
-        self.store.set('charging_sessions',self.sessions)
+            session['soc_usable']=True
 
     def target_reached(self,device_id,target):
         session=self.sessions.get(device_id)
@@ -187,6 +186,6 @@ class ChargingTracker:
             'average_price_per_kwh':session['cost_eur']/(energy/1000) if not partial and energy>0 and session['priced_wh']+1e-6>=energy else None,
             'effective_price_per_kwh':self.effective_price,
             'soc':session['soc'],'soc_estimated':session['soc_estimated'],'soc_usable':session['soc_usable'],
-            'soc_reference_missing':not session['anchor'] or not session['anchor'].get('covered',False),
+            'soc_reference_missing':not session['anchor'],
             'soc_reference_source':session['anchor'].get('source','vehicle') if session['anchor'] else None,
             'soc_reference_at':datetime.fromtimestamp(session['anchor']['at'],timezone.utc).isoformat() if session['anchor'] else None}

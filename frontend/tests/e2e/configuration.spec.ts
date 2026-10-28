@@ -217,7 +217,7 @@ test('charge accounting and phase measurements fit desktop and phone with fictio
   expect(await (await page.request.get('/api/v1/settings')).json()).toEqual(settings)
 })
 
-test('missing initial SOC reference has an explicit session-bound confirmation on a phone',async({page})=>{
+test('an old Peugeot reference needs no manual confirmation on a phone',async({page})=>{
   await page.request.post('/api/v1/auth/login',{data:{username:'admin',password:'a-secure-test-password'}})
   const live=await (await page.request.get('/api/v1/state')).json()
   live.devices=live.devices.map((device:any)=>device.config.kind==='charger'?{...device,
@@ -225,14 +225,13 @@ test('missing initial SOC reference has an explicit session-bound confirmation o
     charging:{id:'current-reference',active:true,energy_kwh:0,cost_eur:0,cost_partial:false,solar_percent:null,
       soc:75,soc_estimated:true,soc_usable:false,soc_reference_missing:true,effective_price_per_kwh:null}}:device)
   await page.route('**/api/v1/state',route=>route.fulfill({json:live}))
-  await page.route('**/api/v1/devices/*/soc-reference',async route=>{
-    expect(route.request().postDataJSON()).toEqual({soc:75,session_id:'current-reference'})
-    await route.fulfill({json:{ok:true}})
-  })
+  let confirmations=0
+  page.on('request',request=>{if(request.url().endsWith('/soc-reference'))confirmations++})
   await page.setViewportSize({width:390,height:960});await page.goto('/')
-  await expect(page.getByRole('button',{name:'Confirmer pour cette recharge'})).toBeDisabled()
-  await page.getByLabel('Pourcentage actuel confirmé (%)').fill('75')
-  await page.getByRole('button',{name:'Confirmer pour cette recharge'}).click()
-  await expect(page.getByText('Référence enregistrée pour cette recharge.')).toBeVisible()
+  const car=page.getByRole('article').filter({has:page.getByRole('heading',{name:'Voiture électrique'})})
+  await expect(car.locator('.big-number')).toHaveText('75%')
+  await expect(page.getByLabel('Pourcentage actuel confirmé (%)')).toHaveCount(0)
+  await expect(page.getByRole('button',{name:'Confirmer pour cette recharge'})).toHaveCount(0)
+  expect(confirmations).toBe(0)
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 })

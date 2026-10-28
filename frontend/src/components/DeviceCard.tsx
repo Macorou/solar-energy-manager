@@ -3,7 +3,6 @@ import {watts} from '../api/client'
 import {Icon} from './Icon'
 import {DeviceIllustration} from './DeviceIllustration'
 import {ChargeSession,vehicleStatus} from './ChargeSession'
-import {SocReference} from './SocReference'
 
 export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{device:LiveDevice;telemetry?:Telemetry;
   onAction:(id:string,action:string)=>void;timezone?:string}) {
@@ -56,7 +55,6 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
       </div>
     </div>
     {car&&session&&<ChargeSession value={session}/>}
-    {car&&session?.active&&session.soc_reference_missing&&state.connected&&<SocReference key={session.id} deviceId={config.id} sessionId={session.id}/>}
     <div className="device-feedback"><span className="reason"><span className="status-dot"/>{device.reason}</span><span className="device-priority">Priorité {config.priority}</span></div>
     {command&&<div className="command-status">Demande {watts(command.power_w)} · {({sending:'envoi en cours',accepted:'acceptée, en attente de mesure',observed:'effet observé',unknown:'résultat inconnu'} as Record<string,string>)[command.status]||command.status}</div>}
     {car&&value!=null&&<span className="measure-date">{batteryDate?<>Batterie relevée le <time dateTime={telemetry!.measured_at!}>{batteryDate}</time></>:'Date de mesure indisponible'}</span>}

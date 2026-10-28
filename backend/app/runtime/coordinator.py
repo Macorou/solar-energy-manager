@@ -323,6 +323,7 @@ class Coordinator:
             return asdict(value)|{'observed_power':sample(value.observed_power)}
         return {'simulation':False,'at':self.last_tick,'running':self.running,
             'grid':sample(self.snapshot.grid),'solar':sample(self.snapshot.solar),
+            'house':sample(self.snapshot.house),'house_configured':bool(config.home_assistant.house_entity),
             'solar_budget_w':solar_budget_w(replace(self.snapshot,at=now)),
             'off_peak':is_off_peak(now,config.off_peak,config.timezone),'errors':self.errors,
             'devices':[{'config':d.model_dump(mode='json'),

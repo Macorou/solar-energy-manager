@@ -54,8 +54,16 @@ class HomeAssistantSource:
         return sample if self.connected else replace(sample, quality=Quality.UNAVAILABLE)
 
     def snapshot(self):
+        # Optional display-only meter: its absence or rejection must not
+        # invalidate the electrical sources used by the controller.
+        try:
+            house=self.power(self.config.house_entity)
+        except (ValueError,TypeError):
+            house=None
+        if house and house.value is not None and house.value<0:
+            house=replace(house,quality=Quality.UNAVAILABLE)
         return SiteSnapshot(at=utcnow(), grid=self.power(self.config.grid_entity,self.config.invert_grid),
-            solar=self.power(self.config.solar_entity), sample_max_age_s=self.max_age_s)
+            solar=self.power(self.config.solar_entity), sample_max_age_s=self.max_age_s,house=house)
 
     def device_power(self, device_id):
         return self.power(self.config.device_power_entities.get(device_id,''))

@@ -37,7 +37,12 @@ test('configure locally, plan 80 percent at 05:45, keep real and simulated data 
   await page.getByLabel('Fin HC').nth(1).fill('14:00')
   await page.getByRole('button',{name:'Enregistrer les heures creuses'}).click()
   await expect(page.getByRole('status')).toHaveText('Heures creuses enregistrées')
+  await page.getByRole('button',{name:'Réglages',exact:true}).click()
+  await page.getByLabel('Entité consommation totale de la maison (facultatif)').fill('sensor.house_total')
+  await page.getByRole('button',{name:'Enregistrer Home Assistant',exact:true}).click()
+  await expect(page.getByRole('status')).toHaveText('Connexion HA enregistrée')
   const settings=await (await page.request.get('/api/v1/settings')).json()
+  expect(settings.home_assistant.house_entity).toBe('sensor.house_total')
   expect(settings.off_peak).toHaveLength(2)
   expect(settings.devices.find((device:any)=>device.kind==='water_heater')).toMatchObject({target:55,solar_target:70})
   expect(settings.schedules[0]).toMatchObject({target_soc:80,deadline:'05:45',weekdays:[0,1,2,3,4]})
@@ -90,12 +95,14 @@ test('reference composition with clearly labelled fictional telemetry remains is
   await page.request.post('/api/v1/auth/login',{data:{username:'admin',password:'a-secure-test-password'}})
   const realSettings=await (await page.request.get('/api/v1/settings')).json()
   const fixture=structuredClone(realSettings)
+  fixture.home_assistant.house_entity=''
   fixture.schedules[0]={...fixture.schedules[0],earliest_start:'01:30',deadline:'07:00'}
   fixture.off_peak=[{start:'00:45',end:'04:00',weekdays:[0,1,2,3,4,5,6]}]
   const live=await (await page.request.get('/api/v1/state')).json()
   const measured_at=new Date().toISOString()
   const sample=(value:number)=>({value,measured_at,quality:'fresh',usable:true})
   live.grid=sample(4800);live.solar=sample(0)
+  live.house_configured=false;live.house=null
   live.devices=live.devices.map((device:any)=>({...device,config:{...device.config,armed:true,mode:device.config.kind==='charger'?'planned':'off_peak_solar'},
     state:{...device.state,connected:true,observed_state:device.config.kind==='charger'?'Charging':'off',observed_power:sample(device.config.kind==='charger'?3700:0),temperature:device.config.kind==='charger'?null:48},
     reason:device.config.kind==='charger'?'Recharge selon le programme':'Chauffe autorisée pendant les heures creuses',
@@ -105,7 +112,7 @@ test('reference composition with clearly labelled fictional telemetry remains is
   await page.route('**/api/v1/settings',route=>route.fulfill({json:fixture}))
   await page.goto('/')
   await expect(page.getByText('En charge',{exact:true})).toBeVisible()
-  await expect(page.getByRole('region',{name:'Maison',exact:true})).toContainText('1,1 kW')
+  await expect(page.getByRole('region',{name:'Maison',exact:true})).toContainText('4,8 kW')
   await page.locator('.header-tag').evaluate(element=>element.textContent='MAQUETTE · DONNÉES FICTIVES')
   const directory=process.env.SEM_SCREENSHOT_DIR||'test-results'
   await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.3-reference.png'),fullPage:true})
@@ -142,6 +149,7 @@ test('old known battery and unchanged idle power remain readable on desktop and 
   const tank={...config,id:'tank-test',name:'Ballon de test',kind:'water_heater',target:55,priority:2}
   settings.vehicles=[vehicle];settings.devices=[config,tank];settings.schedules=[]
   live.grid=sample(1000);live.solar=sample(0)
+  live.house_configured=false;live.house=null
   live.devices=[config,tank].map(device=>({config:device,
     state:{connected:true,observed_power:sample(0),observed_state:device.kind==='charger'?'Preparing':'off',temperature:48,target_temperature:55,fault:null},
     command:null,reservation_w:0,authorization:null,reason:'Valeur inchangée confirmée par HA'}))
@@ -157,9 +165,16 @@ test('old known battery and unchanged idle power remain readable on desktop and 
     await expect(car.locator('.measure-date')).toContainText('26/10/2026')
     await expect(car.locator('.measure-date')).toContainText('16:52')
     await expect(car.locator('.device-reading strong')).toHaveText('0 W')
+    await expect(page.getByRole('region',{name:'Maison',exact:true})).toContainText('1,0 kW')
     await expect(car.getByText('En charge',{exact:true})).toHaveCount(0)
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
     await page.locator('.header-tag').evaluate(element=>element.textContent='TEST · DONNÉES FICTIVES')
     await page.screenshot({path:path.join(process.env.SEM_SCREENSHOT_DIR||'test-results',`solar-energy-manager-v0.1.4-${width}.png`),fullPage:true})
   }
+  live.house_configured=true;live.house=sample(2500)
+  await page.reload()
+  await expect(page.getByRole('region',{name:'Maison',exact:true})).toContainText('2,5 kW')
+  live.house={...sample(2500),usable:false}
+  await page.reload()
+  await expect(page.getByRole('region',{name:'Maison',exact:true}).locator('strong')).toHaveText('—')
 })

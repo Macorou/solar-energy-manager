@@ -1901,6 +1901,11 @@
             "title": "Solar Entity",
             "default": ""
           },
+          "house_entity": {
+            "type": "string",
+            "title": "House Entity",
+            "default": ""
+          },
           "invert_grid": {
             "type": "boolean",
             "title": "Invert Grid",

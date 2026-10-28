@@ -11,12 +11,14 @@ export function sumDevicePower(state:LiveState|null,kind:string):number|null {
 
 export function housePower(state:LiveState|null):number|null {
   if(!state)return null
-  const samples=[state.grid,state.solar,...state.devices.map(device=>device.state.observed_power)]
+  if(state.house_configured)return usable(state.house)&&state.house.value>=0?state.house.value:null
+  const samples=[state.grid,state.solar]
   if(samples.some(value=>!usable(value)))return null
-  const times=samples.map(value=>value?.measured_at?Date.parse(value.measured_at):Number.NaN)
+  const times=samples.map(value=>value?.measured_at&&Number.isFinite(Date.parse(value.measured_at))?
+    Date.parse(value.checked_at??value.measured_at):Number.NaN)
   if(times.some(value=>!Number.isFinite(value))||Math.max(...times)-Math.min(...times)>2000)return null
-  const house=state.grid!.value!+state.solar!.value!-state.devices.reduce((total,device)=>total+device.state.observed_power!.value!,0)
-  return house>=0?house:null
+  const house=state.grid!.value!+state.solar!.value!
+  return Number.isFinite(house)&&house>=0?house:null
 }
 
 export function clockSegments(start:string,end:string):{start:number;end:number}[] {

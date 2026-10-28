@@ -10,7 +10,9 @@ export function Overview({settings,state,connections,onAction,onNavigate}:{setti
   const stats=[{icon:'grid',label:'Réseau',value:grid,scale:settings.site_limit_w||12000,detail:grid==null?'En attente de mesure':grid<0?'Injection vers le réseau':'Énergie prélevée sur le réseau'},
     {icon:'car',label:'Voiture',value:sumDevicePower(state,'charger'),scale:settings.devices.filter(d=>d.kind==='charger').reduce((sum,d)=>sum+d.max_power_w,0)||7400,detail:'Puissance de recharge mesurée'},
     {icon:'drop',label:'Eau chaude',value:sumDevicePower(state,'water_heater'),scale:settings.devices.filter(d=>d.kind==='water_heater').reduce((sum,d)=>sum+d.max_power_w,0)||3000,detail:'Puissance de chauffe mesurée'},
-    {icon:'home',label:'Maison',value:housePower(state),scale:settings.site_limit_w||12000,detail:'Calcul : solaire + réseau signé − appareils configurés. Mesures cohérentes requises.'}]
+    {icon:'home',label:'Maison',value:housePower(state),scale:settings.site_limit_w||12000,detail:state?.house_configured?
+      'Consommation totale, voiture et ballon inclus : capteur Home Assistant configuré.':
+      'Consommation totale, voiture et ballon inclus : réseau signé + production solaire. Lectures cohérentes requises.'}]
   const live=(config:Settings['devices'][number]):LiveDevice=>state?.devices.find(device=>device.config.id===config.id)??{
     config,state:{observed_power:null,observed_state:'unknown',connected:false,temperature:null,target_temperature:null,fault:null},
     reason:'En attente de mesures',reservation_w:0,command:null,authorization:null}

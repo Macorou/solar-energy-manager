@@ -17,4 +17,5 @@ class SiteSnapshot:
     export_margin_w: float = 100
     sample_max_age_s: float = 30
     transition_blocked: bool = False
+    house: Sample | None = None
 

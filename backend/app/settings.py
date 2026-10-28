@@ -117,6 +117,7 @@ class HomeAssistantConfig(Model):
     url: str = ''
     grid_entity: str = ''
     solar_entity: str = ''
+    house_entity: str = ''
     invert_grid: bool = False
     device_power_entities: dict[str, str] = Field(default_factory=dict)
 

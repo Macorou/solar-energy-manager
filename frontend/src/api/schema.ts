@@ -930,6 +930,11 @@ export interface components {
              */
             solar_entity: string;
             /**
+             * House Entity
+             * @default
+             */
+            house_entity: string;
+            /**
              * Invert Grid
              * @default false
              */

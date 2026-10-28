@@ -1,6 +1,6 @@
 # Heating and network boundaries Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Ship the three approved changes together as private version 0.1.7.
 
@@ -35,31 +35,31 @@ permission for explicit boundary stops. Extend existing configuration and cards.
 **Interfaces:** `Sample.availability_at` pairs checked frames; expose
 `measurements_coherent(snapshot) -> bool` separately from transition blocking.
 
-- [ ] Write tests: provider dates 11 s apart with equal current checks confirm;
+- [x] Write tests: provider dates 11 s apart with equal current checks confirm;
   old effect, invalid checks and raw mixed frames do not; coherent pending frame
   reports confirmation waiting, not incoherent measurements.
-- [ ] Run `python -m pytest tests/runtime/test_async_confirmation.py -q` (RED).
-- [ ] Implement pairing and reason, retaining source measurement > sent for starts.
-- [ ] Run focused confirmation/manual-cycle/coordination tests (GREEN).
-- [ ] Commit this tested unit.
+- [x] Run `python -m pytest tests/runtime/test_async_confirmation.py -q` (RED).
+- [x] Implement pairing and reason, retaining source measurement > sent for starts.
+- [x] Run focused confirmation/manual-cycle/coordination tests (GREEN).
+- [x] Commit this tested unit.
 
 ### Task 2: Explicit network boundary stops
 
 **Files:** Modify `backend/app/engine/engine.py`, `backend/app/runtime/coordinator.py`,
 `backend/app/scheduling/authorization.py`; create `tests/runtime/test_network_boundaries.py`.
 
-**Interfaces:** Engine `network_allowed: dict[str,bool]`, persisted by coordinator
-as `runtime_network_authorizations`. Effective grid permission is independent of
+**Interfaces:** Engine `network_allowed: dict[str,bool]` and pending boundary stops,
+persisted atomically in one `runtime_network_state` document. Effective grid permission is independent of
 temporary equipment eligibility and unioned across applicable charge programs.
 
-- [ ] Write tests for both device kinds: permission loss immediately emits one
+- [x] Write tests for both device kinds: permission loss immediately emits one
   suspend despite cloud/min-run delays and even with solar; subsequent restart
   waits for observed stop; persist/restart, pending start, midnight, overlaps,
   manual and unarmed cases.
-- [ ] Run new file (RED).
-- [ ] Implement transition detection/reset of solar start stability and persistence.
-- [ ] Run new file and scheduling/cloud/allocation suites (GREEN).
-- [ ] Commit this tested unit.
+- [x] Run new file (RED).
+- [x] Implement transition detection/reset of solar start stability and persistence.
+- [x] Run new file and scheduling/cloud/allocation suites (GREEN).
+- [x] Commit this tested unit.
 
 ### Task 3: Dual heater targets end to end
 
@@ -73,15 +73,15 @@ extend Ariston and card tests.
 setpoint-only control. DecisionBatch exposes effective targets and target sources;
 public state exposes `effective_target` and `target_source` per device.
 
-- [ ] Write tests for preserved legacy configuration, 55/70 grid/solar choice,
+- [x] Write tests for preserved legacy configuration, 55/70 grid/solar choice,
   stable surplus in HC, target reached above 55, cloud tolerance then network55,
   manual55, priorities, immutable command target and setpoint-only confirmation.
-- [ ] Write tests for native rejection outside bounds and no power replay on
+- [x] Write tests for native rejection outside bounds and no power replay on
   setpoint-only command; form saves both values and card shows effective target.
-- [ ] Run new focused tests (RED).
-- [ ] Implement through existing paths, checking native bounds and cooldown.
-- [ ] Regenerate OpenAPI/types; run complete Python/UI suites and production build (GREEN).
-- [ ] Commit this tested unit.
+- [x] Run new focused tests (RED).
+- [x] Implement through existing paths, checking native bounds and cooldown.
+- [x] Regenerate OpenAPI/types; run complete Python/UI suites and production build (GREEN).
+- [x] Commit this tested unit.
 
 ### Task 4: Review and private release
 

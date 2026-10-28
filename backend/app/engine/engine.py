@@ -28,6 +28,7 @@ class EnergyEngine:
         self.stopped_at = {}
         self.network_allowed = {}
         self.network_stop_pending = set()
+        self.network_stop_issued = set()
         self.requested_targets = {}
         self.heater_targets = HeaterTargets()
 
@@ -91,7 +92,9 @@ class EnergyEngine:
             network_closed = (self.network_allowed.get(spec.id,False) and not network
                               and policy and policy.mode in ('solar','planned','off_peak_solar'))
             self.network_allowed[spec.id] = network
-            if network_closed: self.network_stop_pending.add(spec.id)
+            if network_closed:
+                self.network_stop_pending.add(spec.id)
+                self.network_stop_issued.discard(spec.id)
             target = policy.target if policy else None
             if spec.kind=='water_heater' and policy:
                 tolerance=max(0,min(policy.import_tolerance_w,shared_tolerance-tolerance_spent))
@@ -182,7 +185,7 @@ class EnergyEngine:
                 continue
             must_change = (desired>0 and (previous is None or abs(desired-previous)>=50)) \
                 or (desired==0 and (previous is None and running or previous is not None and previous>0)) \
-                or (spec.id in self.network_stop_pending and previous!=0)
+                or (spec.id in self.network_stop_pending and spec.id not in self.network_stop_issued)
             target_changed=bool(desired and spec.kind=='water_heater' and target is not None
                 and target!=self.requested_targets.get(spec.id,state.target_temperature if state else None))
             if target_changed and not must_change:
@@ -196,6 +199,8 @@ class EnergyEngine:
                     desired,now+timedelta(seconds=90),reason,
                     target_temperature=target if desired and spec.kind=='water_heater' else None)
                 commands.append(command)
+                if action=='suspend' and spec.id in self.network_stop_pending:
+                    self.network_stop_issued.add(spec.id)
                 self.requested[spec.id] = desired
                 if spec.kind=='water_heater': self.requested_targets[spec.id]=target if desired else None
                 if desired:

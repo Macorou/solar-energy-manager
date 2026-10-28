@@ -16,7 +16,7 @@ from app.engine.engine import EnergyEngine
 from app.engine.policies import DevicePolicy
 from app.runtime.coordinator import Coordinator
 from app.runtime.dispatcher import Dispatcher
-from app.settings import DeviceConfig, SettingsDocument
+from app.settings import DeviceConfig, SettingsDocument, OffPeakWindow
 from app.simulation.clock import SimulatedClock
 from app.storage.database import SQLiteStore
 from test_ariston_lifecycle import configured_app, NativeHeater
@@ -226,3 +226,45 @@ async def test_editing_armed_heater_validates_new_solar_target_against_native_li
     settings['devices'][0]['solar_target']=70
     assert client.put('/api/v1/settings',json=settings).status_code==expected
     assert native.calls==[]
+
+
+def test_continuous_stable_solar_heating_keeps_solar_target_when_hc_opens():
+    clock,engine,spec,policy=setup()
+    hp=replace(policy,off_peak=False)
+    evaluate(engine,clock,spec,hp,grid=-3000,temperature=60)
+    clock.advance(11)
+    evaluate(engine,clock,spec,hp,grid=-3000,temperature=60)
+    clock.advance(1)
+    opening=evaluate(engine,clock,spec,policy,power=2650,grid=-100,temperature=60)
+    assert opening.effective_targets['tank']==70
+    assert not any(c.action=='suspend' for c in opening.commands)
+
+
+@pytest.mark.asyncio
+async def test_fast_boundary_stop_then_hours_without_solar_cannot_boost_next_hc(tmp_path):
+    import asyncio
+    clock=SimulatedClock(utcnow()); store=SQLiteStore(tmp_path/'test.db')
+    config=DeviceConfig(id='tank',name='Tank',kind='water_heater',mode='off_peak_solar',armed=True,
+        target=55,solar_target=70,min_power_w=700,max_power_w=2570,
+        cloud={'start_delay_s':0,'stop_delay_s':30,'restart_delay_s':0})
+    settings=SettingsDocument(site_limit_w=11000,devices=[config],off_peak=[{'start':'00:00','end':'00:00'}])
+    store.save_settings(settings.model_dump(mode='json'))
+    native=Adapter(); runtime=Coordinator(store,adapters={'tank':native}); runtime.engine.clock=clock
+    async def tick(power,grid,temperature,target=55):
+        current=frame(clock,power=power,grid=grid,temperature=temperature)
+        current=replace(current,device_states={'tank':replace(current.device_states['tank'],target_temperature=target)})
+        result=await runtime.tick(current); await asyncio.gather(*runtime.command_tasks.values()); return result
+    await tick(0,700,28)
+    clock.advance(2); await tick(2650,3000,28)
+    clock.advance(61); await tick(2650,-100,54)
+    clock.advance(2); await tick(2650,-100,54,70)
+    settings.off_peak=[]; store.save_settings(settings.model_dump(mode='json'))
+    clock.advance(2); await tick(2650,1000,60,70)
+    clock.advance(2); await tick(0,1000,60,70)  # stop observed before any forced-off evaluation
+    clock.advance(7200); await tick(0,1000,60,70)
+    settings.off_peak=[OffPeakWindow(start='00:00',end='00:00')]
+    # Validate the Pydantic model again after the controlled fixture update.
+    store.save_settings(SettingsDocument.model_validate(settings.model_dump()).model_dump(mode='json'))
+    clock.advance(1); result=await tick(0,1000,60,70)
+    assert result.effective_targets['tank']==55 and result.target_sources['tank']=='grid'
+    assert not any(c.action=='set_power' for c in result.commands)

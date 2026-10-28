@@ -24,8 +24,9 @@ class Coordinator:
         self.store,self.app=store,app
         self.adapters=adapters or {}
         self.engine=EnergyEngine()
-        self.engine.network_allowed=store.get('runtime_network_authorizations',{})
-        self.engine.network_stop_pending=set(store.get('runtime_network_stops',[]))
+        network_state=store.get('runtime_network_state',{})
+        self.engine.network_allowed=network_state.get('allowed',{})
+        self.engine.network_stop_pending=set(network_state.get('stop_pending',[]))
         self.dispatcher=Dispatcher(store)
         self.reservations={}
         for key,value in store.get('runtime_reservations',{}).items():
@@ -185,7 +186,9 @@ class Coordinator:
             for key in self.dispatcher.reconcile(snapshot,configs):
                 self.reservations.pop(key,None);self.errors.pop(key,None)
                 if self.dispatcher.records[key]['action']=='suspend':
+                    if key in self.engine.network_stop_pending: self.engine.heater_targets.reset(key)
                     self.engine.network_stop_pending.discard(key)
+                    self.engine.network_stop_issued.discard(key)
             snapshot=replace(snapshot,reservations=tuple(self.reservations.values()),
                 transition_blocked=any(r['status']!='observed'
                 for r in self.dispatcher.records.values()))
@@ -214,8 +217,8 @@ class Coordinator:
             batch=self.engine.evaluate(snapshot,specs,policies,authorizations)
             # Persist a boundary stop before queueing it: a crash cannot turn
             # an expired network authorization into a new cloud grace period.
-            self.store.set('runtime_network_authorizations',self.engine.network_allowed)
-            self.store.set('runtime_network_stops',sorted(self.engine.network_stop_pending))
+            self.store.set('runtime_network_state',{'allowed':self.engine.network_allowed,
+                'stop_pending':sorted(self.engine.network_stop_pending)})
             if waiting_manual_stops:
                 batch=replace(batch,reasons=batch.reasons|{key:
                     'Chauffe demandée : attente de confirmation de l’arrêt précédent'
@@ -228,7 +231,8 @@ class Coordinator:
                 old=self.reservations.get(reservation.device_id)
                 self.reservations[reservation.device_id]=replace(reservation,power_w=max(reservation.power_w,old.power_w if old else 0))
             for intent in batch.commands:
-                self.enqueue(intent,configs[intent.device_id])
+                if not self.enqueue(intent,configs[intent.device_id]) and intent.action=='suspend':
+                    self.engine.network_stop_issued.discard(intent.device_id)
             # Renew finite OCPP profiles without issuing another remote start before observation.
             for device in config.devices:
                 record=self.dispatcher.records.get(device.id)
@@ -262,14 +266,14 @@ class Coordinator:
         self.store.set('schedule_results',dict(list(tracked.items())[-2000:]))
 
     def enqueue(self,intent,config):
-        if not config.armed or intent.device_id not in self.adapters: return
+        if not config.armed or intent.device_id not in self.adapters: return False
         queued=self.queued_intents.get(intent.device_id)
         if queued and queued[0].action=='suspend' and intent.action!='suspend':
-            self.engine.forget(intent.device_id);return
+            self.engine.forget(intent.device_id);return False
         self.queued_intents[intent.device_id]=(intent,config.mode)
         self.save_queue()
         existing=self.command_tasks.get(intent.device_id)
-        if existing and not existing.done(): return
+        if existing and not existing.done(): return True
         async def send():
             while intent.device_id in self.queued_intents:
                 command,expected_mode=self.queued_intents.pop(intent.device_id)
@@ -278,6 +282,7 @@ class Coordinator:
                 device=next((d for d in current.devices if d.id==command.device_id),None)
                 if (not device or not device.armed or (command.expires_at and command.expires_at<=utcnow())
                     or (command.action!='suspend' and device.mode!=expected_mode)):
+                    self.engine.network_stop_issued.discard(command.device_id)
                     self.engine.forget(command.device_id); continue
                 window=max(device.confirmation_timeout_s,
                     2*current.ariston.poll_interval_s+30 if device.kind=='water_heater' else 90)
@@ -287,6 +292,7 @@ class Coordinator:
                     task=asyncio.create_task(self.refresh_after_command(command.device_id,source))
                     self.refresh_tasks.add(task);task.add_done_callback(self.refresh_tasks.discard)
         self.command_tasks[intent.device_id]=asyncio.create_task(send())
+        return True
 
     def save_queue(self):
         self.store.set('queued_intents',{key:{'intent':asdict(intent)|{'expires_at':intent.expires_at.isoformat()

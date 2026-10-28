@@ -27,7 +27,7 @@ Après fonctionnement de la base : intégration de remontée vers Home Assistant
 
 Les données, horaires et priorités illustrés sont fictifs et modifiables. Ces images ne prouvent aucune connexion matérielle.
 
-Patch 0.1.8 : carte Maison affichant la consommation totale du logement, voiture et ballon inclus, avec capteur HA facultatif et calcul de secours lorsque le champ est vide. Les valeurs inchangées vérifiées récemment restent affichables. Voir [les détails et la mise à jour](docs/deployment/patch-0.1.8.md).
+Patch 0.1.8 : carte Maison affichant la consommation totale du logement, voiture et ballon inclus, avec capteur HA facultatif et calcul automatique lorsque le champ est vide. Les valeurs inchangées vérifiées récemment restent affichables. Voir [les détails et la mise à jour](docs/deployment/patch-0.1.8.md).
 
 Le patch 0.1.7 est inclus : confirmation des lectures HA asynchrones, consignes réseau/solaire distinctes par ballon et arrêt explicite en fin de créneau réseau pour le ballon et la voiture. Voir [les détails](docs/deployment/patch-0.1.7.md).
 

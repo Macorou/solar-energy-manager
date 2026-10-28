@@ -39,8 +39,16 @@ mesures de contrôle du ballon et de la voiture.
 
 ## Mise à jour Portainer
 
-Image prévue : `ghcr.io/macorou/solar-energy-manager:0.1.8`, privée, Linuxamd64.
-Les résultats CI et le digest seront ajoutés après vérification de la publication.
+Image publiée : `ghcr.io/macorou/solar-energy-manager:0.1.8`, privée, Linuxamd64.
+
+Digest : `sha256:965f8f6d5ec3730d64c91cac3f81c998db810d6ec0cfacbdeaba23f3aa6bfe37`.
+
+[Publication et contrôles réussis](https://github.com/Macorou/solar-energy-manager/actions/runs/40645494184)
+sur le commit `e24b7ba59dbaac8b5cb5f19e4b86d08cbce323ef` : **194 tests Python**,
+**30 tests UI**, **4 parcours navigateur**, schéma API/types et build, validation
+Compose, construction et test Docker (démarrage, persistance et utilisateur non-root).
+Le workflow a vérifié le paquet privé, le téléchargement authentifié par digest
+et le refus de la demande anonyme au registre.
 
 Dans la Stack existante, définir **SEM_VERSION=0.1.8** si cette variable est
 utilisée, ou remplacer uniquement la version de la ligne :
@@ -69,5 +77,8 @@ normalisation vérifie aussi les valeurs après conversion des unités, et une
 erreur de lecture du capteur facultatif reste isolée. Aucun point mineur différé.
 Les contrôles de distribution sont confiés à la CI ; les anciennes anomalies
 indépendantes restent hors de ce patch. Trace tenue avec les outils Windows natifs.
-CI de publication en cours lors de la préparation du guide. Aucun déploiement
-Portainer, changement HA ou ordre matériel effectué.
+La CI Linux et la publication ont réussi avec les mêmes tests, les quatre
+parcours navigateur et le test Docker supplémentaire. Les parcours navigateur
+vérifient aussi l'enregistrement réel du champ, le total calculé sur mobile,
+la priorité du capteur dédié et son affichage inconnu lorsqu'il est indisponible.
+Aucun déploiement Portainer, changement HA ou ordre matériel effectué.

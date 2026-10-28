@@ -43,10 +43,27 @@ appended to dataclass, `LiveState.house` and `house_configured` optional on clie
 **Files:** version files, README, docs/deployment/patch-0.1.8.md, output guide.
 **Interfaces:** unchanged controls, new private GHCR0.1.8 and verified guide.
 
-- [ ] One fresh independent final review; Important/Critical findings get one
+- [x] One fresh independent final review; Important/Critical findings get one
   regression-first fix pass and a full green suite. Record rulings/minors.
-- [ ] Version0.1.8, schema/types/build, update browser fixture to total semantics
+- [x] Version0.1.8, schema/types/build, update browser fixture to total semantics
   and verify new field persistence in existing e2e flow.
-- [ ] Push/tag and verify CI Python/UI/browser/Compose/Docker/private-pull.
-- [ ] Publish private prerelease guide with exact digest, preserve worktree and
+- [x] Push/tag and verify CI Python/UI/browser/Compose/Docker/private-pull.
+- [x] Publish private prerelease guide with exact digest, preserve worktree and
   local commissioning notes; do not deploy Portainer.
+
+## Verified result
+
+Code e24b7ba59dbaac8b5cb5f19e4b86d08cbce323ef, tagv0.1.8.
+Workflow40645494184 succeeded: Python194, UI30, browser4, Docker smoke1,
+schema/build/Compose and private visibility/authenticated digest pull.
+Digest sha256:965f8f6d5ec3730d64c91cac3f81c998db810d6ec0cfacbdeaba23f3aa6bfe37.
+One independent review found two Important issues, fixed in one pass with four
+RED→GREEN regressions and a full green suite; no deferred minors.
+Ruling: shared normalization validates timestamp type and post-conversion
+finiteness; invalid optional parsing remains isolated from control. Native
+Windows bookkeeping retained. Older unrelated source anomalies remain outside
+scope; delivery verified by CI, physical installation not changed by assistant.
+
+Private prerelease published, not draft:
+https://github.com/Macorou/solar-energy-manager/releases/tag/v0.1.8
+Guide asset4602bytes, SHA2563777b77bf6a21bdd0374d3765899b19a4e04954c30639e5d151ed378172a154a.

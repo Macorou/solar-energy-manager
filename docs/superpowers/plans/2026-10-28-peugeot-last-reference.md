@@ -32,5 +32,11 @@
 ### Task 2 : livrer 0.1.11
 **Files:** versions backend/frontend/compose, docs/deployment/patch-0.1.11.md, livrable outputs.
 - [x] Bump 0.1.11, générer schéma et guide ciblé ; contrôles puis commit/tag immuable.
-- [ ] Push branche privée/tag, attendre CI et publication image privée ; vérifier digest/pull dans le workflow.
-- [ ] Publier la préversion et son guide, vérifier l'asset ; documenter le résultat, conserver le worktree/PR en brouillon.
+- [x] Push branche privée/tag, attendre CI et publication image privée ; vérifier digest/pull dans le workflow.
+- [x] Publier la préversion et son guide, vérifier l'asset ; documenter le résultat, conserver le worktree/PR en brouillon.
+
+Livraison : v0.1.11, commit 28dede225d9152f40444736d6e1d96d85550e53c,
+workflow 40769671117 réussi : Python237/UI41/navigateur6/Docker1.
+Image privée vérifiée, digest sha256:23897c5497b227be4683828c29f8af0559fa9d85dc4da6d79bb5345471326d9b.
+Guide publié : 3846 octets, SHA256 20cecfa97e074083a80084ce554363e8d1a0f55da3bedb4645edfb2cea0143cc,
+identique au livrable local. Aucune fusion ni action matérielle.

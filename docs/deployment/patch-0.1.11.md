@@ -30,8 +30,10 @@ déploiement Portainer ou modification HA n'est effectué par l'assistant.
 
 ## Mise à jour Portainer
 
-Image privée Linux amd64 : `ghcr.io/macorou/solar-energy-manager:0.1.11`.
-Publication et digest : à renseigner après CI.
+Image privée Linux amd64 publiée : `ghcr.io/macorou/solar-energy-manager:0.1.11`.
+Digest immuable : `sha256:23897c5497b227be4683828c29f8af0559fa9d85dc4da6d79bb5345471326d9b`.
+Code livré : `28dede225d9152f40444736d6e1d96d85550e53c`, tag `v0.1.11`.
+[Workflow de vérification et publication](https://github.com/Macorou/solar-energy-manager/actions/runs/40769671117).
 
 Dans la Stack existante, utiliser :
 
@@ -53,4 +55,12 @@ Aucun défaut mineur différé. Les règles existantes d'hystérésis de 1 % et 
 verrouillage de l'objectif sont conservées. Les comportements réels de la borne
 et de Peugeot restent à vérifier sur l'installation ; la revue ne les commande pas.
 
-Résultats finaux de tests et publication : à compléter après CI.
+Vérifications finales du tag : **237 tests Python réussis**, 1 test Docker ignoré
+dans la suite ordinaire puis exécuté séparément avec succès ; **41 tests UI**,
+**6 parcours navigateur**, **1 test Docker**, génération du schéma, TypeScript,
+build et validation Compose réussis. Le workflow ci-dessus est terminé avec succès.
+La publication vérifie que le paquet GHCR reste privé, que le téléchargement
+authentifié par digest fonctionne et qu'une demande anonyme est refusée.
+
+La branche de travail et la PR en brouillon existantes sont conservées. Aucune
+fusion dans main et aucun déploiement sur l'installation réelle ne sont effectués.

@@ -1,5 +1,9 @@
 # Mise à jour 0.1.10 — recharge dynamique, bilan et batterie estimée
 
+Version remplacée par **0.1.11** : la dernière valeur Peugeot sert désormais
+automatiquement de référence et le formulaire de confirmation a été supprimé.
+Voir [le guide 0.1.11](patch-0.1.11.md). Le texte ci-dessous décrit la version 0.1.10.
+
 ## Installation dans Portainer
 
 Image privée publiée : `ghcr.io/macorou/solar-energy-manager:0.1.10` (linux/amd64).

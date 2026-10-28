@@ -96,6 +96,9 @@ def arm(device_id:str,body:ArmRequest,request:Request):
         raise HTTPException(409,'Renseigner puissance, consigne, limite du site et mesure électrique du ballon')
     if not all((body.confirm_control,body.capabilities_verified,body.offline_behavior_verified)):
         raise HTTPException(422,'Confirmer les essais natifs et le comportement hors ligne')
+    if not all(source.temperature_allowed(t) for t in
+               (device.target,device.solar_target if device.solar_target is not None else device.target)):
+        raise HTTPException(409,'Consignes de température hors des limites natives du ballon ; vérifier les valeurs réseau et solaire')
     config.devices=[d.model_copy(update={'armed':True,'capabilities_verified':True,
         'offline_behavior_verified':True}) if d.id==device_id else d for d in config.devices]
     save_config(request,config)

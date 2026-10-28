@@ -1831,6 +1831,19 @@
             ],
             "title": "Target"
           },
+          "solar_target": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Solar Target"
+          },
           "default_soc_target": {
             "type": "number",
             "maximum": 100.0,

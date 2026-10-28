@@ -18,7 +18,7 @@ export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:
       armed:false,capabilities_verified:false,offline_behavior_verified:false,priority:settings.devices.length+1,
       min_power_w:kind==='charger'?1380:700,max_power_w:kind==='charger'?3700:700,min_current_a:6,max_current_a:16,
       phases:1,voltage:230,charge_point_id:'',allow_insecure_identity:false,connector_id:1,vehicle_id:kind==='charger'?(settings.vehicles[0]?.id||''):'',
-      gateway_id:'',target:kind==='charger'?null:55,default_soc_target:80,confirmation_timeout_s:kind==='charger'?90:300,cloud:{...cloudDefaults}})
+      gateway_id:'',target:kind==='charger'?null:55,solar_target:null,default_soc_target:80,confirmation_timeout_s:kind==='charger'?90:300,cloud:{...cloudDefaults}})
   }
   return <><div className="section-title"><p className="subtitle">{kind==='charger'?'Enregistrez vos bornes OCPP et associez chaque véhicule.':'Une demande native de chauffe, avec sa puissance électrique mesurée.'}</p>
     <button className="primary" onClick={createDevice}><Icon name="plus" size={17}/>Ajouter {kind==='charger'?'une borne':'un ballon'}</button></div>
@@ -53,8 +53,11 @@ export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:
             <label>Courant minimal (A)<input required type="number" min="6" value={editing.min_current_a} onChange={e=>setEditing({...editing,min_current_a:Number(e.target.value)})}/></label>
             <label>Courant maximal (A)<input required type="number" min="6" max="80" value={editing.max_current_a} onChange={e=>setEditing({...editing,max_current_a:Number(e.target.value)})}/></label>
             <label>Objectif solaire habituel (%)<input type="number" min="1" max="100" required value={editing.default_soc_target} onChange={e=>setEditing({...editing,default_soc_target:Number(e.target.value)})}/></label></>:
-            <><label>Identifiant passerelle Ariston<input required value={editing.gateway_id} onChange={e=>setEditing({...editing,gateway_id:e.target.value})}/></label><label>Consigne (°C)<input type="number" required value={editing.target??55} onChange={e=>setEditing({...editing,target:Number(e.target.value)})}/></label></>}
+            <><label>Identifiant passerelle Ariston<input required value={editing.gateway_id} onChange={e=>setEditing({...editing,gateway_id:e.target.value})}/></label>
+              <label>Consigne sur le réseau (°C)<input type="number" required value={editing.target??55} onChange={e=>setEditing({...editing,target:Number(e.target.value)})}/></label>
+              <label>Consigne sur surplus solaire (°C)<input type="number" min="0" max="100" required value={editing.solar_target??editing.target??55} onChange={e=>setEditing({...editing,solar_target:Number(e.target.value)})}/></label></>}
         </div>
+        {kind==='water_heater'&&<p className="hint">Le surplus solaire peut chauffer au-delà de la consigne réseau. Les deux températures doivent respecter les limites natives du ballon. Le mode manuel utilise la consigne réseau.</p>}
         {kind==='charger'&&<label className="check"><input type="checkbox" checked={editing.allow_insecure_identity} onChange={e=>setEditing({...editing,allow_insecure_identity:e.target.checked})}/>Autoriser l’identité OCPP sans mot de passe sur le réseau local de confiance</label>}
         <CloudSettingsForm value={editing.cloud} onChange={cloud=>setEditing({...editing,cloud})}/>
         <button className="primary">Enregistrer l’appareil</button></form></section>}

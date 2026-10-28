@@ -46,6 +46,7 @@ class DeviceConfig(Model):
     vehicle_id: str = ''
     gateway_id: str = ''
     target: float | None = None
+    solar_target: float | None = Field(None,ge=0,le=100)
     default_soc_target: float = Field(80, ge=1, le=100)
     confirmation_timeout_s: int = Field(90,ge=30,le=3600)
     cloud: CloudSettings = Field(default_factory=CloudSettings)

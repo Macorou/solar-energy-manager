@@ -10,6 +10,7 @@ class CommandIntent:
     limit_w: float | None = None
     expires_at: datetime | None = None
     reason: str = ''
+    target_temperature: float | None = None
 
 
 @dataclass(frozen=True)

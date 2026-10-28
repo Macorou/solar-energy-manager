@@ -3,6 +3,14 @@ import {afterEach,expect,it,vi} from 'vitest'
 import {DeviceCard} from './DeviceCard'
 import type {LiveDevice} from '../api/types'
 afterEach(cleanup)
+it('shows the effective solar temperature rather than the network setting',()=>{
+  const device={config:{id:'tank',name:'NUOS',kind:'water_heater',target:55,solar_target:70,armed:true,priority:2,mode:'off_peak_solar'},
+    state:{observed_power:null,observed_state:'on',connected:true,temperature:60},
+    effective_target:70,target_source:'solar',reason:'Surplus solaire',command:null,authorization:null} as unknown as LiveDevice
+  render(<DeviceCard device={device} onAction={()=>{}}/>)
+  expect(screen.getByText('Objectif 70 °C · solaire')).toBeTruthy()
+  expect(screen.queryByText('Objectif 55 °C')).toBeNull()
+})
 it('labels protocol estimates explicitly and hides unusable power',()=>{
   const device={config:{id:'ev',name:'EV',kind:'charger',armed:false,priority:1,default_soc_target:80},
     state:{observed_power:{value:0,quality:'estimated',measured_at:new Date().toISOString(),usable:true},

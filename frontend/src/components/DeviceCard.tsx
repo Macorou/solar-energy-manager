@@ -22,7 +22,7 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
     pending?['amber','En attente de confirmation','clock']:
     !config.armed?['neutral','Observation','eye']:
     !state.connected?['neutral','Hors connexion','link']:['amber','En attente','clock']
-  const target=car?(device.authorization?.target_soc??config.default_soc_target):config.target
+  const target=car?(device.authorization?.target_soc??config.default_soc_target):(device.effective_target??config.target)
   const deadline=car&&device.authorization?.expires_at?new Date(device.authorization.expires_at)
     .toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:timezone}):null
   const automatic=config.mode!=='off'&&config.mode!=='manual'
@@ -35,7 +35,7 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
       <div className="device-controls">
         <div className="big-number">{value==null?'—':Math.round(value)}<small>{car?'%':'°C'}</small></div>
         <div className="meter"><i style={{width:Math.max(0,Math.min(100,value??0))+'%'}}/></div>
-        <p className="device-target">Objectif {target??'—'} {car?'%':'°C'}{deadline&&<> à {deadline}</>}</p>
+        <p className="device-target">Objectif {target??'—'} {car?'%':'°C'}{deadline&&<> à {deadline}</>}{!car&&device.target_source&&<> · {device.target_source==='solar'?'solaire':'réseau'}</>}</p>
         {!fresh&&<span className="freshness old">{car?(value!=null?'Donnée ancienne':'Batterie indisponible'):'Mesure indisponible ou ancienne'}</span>}
         <div className="mode-switch" aria-label="Mode de pilotage">
           <button className={automatic?'selected automatic':''} aria-pressed={automatic} disabled={!config.armed} onClick={()=>onAction(config.id,'resume')}><Icon name="leaf" size={14}/>Automatique</button>

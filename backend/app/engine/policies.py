@@ -19,4 +19,5 @@ class DevicePolicy:
     manual_until: datetime | None = None
     off_peak: bool = False
     start_not_before: datetime | None = None
+    solar_target: float | None = None
 

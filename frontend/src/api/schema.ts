@@ -893,6 +893,8 @@ export interface components {
             gateway_id: string;
             /** Target */
             target?: number | null;
+            /** Solar Target */
+            solar_target?: number | null;
             /**
              * Default Soc Target
              * @default 80

@@ -1,4 +1,4 @@
-from dataclasses import dataclass,replace
+from dataclasses import dataclass,replace,field
 from datetime import timedelta
 import math
 import uuid
@@ -6,6 +6,7 @@ from app.domain.commands import CommandIntent
 from app.domain.devices import Reservation
 from app.engine.budget import solar_budget_w,power_coherent,measurements_coherent
 from app.engine.hysteresis import Timers
+from app.engine.heater_targets import HeaterTargets
 from app.simulation.clock import Clock
 
 
@@ -14,6 +15,8 @@ class DecisionBatch:
     commands: tuple
     reservations: tuple
     reasons: dict
+    effective_targets: dict = field(default_factory=dict)
+    target_sources: dict = field(default_factory=dict)
 
 
 class EnergyEngine:
@@ -25,9 +28,12 @@ class EnergyEngine:
         self.stopped_at = {}
         self.network_allowed = {}
         self.network_stop_pending = set()
+        self.requested_targets = {}
+        self.heater_targets = HeaterTargets()
 
     def forget(self, device_id):
         self.requested.pop(device_id,None)
+        self.requested_targets.pop(device_id,None)
 
     def evaluate(self, snapshot, specs, policies, authorizations):
         now, mono = snapshot.at, self.clock.monotonic()
@@ -43,6 +49,7 @@ class EnergyEngine:
         shared_tolerance = max((p.import_tolerance_w for p in policies.values()),default=0)
         tolerance_spent = 0
         reasons, commands, reservations = {}, [], []
+        effective_targets, target_sources = {}, {}
         pending = {r.device_id:r.power_w for r in snapshot.reservations}
         committed={s.id:max(measured.get(s.id,0),pending.get(s.id,0),self.requested.get(s.id,0)) for s in specs}
         coherent=power_coherent(snapshot)
@@ -84,13 +91,20 @@ class EnergyEngine:
             network_closed = (self.network_allowed.get(spec.id,False) and not network
                               and policy and policy.mode in ('solar','planned','off_peak_solar'))
             self.network_allowed[spec.id] = network
-            if network_closed and running: self.network_stop_pending.add(spec.id)
-            if not running: self.network_stop_pending.discard(spec.id)
+            if network_closed: self.network_stop_pending.add(spec.id)
+            target = policy.target if policy else None
+            if spec.kind=='water_heater' and policy:
+                tolerance=max(0,min(policy.import_tolerance_w,shared_tolerance-tolerance_spent))
+                target,source=self.heater_targets.select(spec.id,policy,network,solar_available,
+                    coherent,spec.max_power_w,tolerance,mono)
+                effective_targets[spec.id]=target
+                target_sources[spec.id]=source
             if not eligible:
                 reason = 'Appareil non activé ou indisponible'
             elif policy.mode=='off':
                 eligible, reason = False, 'Arrêt demandé'
-            elif state.target_reached:
+            elif (state.temperature>=target if spec.kind=='water_heater' and state.temperature is not None
+                  and target is not None else state.target_reached):
                 eligible, reason = False, 'Objectif atteint'
             elif spec.kind=='charger' and state.vehicle_connected is False:
                 eligible, reason = False, 'Véhicule non branché'
@@ -110,7 +124,8 @@ class EnergyEngine:
                     reason = auth.reason if auth else 'Aucun programme applicable'
                 elif policy.mode=='off_peak_solar':
                     network = policy.off_peak
-                    reason = 'Chauffe heures creuses' if network else 'Surplus solaire'
+                    reason = ('Chauffe heures creuses' if network and target_sources.get(spec.id)!='solar'
+                              else 'Surplus solaire')
                 else:
                     reason = 'Surplus solaire'
             hard_valid = grid_valid and all_power_valid and snapshot.site_limit_w is not None and site_available>=spec.min_power_w>0
@@ -166,12 +181,23 @@ class EnergyEngine:
             if not policy or not policy.armed:
                 continue
             must_change = (desired>0 and (previous is None or abs(desired-previous)>=50)) \
-                or (desired==0 and (previous is None and running or previous is not None and previous>0))
-            if must_change:
-                command = CommandIntent(str(uuid.uuid4()),spec.id,'set_power' if desired else 'suspend',
-                    desired,now+timedelta(seconds=90),reason)
+                or (desired==0 and (previous is None and running or previous is not None and previous>0)) \
+                or (spec.id in self.network_stop_pending and previous!=0)
+            target_changed=bool(desired and spec.kind=='water_heater' and target is not None
+                and target!=self.requested_targets.get(spec.id,state.target_temperature if state else None))
+            if target_changed and not must_change:
+                if not coherent: continue
+                if policy.start_not_before and now<policy.start_not_before:
+                    reasons[spec.id]='Temporisation native avant changement de consigne'
+                    continue
+            if must_change or target_changed:
+                action=('set_power' if desired else 'suspend') if must_change else 'set_temperature'
+                command = CommandIntent(str(uuid.uuid4()),spec.id,action,
+                    desired,now+timedelta(seconds=90),reason,
+                    target_temperature=target if desired and spec.kind=='water_heater' else None)
                 commands.append(command)
                 self.requested[spec.id] = desired
+                if spec.kind=='water_heater': self.requested_targets[spec.id]=target if desired else None
                 if desired:
                     reservations.append(Reservation(spec.id,max(desired,measured.get(spec.id,0)),command.id,
                         now+timedelta(seconds=90)))
@@ -180,4 +206,4 @@ class EnergyEngine:
                     if measured.get(spec.id,0)>0:
                         reservations.append(Reservation(spec.id,measured[spec.id],command.id,
                             now+timedelta(seconds=90)))
-        return DecisionBatch(tuple(commands),tuple(reservations),reasons)
+        return DecisionBatch(tuple(commands),tuple(reservations),reasons,effective_targets,target_sources)

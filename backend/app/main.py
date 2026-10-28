@@ -98,6 +98,12 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 raise HTTPException(409,'Utiliser la procédure dédiée d’activation ou de désactivation')
             if prior and prior.armed and any(getattr(device,p)!=getattr(prior,p) for p in identity):
                 raise HTTPException(409,'Désactiver avant de modifier les caractéristiques de l’appareil')
+            if (prior and prior.armed and device.kind=='water_heater'
+                and (device.target,device.solar_target)!=(prior.target,prior.solar_target)):
+                source=app.state.ariston_adapters.get(device.id)
+                if not source or not all(source.temperature_allowed(t) for t in
+                    (device.target,device.solar_target if device.solar_target is not None else device.target)):
+                    raise HTTPException(409,'Vérifier la connexion et les limites de température natives avant de modifier les consignes réseau et solaire')
         if any(d.armed and d.id not in new for d in previous.devices):
             raise HTTPException(409,'Désactiver avant suppression')
         store.save_settings(body.model_dump(mode='json'))

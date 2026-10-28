@@ -25,7 +25,7 @@ class Dispatcher:
                 'power_w':intent.limit_w or 0,'sent_at':now.isoformat(),
                 'expires_at':intent.expires_at.isoformat() if intent.expires_at else None,
                 'confirm_by':(now+timedelta(seconds=confirmation_timeout_s)).isoformat(),
-                'reason':intent.reason,'status':'sending'}
+                'reason':intent.reason,'status':'sending','target_temperature':intent.target_temperature}
             self.records[intent.device_id]=record
             self.save()  # Durable before the network side effect.
             try:
@@ -39,7 +39,8 @@ class Dispatcher:
                 result=CommandResult(intent.id,False,error='command_result_unknown')
             self.save()
             self.store.append_event({'kind':'command_'+record['status'],'device_id':intent.device_id,
-                'details':{'action':intent.action,'power_w':intent.limit_w,'reason':intent.reason}})
+                'details':{'action':intent.action,'power_w':intent.limit_w,'reason':intent.reason,
+                           'target_temperature':intent.target_temperature}})
             return result
 
     def reconcile(self,snapshot,configs):
@@ -61,18 +62,23 @@ class Dispatcher:
                 and power.checked_at and power.checked_at>sent and 0<=power.value<=20)
             grid=snapshot.grid
             if not grid or not grid.usable(snapshot.at,snapshot.sample_max_age_s): continue
+            if (grid.availability_at<power.availability_at or grid.availability_at<power.measured_at
+                or (grid.availability_at-power.availability_at).total_seconds()>2): continue
             if heater_stop:
                 # A fresh native OFF read plus checked idle HA power can confirm
                 # an unchanged zero; this never confirms the effect of a start.
                 if not native_stop: continue
-                if (grid.availability_at<power.checked_at
-                    or (grid.availability_at-power.checked_at).total_seconds()>2): continue
-            elif (power.measured_at<=sent or grid.availability_at<power.availability_at
-                  or grid.availability_at<power.measured_at
-                  or (grid.availability_at-power.availability_at).total_seconds()>2): continue
+            elif config and config.kind=='water_heater' and record['action']=='set_temperature':
+                if not (state.connected and not state.fault and state.measured_at
+                    and sent<state.measured_at<=snapshot.at
+                    and (snapshot.at-state.measured_at).total_seconds()<=snapshot.sample_max_age_s
+                    and power.checked_at and power.checked_at>sent): continue
+            elif power.measured_at<=sent: continue
             matched=(power.value<=20 if not desired else 20<power.value<=desired+max(100,desired*.1))
-            if desired and config and config.kind=='water_heater' and config.target is not None:
-                matched=matched and state.target_temperature==config.target and state.observed_state=='on'
+            target=record.get('target_temperature')
+            if target is None and config: target=config.target
+            if desired and config and config.kind=='water_heater' and target is not None:
+                matched=matched and state.target_temperature==target and state.observed_state=='on'
             if matched:
                 record['status']='observed'; observed.append(key)
                 self.store.append_event({'kind':'command_observed','device_id':key,

@@ -44,6 +44,7 @@ class Coordinator:
         self.ha=None; self.ha_signature=None; self.worker_signatures={}
         self.snapshot=SiteSnapshot(utcnow())
         self.reasons={}; self.authorizations={}; self.running=False; self.loop_task=None
+        self.effective_targets={}; self.target_sources={}
         self.last_tick=None
         self.instance=InstanceLock(store.path.parent/'controller.lock')
 
@@ -165,6 +166,7 @@ class Coordinator:
             cloud=device.cloud.model_dump()
             last_command=getattr(self.adapters.get(device.id),'last_command',None)
             policies[device.id]=DevicePolicy(device.id,device.mode,**cloud,target=device.target,
+                solar_target=device.solar_target,
                 armed=device.armed,vehicle_id=device.vehicle_id,soc_max_age_s=config.peugeot.max_age_s,
                 manual_until=until,off_peak=is_off_peak(now,config.off_peak,config.timezone),
                 start_not_before=last_command+timedelta(seconds=60)
@@ -182,6 +184,8 @@ class Coordinator:
             configs={d.id:d for d in config.devices}
             for key in self.dispatcher.reconcile(snapshot,configs):
                 self.reservations.pop(key,None);self.errors.pop(key,None)
+                if self.dispatcher.records[key]['action']=='suspend':
+                    self.engine.network_stop_pending.discard(key)
             snapshot=replace(snapshot,reservations=tuple(self.reservations.values()),
                 transition_blocked=any(r['status']!='observed'
                 for r in self.dispatcher.records.values()))
@@ -217,6 +221,8 @@ class Coordinator:
                     'Chauffe demandée : attente de confirmation de l’arrêt précédent'
                     for key in waiting_manual_stops})
             self.reasons=batch.reasons
+            self.effective_targets=batch.effective_targets
+            self.target_sources=batch.target_sources
             self.authorizations=authorizations
             for reservation in batch.reservations:
                 old=self.reservations.get(reservation.device_id)
@@ -303,14 +309,21 @@ class Coordinator:
             data=asdict(value)
             data['usable']=value.usable(now,config.sample_max_age_s)
             return data
+        def device_state(device):
+            value=self.snapshot.device_states.get(device.id,DeviceState(device.id))
+            target=self.effective_targets.get(device.id,device.target)
+            if device.kind=='water_heater' and value.temperature is not None and target is not None:
+                value=replace(value,target_reached=value.temperature>=target)
+            return asdict(value)|{'observed_power':sample(value.observed_power)}
         return {'simulation':False,'at':self.last_tick,'running':self.running,
             'grid':sample(self.snapshot.grid),'solar':sample(self.snapshot.solar),
             'solar_budget_w':solar_budget_w(replace(self.snapshot,at=now)),
             'off_peak':is_off_peak(now,config.off_peak,config.timezone),'errors':self.errors,
             'devices':[{'config':d.model_dump(mode='json'),
-                'state':asdict(self.snapshot.device_states.get(d.id,DeviceState(d.id)))|
-                    {'observed_power':sample(self.snapshot.device_states.get(d.id,DeviceState(d.id)).observed_power)},
+                'state':device_state(d),
                 'reason':self.reasons.get(d.id,'En attente de mesures'),
+                'effective_target':self.effective_targets.get(d.id,d.target),
+                'target_source':self.target_sources.get(d.id,'grid'),
                 'command':self.dispatcher.records.get(d.id),
                 'reservation_w':self.reservations[d.id].power_w if d.id in self.reservations else 0,
                 'authorization':asdict(self.authorizations[d.id]) if d.id in self.authorizations else None}

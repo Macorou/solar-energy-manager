@@ -131,3 +131,18 @@ async def test_boundary_stop_queues_behind_in_flight_start(tmp_path):
     finally:
         release.set(); await asyncio.gather(*runtime.command_tasks.values())
     assert [c.action for c in adapter.calls] == ['set_power','suspend']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('crash_before_queue',[False,True])
+async def test_restored_tariff_stop_is_sent_even_if_thermostat_currently_draws_zero(tmp_path,crash_before_queue):
+    clock,end,store,adapter,_=runtime_setup(tmp_path)
+    store.set('runtime_network_authorizations',{'device':not crash_before_queue})
+    store.set('runtime_network_stops',['device'] if crash_before_queue else [])
+    clock.advance((end-clock.now()).total_seconds())
+    runtime=Coordinator(store,adapters={'device':adapter}); runtime.engine.clock=clock
+    current=snapshot(clock,power=0)
+    current=replace(current,device_states={'device':replace(current.device_states['device'],observed_state='on')})
+    result=await runtime.tick(current); await asyncio.gather(*runtime.command_tasks.values())
+    assert [c.action for c in result.commands]==['suspend']
+    assert [c.action for c in adapter.calls]==['suspend']

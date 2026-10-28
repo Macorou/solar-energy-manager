@@ -12,6 +12,7 @@ class VehicleTelemetry:
     measured_at: datetime | None = None
     received_at: datetime | None = None
     quality: Quality = Quality.UNAVAILABLE
+    unavailable_reason: str | None = None
 
     def usable(self, now: datetime, max_age_s: float) -> bool:
         """A valid old SOC may still be the provider's current available value."""

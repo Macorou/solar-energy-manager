@@ -79,6 +79,33 @@ def test_ocpp_energy_only_and_current_frames_are_not_lost(tmp_path):
     assert registry.states['ev'].currents['L1'].value==10
 
 
+def test_ocpp_start_keeps_transaction_meter_base_until_later_meter_frames(tmp_path):
+    from app.connectors.ocpp.registry import OcppRegistry
+    from app.connectors.ocpp.station import Station
+    from app.storage.database import SQLiteStore
+    from app.settings import DeviceConfig
+    config=DeviceConfig(id='ev',name='EV',kind='charger',charge_point_id='box')
+    registry=OcppRegistry(SQLiteStore(tmp_path/'db'),lambda:[config],lambda _:None)
+    station=Station('box',None,registry);now=utcnow()
+    result=station.start_transaction(1,'SEM',5000922,now.isoformat())
+    station.meter_values(1,[{'timestamp':(now+timedelta(seconds=5)).isoformat(),
+        'sampled_value':[{'value':'5000928','unit':'Wh'}]}],transaction_id=result.transaction_id)
+    state=registry.states['ev']
+    assert state.energy_transaction_id==result.transaction_id
+    assert state.energy_transaction_start_wh==5000922
+    assert state.energy_transaction_started_at==now
+    assert state.energy_wh==5000928
+    # A controller restart must recover that identity from the active transaction.
+    restored=OcppRegistry(registry.store,lambda:[config],lambda _:None)
+    reconnected=Station('box',None,restored)
+    reconnected.meter_values(1,[{'timestamp':(now+timedelta(seconds=10)).isoformat(),
+        'sampled_value':[{'value':'5000934','unit':'Wh'}]}],transaction_id=result.transaction_id)
+    state=restored.states['ev']
+    assert state.energy_transaction_id==result.transaction_id
+    assert state.energy_transaction_start_wh==5000922
+    assert state.energy_transaction_started_at==now
+
+
 def test_a_charge_below_minimum_does_not_reserve_current_it_will_never_use():
     from app.engine.phase_limits import phase_power_limit
     now=utcnow();s=lambda v,u='W':Sample(v,u,'test',now,now)

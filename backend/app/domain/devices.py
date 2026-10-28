@@ -34,6 +34,9 @@ class DeviceState:
     energy_terminal: bool = False
     status_measured_at: datetime | None = None
     currents: dict[str,Sample] = field(default_factory=dict)
+    energy_transaction_id: int | None = None
+    energy_transaction_start_wh: float | None = None
+    energy_transaction_started_at: datetime | None = None
 
 
 @dataclass(frozen=True)

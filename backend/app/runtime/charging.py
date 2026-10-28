@@ -95,6 +95,23 @@ class ChargingTracker:
                 raw,stamp=state.energy_wh,state.energy_measured_at
                 when=stamp.timestamp() if stamp and stamp.tzinfo else None
                 if finite(raw) and raw>=0 and when is not None and when<=now:
+                    transaction=state.energy_transaction_id
+                    if (transaction is not None and transaction!=session.get('meter_transaction_id')
+                        and (session['last_at'] is None or when>=session['last_at'])):
+                        # StartTransaction establishes its own meter basis. Never
+                        # count an offset from an earlier periodic register as Wh.
+                        base,base_at=raw,when
+                        started=state.energy_transaction_started_at
+                        start_at=started.timestamp() if started and started.tzinfo else None
+                        start_wh=state.energy_transaction_start_wh
+                        if (finite(start_wh) and 0<=start_wh<=raw and start_at is not None
+                            and session['started_at']-2<=start_at<=when
+                            and (session['last_at'] is None or start_at>=session['last_at'])):
+                            base,base_at=start_wh,start_at
+                        session['last_meter']=base;session['last_at']=base_at
+                        session['meter_transaction_id']=transaction
+                        session['points'].append([base_at,session['energy_wh']])
+                        session['points']=session['points'][-4096:]
                     if session['last_at'] is None:
                         if now-when<=max(90,config.sample_max_age_s):
                             session['last_meter']=raw;session['last_at']=when
@@ -113,6 +130,15 @@ class ChargingTracker:
                         session['last_meter']=raw;session['last_at']=when
                         session['points'].append([when,session['energy_wh']])
                         session['points']=session['points'][-4096:]
+                power=state.observed_power
+                if (session.get('soc_gap_at') is not None and session['energy_wh']==0
+                    and state.connected and state.observed_state in
+                    ('Preparing','SuspendedEV','SuspendedEVSE','Finishing','Available')
+                    and power and power.quality==Quality.FRESH
+                    and power.usable(snapshot.at,config.sample_max_age_s) and 0<=power.value<=20):
+                    # Recover the pre-first-Wh fault persisted by 0.1.11 only at
+                    # a measured stop. Accounting remains explicitly partial.
+                    session['soc_gap_at']=None
                 self.soc(session,snapshot,config,device,state,vehicle)
                 if state.energy_terminal:session['terminal_pending']=False
                 if state.connected and state.vehicle_connected is False:
@@ -178,6 +204,14 @@ class ChargingTracker:
               and (session.get('soc_gap_at') is None or anchor['at']>=session['soc_gap_at'])
               and (idle or now-session['started_at']<=90)):
             session['soc_usable']=True
+        session['soc_reason']=None
+        if not session['soc_usable']:
+            session['soc_reason']=("Batterie Peugeot indisponible" if not anchor else
+                "Borne hors connexion" if not state.connected else
+                "Compteur d’énergie de la borne incohérent" if session.get('soc_gap_at') is not None else
+                "Capacité utile de la batterie à configurer" if not vehicle or not vehicle.capacity_kwh else
+                "Index d’énergie de la borne absent" if session['last_at'] is None else
+                "Index d’énergie de la borne trop ancien")
 
     def target_reached(self,device_id,target):
         session=self.sessions.get(device_id)
@@ -205,6 +239,7 @@ class ChargingTracker:
             'average_price_per_kwh':session['cost_eur']/(energy/1000) if not partial and energy>0 and session['priced_wh']+1e-6>=energy else None,
             'effective_price_per_kwh':self.effective_price,
             'soc':session['soc'],'soc_estimated':session['soc_estimated'],'soc_usable':session['soc_usable'],
+            'soc_reason':session.get('soc_reason'),
             'soc_reference_missing':not session['anchor'],
             'soc_reference_source':session['anchor'].get('source','vehicle') if session['anchor'] else None,
             'soc_reference_at':datetime.fromtimestamp(session['anchor']['at'],timezone.utc).isoformat() if session['anchor'] else None}

@@ -62,3 +62,15 @@ it('shows the manual default target rather than the unrelated scheduled target a
   expect(screen.getByText('Objectif 80 %')).toBeTruthy()
   expect(screen.queryByText(/Objectif 90/)).toBeNull()
 })
+
+it('keeps the last battery visible and identifies the actual missing energy meter',()=>{
+  const device={config:{id:'ev',name:'Wallbox',kind:'charger',armed:true,priority:1,default_soc_target:80},
+    state:{observed_state:'Charging',connected:true,vehicle_connected:true,observed_power:null},
+    reason:'En attente',command:null,authorization:null,
+    charging:{id:'plug',active:true,energy_kwh:0,cost_eur:0,cost_partial:true,solar_percent:null,
+      soc:60,soc_estimated:true,soc_usable:false,soc_reason:'Index d’énergie de la borne absent',effective_price_per_kwh:null}} as unknown as LiveDevice
+  render(<DeviceCard device={device} telemetry={{soc:60,fresh:false,range_km:166,measured_at:'2026-10-28T13:45:28Z'}} onAction={()=>{}}/>)
+  expect(document.querySelector('.big-number')?.textContent).toBe('60%')
+  expect(screen.getByText('Index d’énergie de la borne absent')).toBeTruthy()
+  expect(screen.queryByText('Batterie indisponible')).toBeNull()
+})

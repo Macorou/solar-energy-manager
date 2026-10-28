@@ -10,7 +10,7 @@ export interface Telemetry {soc:number|null;range_km:number|null;measured_at:str
 export interface ChargingSummary {id:string;active:boolean;ended_at?:string|null;energy_kwh:number;energy_partial:boolean;
   cost_eur:number|null;cost_partial:boolean;solar_percent:number|null;average_price_per_kwh:number|null;
   effective_price_per_kwh:number|null;soc:number|null;soc_estimated:boolean;soc_usable:boolean;soc_reference_at:string|null;
-  soc_reference_missing?:boolean;soc_reference_source?:'vehicle'|null}
+  soc_reference_missing?:boolean;soc_reference_source?:'vehicle'|null;soc_reason?:string|null}
 export interface LiveDevice {config:Device;state:{observed_power:Sample|null;observed_state:string;connected:boolean;
   temperature:number|null;target_temperature:number|null;fault:string|null;vehicle_connected?:boolean|null;target_reached?:boolean};reason:string;
   reservation_w:number;command:{status:string;power_w:number;reason:string}|null;

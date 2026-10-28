@@ -127,7 +127,7 @@ class EnergyEngine:
             elif spec.kind=='charger' and policy.vehicle_id:
                 telemetry = snapshot.vehicle_telemetry.get(policy.vehicle_id)
                 if not telemetry or not telemetry.usable(now,policy.soc_max_age_s):
-                    eligible, reason = False, 'Batterie indisponible'
+                    eligible, reason = False, (telemetry.unavailable_reason if telemetry else None) or 'Batterie indisponible'
                 elif telemetry.soc >= (auth.target_soc if auth and policy.mode!='manual' else policy.target or 80):
                     eligible, reason = False, 'Objectif atteint'
             if eligible:

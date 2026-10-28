@@ -41,7 +41,7 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
         <div className="big-number">{value==null?'—':Math.round(value)}<small>{car?'%':'°C'}</small></div>
         <div className="meter"><i style={{width:Math.max(0,Math.min(100,value??0))+'%'}}/></div>
         <p className="device-target">Objectif {target??'—'} {car?'%':'°C'}{deadline&&<> à {deadline}</>}{!car&&device.target_source&&<> · {device.target_source==='solar'?'solaire':'réseau'}</>}</p>
-        {useEstimate&&session?.soc_estimated&&<span className="freshness">{session.soc_usable?'Batterie estimée':'Estimation à vérifier'}</span>}
+        {useEstimate&&session?.soc_estimated&&<span className="freshness">{session.soc_usable?'Batterie estimée':session.soc_reason||'Estimation à vérifier'}</span>}
         {!fresh&&<span className="freshness old">{car?(value!=null?'Donnée ancienne':'Batterie indisponible'):'Mesure indisponible ou ancienne'}</span>}
         <div className="mode-switch" aria-label="Mode de pilotage">
           <button className={automatic?'selected automatic':''} aria-pressed={automatic} disabled={!config.armed} onClick={()=>onAction(config.id,'resume')}><Icon name="leaf" size={14}/>Automatique</button>

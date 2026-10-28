@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime,timedelta
 import pytest
 from app.domain.devices import DeviceState
 from app.domain.measurements import Sample, Quality, utcnow
@@ -69,6 +69,94 @@ def test_counter_reset_never_decreases_energy_and_marks_soc_unreliable(tmp_path)
     tracker.update(frame(now+timedelta(seconds=60),10,stamp=old),cfg)
     assert tracker.summary('ev')['energy_kwh']==2
     assert tracker.summary('ev')['soc_usable'] is False
+    assert tracker.summary('ev')['soc_reason']=="Compteur d’énergie de la borne incohérent"
+
+
+def test_transaction_start_rebases_an_initial_placeholder_index_without_inventing_energy(tmp_path):
+    tracker,_,cfg=setup_tracker(tmp_path);now=utcnow();old=now-timedelta(hours=8)
+    cfg.devices[0].max_power_w=6000
+    tracker.update(frame(now,0,soc=60,stamp=old),cfg)
+    later=frame(now+timedelta(seconds=30),5000928,soc=60,stamp=old)
+    later=replace(later,device_states={'ev':replace(later.device_states['ev'],
+        energy_transaction_id=42,energy_transaction_start_wh=5000922,
+        energy_transaction_started_at=now+timedelta(seconds=20))})
+    tracker.update(later,cfg)
+    assert tracker.summary('ev')['energy_kwh']==pytest.approx(.006)
+    assert tracker.summary('ev')['soc']==pytest.approx(60.015)
+    assert tracker.summary('ev')['soc_usable'] is True
+    assert tracker.summary('ev')['energy_partial'] is False
+    # Repeated protocol frames never rebase or add the same interval twice.
+    tracker.update(later,cfg)
+    assert tracker.summary('ev')['energy_kwh']==pytest.approx(.006)
+
+
+def test_zero_energy_legacy_gap_recovers_only_when_idle_power_is_confirmed(tmp_path):
+    tracker,store,cfg=setup_tracker(tmp_path);now=utcnow();old=now-timedelta(hours=8)
+    cfg.devices[0].max_power_w=6000
+    tracker.update(frame(now,0,soc=60,stamp=old),cfg)
+    tracker.update(frame(now+timedelta(seconds=3),5000922,soc=60,stamp=old),cfg)
+    assert tracker.summary('ev')['soc_usable'] is False
+    from app.runtime.charging import ChargingTracker
+    tracker=ChargingTracker(store)
+    idle=frame(now+timedelta(minutes=5),5000922,soc=60,stamp=old)
+    # On reconnect, StatusNotification can precede the first new index frame.
+    state=replace(idle.device_states['ev'],observed_state='Finishing',
+        observed_power=Sample(0,'W','HA',idle.at,idle.at),energy_wh=None,energy_measured_at=None)
+    unavailable=replace(state,observed_power=None)
+    tracker.update(replace(idle,device_states={'ev':unavailable},vehicle_telemetry={}),cfg)
+    assert tracker.summary('ev')['soc_usable'] is False
+    tracker.update(replace(idle,device_states={'ev':state},vehicle_telemetry={}),cfg)
+    assert tracker.summary('ev')['soc']==60
+    assert tracker.summary('ev')['soc_usable'] is True
+    assert tracker.summary('ev')['energy_partial'] is True
+
+
+def test_new_transaction_preserves_previous_energy_and_reboot_does_not_rebase_it_again(tmp_path):
+    tracker,store,cfg=setup_tracker(tmp_path);now=utcnow()
+    tracker.update(frame(now,10000,stamp=now),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),12000,stamp=now),cfg)
+    next_tx=frame(now+timedelta(seconds=60),2,stamp=now)
+    next_tx=replace(next_tx,device_states={'ev':replace(next_tx.device_states['ev'],
+        energy_transaction_id=2,energy_transaction_start_wh=0,
+        energy_transaction_started_at=now+timedelta(seconds=50))})
+    tracker.update(next_tx,cfg)
+    assert tracker.summary('ev')['energy_kwh']==pytest.approx(2.002)
+    from app.runtime.charging import ChargingTracker
+    tracker=ChargingTracker(store);tracker.update(next_tx,cfg)
+    assert tracker.summary('ev')['energy_kwh']==pytest.approx(2.002)
+
+
+@pytest.mark.asyncio
+async def test_planned_charge_recovers_the_live_zero_energy_gap_with_confirmed_stop(tmp_path,monkeypatch):
+    from app.runtime.coordinator import Coordinator
+    from app.domain.commands import CommandResult
+    from app.settings import ChargeProgram
+    tracker,store,cfg=setup_tracker(tmp_path)
+    now=datetime.fromisoformat('2026-10-28T21:16:20+00:00');old=now-timedelta(hours=8)
+    monkeypatch.setattr('app.runtime.coordinator.utcnow',lambda:now)
+    cfg.devices[0].armed=True;cfg.devices[0].mode='planned';cfg.devices[0].grid_phases=['L1']
+    cfg.devices[0].max_current_a=20;cfg.devices[0].max_power_w=6000;cfg.devices[0].min_power_w=1380
+    cfg.phase_control_enabled=True
+    cfg.schedules=[ChargeProgram(id='p',name='80%',vehicle_id='car',weekdays=[0,1,2,3,4],
+        earliest_start='22:00',deadline='05:45',target_soc=80)]
+    tracker.update(frame(now-timedelta(seconds=10),0,soc=60,stamp=old),cfg)
+    tracker.update(frame(now-timedelta(seconds=7),5000922,soc=60,stamp=old),cfg)
+    store.save_settings(cfg.model_dump(mode='json'))
+    class Adapter:
+        async def execute(self,intent):return CommandResult(intent.id,True)
+    runtime=Coordinator(store,adapters={'ev':Adapter()})
+    live=frame(now,5000922,soc=60,stamp=old)
+    s=lambda v,u='W':Sample(v,u,'HA',now,now)
+    live=replace(live,grid=s(799),solar=s(0),phase_control_enabled=True,
+        phase_currents={'L1':s(1.5,'A')},phase_powers={'L1':s(84)},phase_limits_a={'L1':20},phase_margin_a=1,
+        device_states={'ev':replace(live.device_states['ev'],observed_state='Finishing',observed_power=s(0))})
+    await runtime.tick(live)
+    for job in list(runtime.command_tasks.values()):await job
+    device=runtime.public_state()['devices'][0]
+    assert device['authorization']['allow_grid'] is True
+    assert device['charging']['soc']==60
+    assert device['command']['action']=='set_power'
+    assert device['command']['power_w']==3910
 
 
 @pytest.mark.parametrize('quality',[Quality.FRESH,Quality.STALE,Quality.UNAVAILABLE])

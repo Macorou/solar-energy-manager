@@ -194,7 +194,8 @@ class Coordinator:
                     raw=effective.get(d.vehicle_id,VehicleTelemetry())
                     effective[d.vehicle_id]=replace(raw,soc=summary['soc'],
                         measured_at=snapshot.at,received_at=snapshot.at,
-                        quality=Quality.ESTIMATED if summary['soc_usable'] else Quality.UNAVAILABLE)
+                        quality=Quality.ESTIMATED if summary['soc_usable'] else Quality.UNAVAILABLE,
+                        unavailable_reason=summary.get('soc_reason'))
             snapshot=replace(snapshot,vehicle_telemetry=effective)
             snapshot=replace(snapshot,reservations=tuple(self.reservations.values()))
             configs={d.id:d for d in config.devices}

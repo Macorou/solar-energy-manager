@@ -60,7 +60,8 @@ class OcppRegistry:
                 history[key]=value
                 self.store.set('ocpp_transaction_ids',dict(list(history.items())[-2000:]))
             value=history[key]
-            self.active[(cp,connector)]={'transaction_id':value,'meter_start':payload['meter_start']}
+            self.active[(cp,connector)]={'transaction_id':value,'meter_start':payload['meter_start'],
+                'timestamp':payload['timestamp']}
             self.save_transactions()
         return value
 

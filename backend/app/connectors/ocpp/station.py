@@ -16,6 +16,15 @@ class Station(ChargePoint):
     def config(self,connector_id):
         return next((d for d in self.registry.devices(self.id) if d.connector_id==connector_id),None)
 
+    def meter_identity(self,state,transaction):
+        if not transaction or state.energy_transaction_id==transaction['transaction_id']: return state
+        try:
+            stamp=datetime.fromisoformat(transaction.get('timestamp','').replace('Z','+00:00'))
+            if not stamp.tzinfo:stamp=None
+        except (ValueError,TypeError,AttributeError):stamp=None
+        return replace(state,energy_transaction_id=transaction['transaction_id'],
+            energy_transaction_start_wh=transaction.get('meter_start'),energy_transaction_started_at=stamp)
+
     @on(Action.boot_notification)
     def boot(self,charge_point_vendor,charge_point_model,**kwargs):
         self.registry.metadata[self.id]={'vendor':charge_point_vendor,'model':charge_point_model,
@@ -61,7 +70,9 @@ class Station(ChargePoint):
         try:
             stamp=datetime.fromisoformat(timestamp.replace('Z','+00:00'))
             if stamp.tzinfo and math.isfinite(meter_start) and meter_start>=0 and (not old.energy_measured_at or stamp>=old.energy_measured_at):
-                old=replace(old,energy_wh=float(meter_start),energy_measured_at=stamp,energy_terminal=False)
+                old=replace(old,energy_wh=float(meter_start),energy_measured_at=stamp,energy_terminal=False,
+                    energy_transaction_id=transaction,energy_transaction_start_wh=float(meter_start),
+                    energy_transaction_started_at=stamp)
         except (ValueError,TypeError,AttributeError): pass
         self.registry.states[config.id]=replace(old,connected=True,vehicle_connected=True,observed_state='Preparing',status_measured_at=utcnow())
         return call_result.StartTransaction(transaction_id=transaction,
@@ -75,6 +86,7 @@ class Station(ChargePoint):
                 if config:
                     self.registry.pending_start.pop(config.id,None);self.registry.save_pending()
                     old=self.registry.states.get(config.id,DeviceState(config.id))
+                    old=self.meter_identity(old,value)
                     try:
                         stamp=datetime.fromisoformat(timestamp.replace('Z','+00:00'))
                         if stamp.tzinfo and math.isfinite(meter_stop) and meter_stop>=0 and (not old.energy_measured_at or stamp>=old.energy_measured_at):
@@ -94,6 +106,7 @@ class Station(ChargePoint):
             if active and kwargs.get('transaction_id') is not None and kwargs['transaction_id']!=active['transaction_id']:
                 return call_result.MeterValues()
             old=self.registry.states.get(config.id,DeviceState(config.id))
+            old=self.meter_identity(old,active)
             for meter in meter_value:
                 try:
                     stamp=datetime.fromisoformat(meter['timestamp'].replace('Z','+00:00'))

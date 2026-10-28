@@ -18,7 +18,7 @@ class VehicleTelemetry:
         return (self.soc is not None and math.isfinite(self.soc) and 0 <= self.soc <= 100
                 and self.measured_at is not None and self.measured_at <= now
                 and self.received_at is not None
-                and self.quality in (Quality.FRESH, Quality.STALE)
+                and self.quality in (Quality.FRESH, Quality.STALE, Quality.ESTIMATED)
                 and 0 <= (now - self.received_at).total_seconds() <= max_age_s)
 
     def fresh(self, now: datetime, max_age_s: float) -> bool:

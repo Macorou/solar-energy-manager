@@ -17,6 +17,8 @@ from app.connectors.ocpp.registry import ChargerAdapter
 from app.api.water_heaters import adapter as ariston_adapter
 from .dispatcher import Dispatcher
 from .instance import InstanceLock
+from .charging import ChargingTracker
+from app.domain.vehicles import VehicleTelemetry
 
 
 class Coordinator:
@@ -24,6 +26,7 @@ class Coordinator:
         self.store,self.app=store,app
         self.adapters=adapters or {}
         self.engine=EnergyEngine()
+        self.charging=ChargingTracker(store)
         network_state=store.get('runtime_network_state',{})
         self.engine.network_allowed=network_state.get('allowed',{})
         self.engine.network_stop_pending=set(network_state.get('stop_pending',[]))
@@ -167,7 +170,8 @@ class Coordinator:
                 manuals.pop(device.id,None); changed=True
             cloud=device.cloud.model_dump()
             last_command=getattr(self.adapters.get(device.id),'last_command',None)
-            policies[device.id]=DevicePolicy(device.id,device.mode,**cloud,target=device.target,
+            policies[device.id]=DevicePolicy(device.id,device.mode,**cloud,
+                target=device.default_soc_target if device.kind=='charger' else device.target,
                 solar_target=device.solar_target,
                 armed=device.armed,vehicle_id=device.vehicle_id,soc_max_age_s=config.peugeot.max_age_s,
                 manual_until=until,off_peak=is_off_peak(now,config.off_peak,config.timezone),
@@ -182,6 +186,16 @@ class Coordinator:
         async with self.lock:
             config=SettingsDocument.model_validate(self.store.load_settings())
             snapshot=snapshot or await self.acquire(config)
+            self.charging.update(snapshot,config)
+            effective=dict(snapshot.vehicle_telemetry)
+            for d in config.devices:
+                summary=self.charging.summary(d.id) if d.kind=='charger' else None
+                if summary and summary['active'] and d.vehicle_id:
+                    raw=effective.get(d.vehicle_id,VehicleTelemetry())
+                    effective[d.vehicle_id]=replace(raw,soc=summary['soc'],
+                        measured_at=snapshot.at,received_at=snapshot.at,
+                        quality=Quality.ESTIMATED if summary['soc_usable'] else Quality.UNAVAILABLE)
+            snapshot=replace(snapshot,vehicle_telemetry=effective)
             snapshot=replace(snapshot,reservations=tuple(self.reservations.values()))
             configs={d.id:d for d in config.devices}
             for key in self.dispatcher.reconcile(snapshot,configs):
@@ -199,6 +213,12 @@ class Coordinator:
             self.record_schedules(snapshot,occurrences,config)
             authorizations={d.id:select_authorization(d.vehicle_id,snapshot.at,occurrences,d.default_soc_target)
                             for d in config.devices if d.kind=='charger'}
+            states=dict(snapshot.device_states)
+            for d in config.devices:
+                if d.kind=='charger' and d.id in states:
+                    target=d.default_soc_target if d.mode=='manual' else authorizations[d.id].target_soc
+                    states[d.id]=replace(states[d.id],target_reached=self.charging.target_reached(d.id,target))
+            snapshot=replace(snapshot,device_states=states)
             waiting_manual_stops=set()
             for key,record in self.dispatcher.records.items():
                 if record['status'] in ('sending','accepted','unknown'):
@@ -326,6 +346,12 @@ class Coordinator:
         return {'simulation':False,'at':self.last_tick,'running':self.running,
             'grid':sample(self.snapshot.grid),'solar':sample(self.snapshot.solar),
             'house':sample(self.snapshot.house),'house_configured':bool(config.home_assistant.house_entity),
+            'phase_control_enabled':config.phase_control_enabled,
+            'phases':{p:{'current':sample(self.snapshot.phase_currents.get(p)),
+                'voltage':sample(self.snapshot.phase_voltages.get(p)),
+                'power':sample(self.snapshot.phase_powers.get(p)),
+                'limit_a':c.max_current_a} for p,c in config.home_assistant.phases.items()},
+            'price':sample(self.snapshot.price),'effective_price_per_kwh':self.charging.effective_price,
             'solar_budget_w':solar_budget_w(replace(self.snapshot,at=now)),
             'off_peak':is_off_peak(now,config.off_peak,config.timezone),'errors':self.errors,
             'devices':[{'config':d.model_dump(mode='json'),
@@ -333,6 +359,7 @@ class Coordinator:
                 'reason':self.reasons.get(d.id,'En attente de mesures'),
                 'effective_target':self.effective_targets.get(d.id,d.target),
                 'target_source':self.target_sources.get(d.id,'grid'),
+                'charging':self.charging.summary(d.id) if d.kind=='charger' else None,
                 'command':self.dispatcher.records.get(d.id),
                 'reservation_w':self.reservations[d.id].power_w if d.id in self.reservations else 0,
                 'authorization':asdict(self.authorizations[d.id]) if d.id in self.authorizations else None}

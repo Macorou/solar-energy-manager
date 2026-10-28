@@ -87,3 +87,101 @@ def test_a_charge_below_minimum_does_not_reserve_current_it_will_never_use():
     extra={};power,_=phase_power_limit(snapshot,DeviceSpec('ev','charger',grid_phases=('L1',)),3700,extra)
     assert power==0
     assert extra.get('L1',0)==0
+
+
+@pytest.mark.parametrize('idle,stale_grid',[(True,False),(False,True)])
+def test_current_credit_requires_grid_to_include_the_observed_charge(idle,stale_grid):
+    now=utcnow();past=now-timedelta(seconds=10)
+    grid_stamp=past if stale_grid else now
+    own_stamp=now if stale_grid else past
+    s=lambda v,u='W',t=now:Sample(v,u,'test',t,t)
+    snapshot=SiteSnapshot(now,grid=s(5290),solar=s(0),site_limit_w=12000,
+        device_states={'ev':DeviceState('ev',s(0 if idle else 2300),
+            'SuspendedEVSE' if idle else 'Charging',True,measured_at=now,
+            vehicle_connected=True,currents={'L1':s(10,'A',own_stamp)})},
+        phase_currents={'L1':s(13,'A',grid_stamp)},phase_limits_a={'L1':20},
+        phase_margin_a=1,phase_control_enabled=True)
+    spec=DeviceSpec('ev','charger',min_power_w=1380,max_power_w=3700,grid_phases=('L1',),max_current_a=16)
+    engine=EnergyEngine()
+    if not idle:engine.requested['ev']=2300
+    batch=engine.evaluate(snapshot,[spec],{'ev':DevicePolicy('ev','manual',armed=True,
+        manual_until=now+timedelta(hours=1))},{})
+    assert max([c.limit_w or 0 for c in batch.commands]+[0])<=(1380 if idle else 2300)
+
+
+@pytest.mark.parametrize('aggregate', [False,True])
+@pytest.mark.parametrize('configured_phases',[1,3])
+def test_ocpp_energy_prefers_total_or_sums_complete_phase_set(tmp_path,aggregate,configured_phases):
+    from app.connectors.ocpp.registry import OcppRegistry
+    from app.connectors.ocpp.station import Station
+    from app.storage.database import SQLiteStore
+    from app.settings import DeviceConfig
+    cfg=DeviceConfig(id='ev',name='EV',kind='charger',charge_point_id='box',phases=configured_phases)
+    reg=OcppRegistry(SQLiteStore(tmp_path/'db'),lambda:[cfg],lambda _:None)
+    values=[{'measurand':'Energy.Active.Import.Register','value':'100','unit':'Wh','phase':p} for p in ('L1','L2','L3')]
+    if aggregate:values.append({'measurand':'Energy.Active.Import.Register','value':'350','unit':'Wh'})
+    Station('box',None,reg).meter_values(1,[{'timestamp':utcnow().isoformat(),'sampled_value':values}])
+    assert reg.states['ev'].energy_wh==(350 if aggregate else 300)
+
+
+@pytest.mark.asyncio
+async def test_meter_refresh_requests_telemetry_without_starting_or_changing_charge(tmp_path):
+    from types import SimpleNamespace
+    from app.connectors.ocpp.registry import OcppRegistry,ChargerAdapter
+    from app.storage.database import SQLiteStore
+    from app.settings import DeviceConfig
+    config=DeviceConfig(id='ev',name='EV',kind='charger',charge_point_id='box')
+    reg=OcppRegistry(SQLiteStore(tmp_path/'db'),lambda:[config],lambda _:None)
+    requests=[]
+    class Station:
+        async def call(self,request):
+            requests.append(request)
+            return SimpleNamespace(status='Accepted')
+    reg.stations['box']=Station()
+    assert await ChargerAdapter(reg,config).request_meter()
+    assert len(requests)==1
+    assert requests[0].__class__.__name__=='TriggerMessage'
+    assert requests[0].requested_message=='MeterValues'
+    assert requests[0].connector_id==1
+
+
+def test_delayed_power_frame_does_not_erase_newer_idle_evidence(tmp_path):
+    from app.connectors.ocpp.registry import OcppRegistry
+    from app.connectors.ocpp.station import Station
+    from app.engine.phase_limits import current_credit
+    from app.storage.database import SQLiteStore
+    from app.settings import DeviceConfig
+    config=DeviceConfig(id='ev',name='EV',kind='charger',charge_point_id='box')
+    reg=OcppRegistry(SQLiteStore(tmp_path/'db'),lambda:[config],lambda _:None)
+    station=Station('box',None,reg);now=utcnow();old=now-timedelta(seconds=5)
+    station.meter_values(1,[{'timestamp':old.isoformat(),'sampled_value':[
+        {'measurand':'Current.Import','value':'10','unit':'A','phase':'L1'}]}])
+    station.status(1,'NoError','SuspendedEVSE')
+    station.meter_values(1,[{'timestamp':(old-timedelta(seconds=5)).isoformat(),'sampled_value':[
+        {'measurand':'Power.Active.Import','value':'2300','unit':'W'}]}])
+    snapshot=SiteSnapshot(utcnow(),device_states={'ev':reg.states['ev']},
+        phase_currents={'L1':Sample(13,'A','test',old,old)})
+    assert current_credit(snapshot,DeviceSpec('ev','charger',grid_phases=('L1',)),0)==(0,True)
+
+
+def test_asynchronous_maintenance_still_respects_other_pending_current():
+    from app.engine.phase_limits import phase_power_limit
+    now=utcnow();past=now-timedelta(seconds=10)
+    state=DeviceState('ev',Sample(2300,'W','test',now,now),'Charging',True,
+        currents={'L1':Sample(10,'A','test',now,now)})
+    snapshot=SiteSnapshot(now,phase_control_enabled=True,device_states={'ev':state},
+        phase_currents={'L1':Sample(13,'A','test',past,past)},phase_limits_a={'L1':20})
+    spec=DeviceSpec('ev','charger',grid_phases=('L1',),max_current_a=16)
+    power,_=phase_power_limit(snapshot,spec,3700,{'L1':10},2300)
+    assert power<=1380
+
+
+def test_three_phase_charge_is_limited_by_its_most_constrained_mapped_phase():
+    from app.engine.phase_limits import phase_power_limit
+    now=utcnow();s=lambda value:Sample(value,'A','test',now,now)
+    state=DeviceState('ev',observed_state='Charging',connected=True,
+        currents={'L1':s(6),'L2':s(6),'L3':s(6)})
+    snapshot=SiteSnapshot(now,phase_control_enabled=True,device_states={'ev':state},
+        phase_currents={'L1':s(13),'L2':s(12),'L3':s(4)},phase_limits_a={'L1':20,'L2':18,'L3':20})
+    spec=DeviceSpec('ev','charger',grid_phases=('L1','L2','L3'),max_current_a=16)
+    assert phase_power_limit(snapshot,spec,11000,{})[0]==7590

@@ -32,11 +32,11 @@
 ### Task 1 : index et motifs
 **Files:** backend/app/domain/devices.py, vehicles.py, connectors/ocpp/station.py, runtime/charging.py/coordinator.py, engine/engine.py ; tests/backend/test_charging_accounting.py/test_phase_limits.py ; frontend/src/api/types.ts/components/DeviceCard.tsx et tests.
 **Interfaces:** DeviceState porte l'identité et la base du début de transaction. ChargingTracker consomme les index et produit SOC/énergie/motif. VehicleTelemetry transmet le motif si le SOC est inutilisable.
-- [ ] Tests RED : début/fin de transaction et première remontée tardive, récupération de la session réelle anonymisée, conservation des garde-fous.
-- [ ] Implémentation minimale et GREEN complet Python/UI/schema/build/browser ; revue indépendante du correctif puis corrections importantes RED→GREEN.
-- [ ] Commit de la logique vérifiée.
+- [x] Tests RED : début/fin de transaction et première remontée tardive, récupération de la session réelle anonymisée, conservation des garde-fous.
+- [x] Implémentation minimale et GREEN complet Python/UI/schema/build/browser ; revue indépendante du correctif puis corrections importantes RED→GREEN.
+- [x] Commit de la logique vérifiée.
 
 ### Task 2 : livraison0.1.12
-- [ ] Versions et guide ciblé, schéma et build ; tag immuable.
+- [x] Versions et guide ciblé, schéma et build ; tag immuable.
 - [ ] Publication privée, CI et digest/pull vérifiés ; préversion avec guide identique au livrable local.
 - [ ] Documentation finale ; garder branche/worktree/PR en brouillon, sans déploiement ni fusion.

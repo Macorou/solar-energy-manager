@@ -104,10 +104,28 @@ class ChargingTracker:
                         started=state.energy_transaction_started_at
                         start_at=started.timestamp() if started and started.tzinfo else None
                         start_wh=state.energy_transaction_start_wh
-                        if (finite(start_wh) and 0<=start_wh<=raw and start_at is not None
+                        start_valid=finite(start_wh) and start_wh>=0
+                        contradicted=bool(start_valid and raw<start_wh)
+                        applicable=bool(start_valid and start_at is not None
                             and session['started_at']-2<=start_at<=when
-                            and (session['last_at'] is None or start_at>=session['last_at'])):
+                            and (session['last_at'] is None or start_at>=session['last_at']))
+                        continuous=bool(session.get('meter_transaction_id') is None
+                            and session['last_at'] is not None and start_valid
+                            and start_wh<=session['last_meter']<=raw
+                            and (start_at is None or start_at<=session['last_at']))
+                        if applicable and not contradicted:
                             base,base_at=start_wh,start_at
+                        elif continuous and not contradicted:
+                            # Adopt metadata for a transaction already tracked by
+                            # an older release without dropping its next interval.
+                            base,base_at=session['last_meter'],session['last_at']
+                        elif contradicted or session['last_at'] is not None:
+                            session['meter_partial']=True;session['soc_gap_at']=when
+                            session['soc_gap_transaction_id']=transaction
+                        elif start_valid and raw>start_wh:
+                            # The first observed point omits pre-history; do not
+                            # claim that an untracked prefix is complete accounting.
+                            session['meter_partial']=True
                         session['last_meter']=base;session['last_at']=base_at
                         session['meter_transaction_id']=transaction
                         session['points'].append([base_at,session['energy_wh']])
@@ -123,6 +141,7 @@ class ChargingTracker:
                         if delta<0 or not plausible or not finite(session['energy_wh']+delta):
                             session['meter_partial']=True
                             session['soc_gap_at']=when
+                            session['soc_gap_transaction_id']=session.get('meter_transaction_id')
                         else:
                             self.allocate(session,delta,session['last_at'],
                                 min(when,session['ended_at']) if terminal else when,config.sample_max_age_s)
@@ -132,6 +151,7 @@ class ChargingTracker:
                         session['points']=session['points'][-4096:]
                 power=state.observed_power
                 if (session.get('soc_gap_at') is not None and session['energy_wh']==0
+                    and session.get('soc_gap_transaction_id') is None
                     and state.connected and state.observed_state in
                     ('Preparing','SuspendedEV','SuspendedEVSE','Finishing','Available')
                     and power and power.quality==Quality.FRESH
@@ -139,6 +159,7 @@ class ChargingTracker:
                     # Recover the pre-first-Wh fault persisted by 0.1.11 only at
                     # a measured stop. Accounting remains explicitly partial.
                     session['soc_gap_at']=None
+                    session['soc_gap_transaction_id']=None
                 self.soc(session,snapshot,config,device,state,vehicle)
                 if state.energy_terminal:session['terminal_pending']=False
                 if state.connected and state.vehicle_connected is False:
@@ -208,7 +229,7 @@ class ChargingTracker:
         if not session['soc_usable']:
             session['soc_reason']=("Batterie Peugeot indisponible" if not anchor else
                 "Borne hors connexion" if not state.connected else
-                "Compteur d’énergie de la borne incohérent" if session.get('soc_gap_at') is not None else
+                "Compteur d’énergie de la borne incohérent" if session.get('soc_gap_at') is not None and anchor['at']<session['soc_gap_at'] else
                 "Capacité utile de la batterie à configurer" if not vehicle or not vehicle.capacity_kwh else
                 "Index d’énergie de la borne absent" if session['last_at'] is None else
                 "Index d’énergie de la borne trop ancien")

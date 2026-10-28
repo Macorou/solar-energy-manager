@@ -126,6 +126,65 @@ def test_new_transaction_preserves_previous_energy_and_reboot_does_not_rebase_it
     assert tracker.summary('ev')['energy_kwh']==pytest.approx(2.002)
 
 
+@pytest.mark.parametrize('prior_wh',[0,30])
+def test_counter_below_declared_start_is_rejected_even_before_first_tracker_tick(tmp_path,prior_wh):
+    tracker,_,cfg=setup_tracker(tmp_path);now=utcnow();cfg.devices[0].max_power_w=6000
+    tracker.update(frame(now,10000,soc=60,stamp=now),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),10000+prior_wh,soc=60,stamp=now),cfg)
+    bad=frame(now+timedelta(seconds=50),1,soc=60,stamp=now)
+    bad=replace(bad,device_states={'ev':replace(bad.device_states['ev'],observed_state='Preparing',
+        observed_power=Sample(0,'W','HA',bad.at,bad.at),energy_transaction_id=42,
+        energy_transaction_start_wh=5000922,energy_transaction_started_at=now+timedelta(seconds=40))})
+    tracker.update(bad,cfg)
+    assert tracker.summary('ev')['energy_kwh']==pytest.approx(prior_wh/1000)
+    assert tracker.summary('ev')['energy_partial'] is True
+    assert tracker.summary('ev')['soc_usable'] is False
+
+
+@pytest.mark.parametrize('known_start',[False,True])
+def test_active_legacy_transaction_adopts_identity_without_losing_continuous_interval(tmp_path,known_start):
+    tracker,store,cfg=setup_tracker(tmp_path);now=utcnow();cfg.devices[0].max_power_w=6000
+    tracker.update(frame(now,10000,soc=60,stamp=now),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),10030,soc=60,stamp=now),cfg)
+    from app.runtime.charging import ChargingTracker
+    tracker=ChargingTracker(store)
+    reading=frame(now+timedelta(hours=1),14000,soc=60,stamp=now)
+    reading=replace(reading,device_states={'ev':replace(reading.device_states['ev'],energy_transaction_id=42,
+        energy_transaction_start_wh=9000,energy_transaction_started_at=now-timedelta(minutes=10) if known_start else None)})
+    tracker.update(reading,cfg)
+    assert tracker.summary('ev')['energy_kwh']==4
+    assert tracker.summary('ev')['energy_partial'] is False
+    assert tracker.summary('ev')['soc']==70
+
+
+def test_unprovable_legacy_transaction_interval_is_explicitly_partial(tmp_path):
+    tracker,_,cfg=setup_tracker(tmp_path);now=utcnow();cfg.devices[0].max_power_w=6000
+    tracker.update(frame(now,10000,soc=60,stamp=now),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),10030,soc=60,stamp=now),cfg)
+    reading=frame(now+timedelta(seconds=60),5000922,soc=60,stamp=now)
+    reading=replace(reading,device_states={'ev':replace(reading.device_states['ev'],energy_transaction_id=42,
+        energy_transaction_start_wh=5000000)})
+    tracker.update(reading,cfg)
+    assert tracker.summary('ev')['energy_kwh']==pytest.approx(.03)
+    assert tracker.summary('ev')['energy_partial'] is True
+    assert tracker.summary('ev')['soc_usable'] is False
+
+
+def test_new_peugeot_reference_supersedes_gap_reason_when_only_meter_age_blocks(tmp_path):
+    tracker,_,cfg=setup_tracker(tmp_path);now=utcnow()
+    tracker.update(frame(now,10000,stamp=now),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),12000,stamp=now),cfg)
+    tracker.update(frame(now+timedelta(seconds=60),10,stamp=now),cfg)
+    reference_at=now+timedelta(seconds=90)
+    tracker.update(frame(reference_at,110,soc=78,stamp=reference_at),cfg)
+    assert tracker.summary('ev')['soc_usable'] is True
+    stale=frame(now+timedelta(seconds=270),110,soc=78,stamp=reference_at)
+    stale=replace(stale,device_states={'ev':replace(stale.device_states['ev'],energy_measured_at=reference_at)})
+    tracker.update(stale,cfg)
+    assert tracker.summary('ev')['soc_usable'] is False
+    assert tracker.summary('ev')['soc_reason']=='Index d’énergie de la borne trop ancien'
+
+
 @pytest.mark.asyncio
 async def test_planned_charge_recovers_the_live_zero_energy_gap_with_confirmed_stop(tmp_path,monkeypatch):
     from app.runtime.coordinator import Coordinator

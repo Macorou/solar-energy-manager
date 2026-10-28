@@ -1,5 +1,8 @@
 # Mise à jour 0.1.12 — compteur au démarrage de la recharge
 
+Version complétée par [0.1.13](patch-0.1.13.md) pour le premier courant OCPP
+et la confirmation d’arrêt lorsque le0W HA reste inchangé.
+
 Le planning autorisait bien la recharge à 80 % pour 05:45. Le diagnostic en
 lecture seule de 0.1.11 a trouvé une référence Peugeot de 60 % disponible,
 mais un suivi d'énergie partiel sans Wh compté qui rendait le SOC inutilisable.

@@ -6,7 +6,7 @@ est toujours à 0 W avec une ancienne date de changement.
 
 ## Constat vérifié
 
-Le serveur 0.1.12 a accepté3 910 W, puis envoyé un arrêt sept secondes après.
+Le serveur 0.1.12 a accepté 3 910 W, puis envoyé un arrêt sept secondes après.
 Le planning autorisait le réseau et le SOC 60 % était utilisable. Les trois
 courants réseau HA étaient disponibles ; les courants OCPP de la borne étaient
 vides. Le message « Arrêt demandé » remplaçait ensuite le vrai motif de blocage.
@@ -71,9 +71,26 @@ L’acceptation des paramètres et le fonctionnement physique sur cette Wallbox
 restent à vérifier après installation. L’assistant ne déploie pas la Stack et
 n’envoie aucun ordre à la voiture ou au ballon.
 
-Validation locale :289 tests Python réussis et1test Docker réservé à la CI ;
-42 tests d’interface et6parcours navigateur réussis, schéma et build valides.
+Validation locale : 289 tests Python réussis et 1 test Docker réservé à la CI ;
+42 tests d’interface et 6 parcours navigateur réussis, schéma et build valides.
 La revue indépendante a identifié trois points importants, reproduits avant
 correction puis corrigés avec tests : conservation des anciennes mesures à la
-relecture, preuve native obligatoire même pour un0W récent, et plafond/délai
+relecture, preuve native obligatoire même pour un 0 W récent, et plafond/délai
 maintenus durant l’état Preparing. Aucun point mineur différé.
+
+## Publication vérifiée
+
+Le tag`v0.1.13` correspond au commit
+`d431033e28aabcda9f757fdbb01678e30b8acb51`.
+Le [workflow40778390398](https://github.com/Macorou/solar-energy-manager/actions/runs/40778390398)
+est terminé avec succès :289Python,42UI,6navigateur,1Docker, schéma/build/Compose.
+Le paquet est privé, le téléchargement authentifié par digest est vérifié et
+le téléchargement anonyme est refusé.
+
+Digest de l’image Linux amd64 :
+`sha256:3189803e4ebd4c1218e356fcb8b11babd78f137bc2a7db53a442fc19b4b91c5e`.
+
+Les contrôles de publication sont distincts de la revue du logiciel. Le suivi
+temporaire du plan a été adapté à PowerShell pour les permissions Windows,
+sans effet sur le produit. La branche, le worktree et la PR en brouillon sont
+conservés ; aucune fusion dans main ni intervention sur l’installation.

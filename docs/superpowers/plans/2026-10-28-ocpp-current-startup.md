@@ -32,9 +32,9 @@
 ### Task 2 : livraison0.1.13
 **Files:** versions backend/frontend/compose ; docs/deployment/patch-0.1.13.md et livrable outputs/mise-a-jour-portainer-0.1.13.md.
 **Interfaces:** utilise le correctif Task1, image privée amd64 existante.
-- [ ] Versions/schema/types/build/UI/navigateur/Compose ; documenter préparation des mesures et limites matérielles non vérifiées.
-- [ ] Commit, tag immuable, CI complète, image privée/digest/pull vérifiés, préversion et guide identique.
-- [ ] Conserver PR en brouillon, branche et notes locales, aucun déploiement.
+- [x] Versions/schema/types/build/UI/navigateur/Compose ; documenter préparation des mesures et limites matérielles non vérifiées.
+- [x] Commit, tag immuable, CI complète, image privée/digest/pull vérifiés, préversion et guide identique.
+- [x] Conserver PR en brouillon, branche et notes locales, aucun déploiement.
 
 Décisions : suivi du plan par PowerShell car le mappage des chemins Bash ne peut
 pas écrire dans ce sandbox Windows ; sans changement du produit. Packaging
@@ -42,3 +42,11 @@ contrôlé séparément sur le tag final ; faute de contrôle, installation impo
 Firmware et temps de remontée réels hors essais autorisés : aucune action sur
 l’installation ; après mise à jour, un refus de réglage bloque encore le départ
 avec son motif précis. Aucune anomalie mineure différée.
+
+Livraison :v0.1.13 au commitd431033e28aabcda9f757fdbb01678e30b8acb51 ;
+workflow40778390398 réussi (289Python,42UI,6navigateur,1Docker).
+Image privée Linuxamd64,digest
+sha256:3189803e4ebd4c1218e356fcb8b11babd78f137bc2a7db53a442fc19b4b91c5e ;
+pull authentifié vérifié. Préversion publiée, guide5406octets identique au
+livrable local et à l’asset GitHub ; SHA256
+5620f6c0d133fd22a395d25a6fc9a167a22f2d8f954dc630cedccb77cbd5b0c0.

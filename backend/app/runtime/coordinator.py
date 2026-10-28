@@ -24,6 +24,8 @@ class Coordinator:
         self.store,self.app=store,app
         self.adapters=adapters or {}
         self.engine=EnergyEngine()
+        self.engine.network_allowed=store.get('runtime_network_authorizations',{})
+        self.engine.network_stop_pending=set(store.get('runtime_network_stops',[]))
         self.dispatcher=Dispatcher(store)
         self.reservations={}
         for key,value in store.get('runtime_reservations',{}).items():
@@ -206,6 +208,10 @@ class Coordinator:
             specs=[DeviceSpec(d.id,d.kind,min_power_w=d.min_power_w,max_power_w=d.max_power_w,
                 priority=d.priority) for d in config.devices]
             batch=self.engine.evaluate(snapshot,specs,policies,authorizations)
+            # Persist a boundary stop before queueing it: a crash cannot turn
+            # an expired network authorization into a new cloud grace period.
+            self.store.set('runtime_network_authorizations',self.engine.network_allowed)
+            self.store.set('runtime_network_stops',sorted(self.engine.network_stop_pending))
             if waiting_manual_stops:
                 batch=replace(batch,reasons=batch.reasons|{key:
                     'Chauffe demandée : attente de confirmation de l’arrêt précédent'

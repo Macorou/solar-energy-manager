@@ -23,6 +23,8 @@ class EnergyEngine:
         self.requested = {}
         self.running_since = {}
         self.stopped_at = {}
+        self.network_allowed = {}
+        self.network_stop_pending = set()
 
     def forget(self, device_id):
         self.requested.pop(device_id,None)
@@ -75,7 +77,15 @@ class EnergyEngine:
             desired, reason = 0.0, 'En attente'
             eligible = bool(policy and policy.armed and state and state.connected and not state.fault)
             auth = authorizations.get(spec.id)
-            network = False
+            network = bool(policy and (
+                policy.mode=='manual' and policy.manual_until and now<policy.manual_until
+                or policy.mode=='off_peak_solar' and policy.off_peak
+                or policy.mode=='planned' and auth and auth.allow_grid))
+            network_closed = (self.network_allowed.get(spec.id,False) and not network
+                              and policy and policy.mode in ('solar','planned','off_peak_solar'))
+            self.network_allowed[spec.id] = network
+            if network_closed and running: self.network_stop_pending.add(spec.id)
+            if not running: self.network_stop_pending.discard(spec.id)
             if not eligible:
                 reason = 'Appareil non activé ou indisponible'
             elif policy.mode=='off':
@@ -141,6 +151,10 @@ class EnergyEngine:
                 desired=0
                 remaining=(policy.start_not_before-now).total_seconds()
                 reason=f'Temporisation native avant démarrage ({remaining:.0f} s)'
+            if spec.id in self.network_stop_pending:
+                desired=0
+                reason='Fin des heures creuses' if spec.kind=='water_heater' else 'Fin du créneau réseau'
+                self.timers.reached(spec.id+':start',False,0,mono)
             if desired < spec.min_power_w:
                 desired = 0
             occupied = max(desired,committed.get(spec.id,0))

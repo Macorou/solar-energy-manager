@@ -9,7 +9,7 @@ def select_authorization(vehicle_id, now, occurrences, default_soc_target):
     deadline = min(o.deadline_at for o in applicable)
     same = [o for o in applicable if o.deadline_at==deadline]
     target = max(o.target_soc for o in same)
-    grid = any(now>=o.network_start_at for o in same)
+    grid = any(now>=o.network_start_at for o in applicable)
     return ChargeAuthorization(vehicle_id,grid,True,target,deadline,
         'Complément autorisé par le planning' if grid else 'Solaire avant le créneau réseau')
 

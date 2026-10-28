@@ -52,8 +52,14 @@ rendement, courant par phase, état voiture, énergie/coût/%solaire/SOC estimé
 - [x] UI GREEN, TypeScript/build et Python suite puis commit.
 
 ### Task4 : revue et livraison
-- [ ] Revue fraîche du diff complet15933fa..HEAD ; corrections importantes RED→GREEN.
-- [ ] Bump0.1.10 et guide avec limites/configuration ; schema/build/Compose.
-- [ ] Commit/tag immuable et publication privée autorisée ; CI Python/UI/browser/Docker.
-- [ ] Vérifier image privée/digest, release et guide ; aucun déploiement matériel.
+- [x] Revue fraîche du diff complet15933fa..HEAD ; corrections importantes RED→GREEN.
+- [x] Bump0.1.10 et guide avec limites/configuration ; schema/build/Compose.
+- [x] Commit/tag immuable et publication privée autorisée ; CI Python/UI/browser/Docker.
+- [x] Vérifier image privée/digest, release et guide ; aucun déploiement matériel.
+
+Livraison : tag v0.1.10 au commit b8f87041855d33f2d8772305c7119e094d5cc2fc,
+workflow 40755012215 réussi ; Python230, UI42, navigateur6, Docker1.
+Release privée publiée comme préversion avec guide identique au livrable local
+(SHA256 fbe329772a716c92c65f2734d37fbc301b52bbe74774c975fb2dc407b30101b2).
+Image et digest vérifiés par le workflow ; aucune fusion ni action matérielle.
 

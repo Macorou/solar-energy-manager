@@ -1,9 +1,13 @@
 # Mise à jour0.1.9 — recharge dynamique, bilan et batterie estimée
 
+Version intermédiaire : utiliser **0.1.10**, qui ajoute le dernier correctif de
+preuve de réussite du planning. Le guide final est `patch-0.1.10.md`.
+La construction 0.1.9 a réussi : workflow 40754047780, image privée vérifiée,
+digest `sha256:a97cd3954aaad11c2271a494d03b9ddedadb427cf29c69681221c1abcf488d79`.
+
 ## Installation dans Portainer
 
-Image privée prévue : `ghcr.io/macorou/solar-energy-manager:0.1.9` (linux/amd64).
-La publication, le digest et les contrôles définitifs seront renseignés après CI.
+Image intermédiaire publiée : `ghcr.io/macorou/solar-energy-manager:0.1.9` (linux/amd64).
 
 Dans la Stack existante, modifier uniquement le tag de l'image, ou passer la
 variable `SEM_VERSION` à `0.1.9` si la ligne utilise cette variable. Conserver

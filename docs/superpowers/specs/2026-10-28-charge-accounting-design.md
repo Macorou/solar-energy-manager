@@ -63,6 +63,6 @@ jamais seul charging_state Peugeot ancien. Garder Observation séparément.
 
 ## Validation
 Tests domaine/HA/OCPP, coordinateur réel et frontend ; schema/build/CI Docker
-et navigateur. Révision indépendante finale. Publication privée0.1.9 sur branche
+et navigateur. Révision indépendante finale. Publication privée0.1.10 sur branche
 existante, jamais déplacer un ancien tag ni déployer le serveur.
 

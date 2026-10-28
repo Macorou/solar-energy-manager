@@ -1,9 +1,14 @@
-# Mise à jour0.1.10 — recharge dynamique, bilan et batterie estimée
+# Mise à jour 0.1.10 — recharge dynamique, bilan et batterie estimée
 
 ## Installation dans Portainer
 
-Image privée prévue : `ghcr.io/macorou/solar-energy-manager:0.1.10` (linux/amd64).
-La publication, le digest et les contrôles définitifs seront renseignés après CI.
+Image privée publiée : `ghcr.io/macorou/solar-energy-manager:0.1.10` (linux/amd64).
+
+Digest immuable :
+`sha256:196a42f4e7259e8e00ad54a316a43df88c739d60fb732bea2e152cf3b41d3d7b`.
+
+Code livré : `b8f87041855d33f2d8772305c7119e094d5cc2fc`, tag `v0.1.10`.
+[Construction et vérifications réussies](https://github.com/Macorou/solar-energy-manager/actions/runs/40755012215).
 
 Dans la Stack existante, modifier uniquement le tag de l'image, ou passer la
 variable `SEM_VERSION` à `0.1.10` si la ligne utilise cette variable. Conserver
@@ -155,6 +160,19 @@ reconciliée avec l'index terminal tardif ; tant qu'il manque, le bilan reste pa
 
 ## Contrôles de livraison
 
-À compléter après revue et CI. Tests locaux initiaux : Python213, UI39, build,
-5 parcours navigateur dont affichage320/390/1280px. Aucun essai matériel du
-nouveau limiteur, suivi de coût ou SOC estimé effectué par l'assistant.
+Vérification finale du tag : Python 230 réussis / 1 test Docker ignoré dans la
+suite ordinaire puis exécuté séparément avec succès ; UI 42 ; navigateur 6 ;
+Docker 1, schéma/types/build et Compose réussis. Les parcours navigateur passent
+aussi localement, dont l'affichage 320/390/1280 px et le formulaire de référence SOC.
+Le job de publication vérifie le paquet privé, le téléchargement authentifié
+par digest et le refus d'un téléchargement anonyme.
+
+Revue indépendante : six défauts importants corrigés avec reproductions puis
+tests ; le décalage du but affiché en manuel a aussi été corrigé. Un dernier
+cas de planning distingue SOC brut ancien non suivi et estimation fiable ; il
+est inclus dans 0.1.10. L'image 0.1.9 intermédiaire reste immuable ; utiliser 0.1.10.
+Aucun point mineur différé. Les choix et limites de calcul figurent ci-dessus.
+
+Aucun essai matériel du nouveau limiteur, du suivi de coût ou du SOC estimé,
+ni aucun déploiement Portainer, effectué par l'assistant. La branche de travail
+et la PR en brouillon existantes sont conservées ; aucune fusion dans main.

@@ -3,6 +3,7 @@ import {DeviceCard,UnconfiguredDeviceCard} from './DeviceCard'
 import {Icon} from './Icon'
 import {ScheduleTimeline} from './ScheduleTimeline'
 import {housePower,sumDevicePower} from './dashboard'
+import {watts} from '../api/client'
 
 export function Overview({settings,state,connections,onAction,onNavigate}:{settings:Settings;state:LiveState|null;
   connections:Record<string,boolean>;onAction:(id:string,action:string)=>void;onNavigate:(page:string)=>void}) {
@@ -18,9 +19,15 @@ export function Overview({settings,state,connections,onAction,onNavigate}:{setti
     reason:'En attente de mesures',reservation_w:0,command:null,authorization:null}
   return <>
     <div className="stat-grid">{stats.map(stat=><section className={'stat-card '+stat.icon} key={stat.icon} aria-label={stat.label} title={stat.detail}>
-      <span className="stat-icon"><Icon name={stat.icon} size={43}/></span><div className="stat-metric"><span>{stat.label}</span><strong>{stat.value==null?'—':(stat.value/1000).toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1})+' kW'}</strong>
+      <span className="stat-icon"><Icon name={stat.icon} size={43}/></span><div className="stat-metric"><span>{stat.label}</span><strong>{watts(stat.value)}</strong>
         <div className="stat-meter" aria-hidden="true"><i style={{width:stat.value==null?'0%':Math.min(100,Math.abs(stat.value)/stat.scale*100)+'%'}}/></div></div>
     </section>)}</div>
+    {state?.phases&&Object.keys(state.phases).length>0&&<section className="panel" aria-label="Gestion de la charge par phase">
+      <div className="section-title"><h2>Réseau · trois phases</h2><span className="badge neutral">{state.phase_control_enabled?'Limitation active':'Mesures en observation'}</span></div>
+      <div className="phase-readings">{Object.entries(state.phases).map(([phase,data])=><div key={phase}><strong>{phase}</strong>
+        <span>{data.current?.usable?data.current.value?.toLocaleString('fr-FR',{maximumFractionDigits:1})+' A':'—'} / {data.limit_a} A</span>
+        <span>{data.power?.usable?watts(data.power.value):'Puissance —'} · {data.voltage?.usable?data.voltage.value?.toLocaleString('fr-FR',{maximumFractionDigits:0})+' V':'Tension —'}</span></div>)}</div>
+    </section>}
     <div className="device-grid">{(['charger','water_heater'] as const).flatMap(kind=>{
       const devices=settings.devices.filter(device=>device.kind===kind)
       return devices.length?devices.map(config=><DeviceCard key={config.id} device={live(config)} telemetry={state?.vehicles[config.vehicle_id]} timezone={settings.timezone} onAction={onAction}/>):

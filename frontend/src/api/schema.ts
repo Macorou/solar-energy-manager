@@ -861,6 +861,8 @@ export interface components {
              * @enum {integer}
              */
             phases: 1 | 3;
+            /** Grid Phases */
+            grid_phases?: ("L1" | "L2" | "L3")[];
             /**
              * Voltage
              * @default 230
@@ -934,6 +936,15 @@ export interface components {
              * @default
              */
             house_entity: string;
+            /**
+             * Price Entity
+             * @default
+             */
+            price_entity: string;
+            /** Phases */
+            phases?: {
+                [key: string]: components["schemas"]["PhaseConfig"];
+            };
             /**
              * Invert Grid
              * @default false
@@ -1011,6 +1022,29 @@ export interface components {
             /** Client Secret */
             client_secret?: string | null;
         };
+        /** PhaseConfig */
+        PhaseConfig: {
+            /**
+             * Current Entity
+             * @default
+             */
+            current_entity: string;
+            /**
+             * Voltage Entity
+             * @default
+             */
+            voltage_entity: string;
+            /**
+             * Power Entity
+             * @default
+             */
+            power_entity: string;
+            /**
+             * Max Current A
+             * @default 20
+             */
+            max_current_a: number;
+        };
         /** Scenario */
         Scenario: {
             /**
@@ -1043,6 +1077,21 @@ export interface components {
              * @default 100
              */
             export_margin_w: number;
+            /**
+             * Phase Control Enabled
+             * @default false
+             */
+            phase_control_enabled: boolean;
+            /**
+             * Phase Margin A
+             * @default 1
+             */
+            phase_margin_a: number;
+            /**
+             * Solar Price Per Kwh
+             * @default 0
+             */
+            solar_price_per_kwh: number;
             /**
              * Sample Max Age S
              * @default 30

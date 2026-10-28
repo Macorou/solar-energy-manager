@@ -6,6 +6,6 @@ export async function api<T=unknown>(path:string,method='GET',body?:unknown):Pro
     'Configuration non valide. Vérifiez les champs et les associations.')
   return result as T
 }
-export const watts=(value:number|null|undefined)=>value==null?'—':Math.abs(value)>=1000?
+export const watts=(value:number|null|undefined)=>value==null||!Number.isFinite(value)?'—':Math.abs(value)>=1000?
   (value/1000).toLocaleString('fr-FR',{maximumFractionDigits:2})+' kW':Math.round(value).toLocaleString('fr-FR')+' W'
 export const date=(value:string|null|undefined)=>value?new Date(value).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):'Aucune mesure'

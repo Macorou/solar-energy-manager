@@ -77,3 +77,13 @@ def test_ocpp_energy_only_and_current_frames_are_not_lost(tmp_path):
     assert registry.states['ev'].energy_wh==12500
     assert registry.states['ev'].energy_measured_at.isoformat()==stamp
     assert registry.states['ev'].currents['L1'].value==10
+
+
+def test_a_charge_below_minimum_does_not_reserve_current_it_will_never_use():
+    from app.engine.phase_limits import phase_power_limit
+    now=utcnow();s=lambda v,u='W':Sample(v,u,'test',now,now)
+    snapshot=SiteSnapshot(now,phase_control_enabled=True,phase_currents={'L1':s(17,'A')},
+        phase_limits_a={'L1':20},device_states={'ev':DeviceState('ev',s(0),'Preparing',True)})
+    extra={};power,_=phase_power_limit(snapshot,DeviceSpec('ev','charger',grid_phases=('L1',)),3700,extra)
+    assert power==0
+    assert extra.get('L1',0)==0

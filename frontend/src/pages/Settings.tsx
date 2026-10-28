@@ -2,6 +2,7 @@ import {useState} from 'react'
 import type {Settings} from '../api/types'
 import type {Run} from './Devices'
 import {api} from '../api/client'
+import {PhaseSettings} from '../components/PhaseSettings'
 export function SettingsPage({settings,save,run,connections}:{settings:Settings;save:(value:Settings)=>Promise<void>;run:Run;connections:Record<string,boolean>}) {
   const [value,set]=useState(structuredClone(settings))
   const [haToken,setHaToken]=useState(''),[password,setPassword]=useState(''),[refresh,setRefresh]=useState('')
@@ -10,17 +11,22 @@ export function SettingsPage({settings,save,run,connections}:{settings:Settings;
     <section className="panel"><h2>Installation</h2><form onSubmit={e=>{e.preventDefault();run(()=>save(value),'Réglages enregistrés')}}><div className="form-grid">
       <label>Limite totale de consommation (W)<input required type="number" min="1" value={value.site_limit_w??''} onChange={e=>set({...value,site_limit_w:e.target.value?Number(e.target.value):null})}/></label>
       <label>Marge d’injection solaire (W)<input required type="number" min="0" value={value.export_margin_w} onChange={e=>set({...value,export_margin_w:Number(e.target.value)})}/></label>
+      <label className="check"><input type="checkbox" checked={value.phase_control_enabled||false} onChange={e=>set({...value,phase_control_enabled:e.target.checked})}/>Limiter la recharge par phase</label>
+      <label>Marge de courant par phase (A)<input type="number" min="0" max="100" step=".1" value={value.phase_margin_a??1} onChange={e=>set({...value,phase_margin_a:Number(e.target.value)})}/></label>
+      <label>Coût du solaire autoconsommé (€/kWh)<input type="number" min="0" max="100" step=".0001" value={value.solar_price_per_kwh??0} onChange={e=>set({...value,solar_price_per_kwh:Number(e.target.value)})}/></label>
       <label>Âge maximal des mesures électriques (s)<input type="number" min="5" max="3600" required value={value.sample_max_age_s} onChange={e=>set({...value,sample_max_age_s:Number(e.target.value)})}/></label>
       <label>Fuseau horaire<input required value={value.timezone} onChange={e=>set({...value,timezone:e.target.value})}/></label></div><button className="primary">Enregistrer les réglages</button></form>
-      <p className="hint">La limite totale ne remplace pas les protections du tableau. Pour une installation triphasée, vérifier séparément les limites de chaque phase.</p></section>
+      <p className="hint">La limite totale et les limites par phase se cumulent. Configurez les capteurs et la phase utilisée par la borne avant d’activer la limitation. Celle-ci nécessite le courant réel de recharge OCPP et ne remplace pas les protections du tableau.</p></section>
     <section className="panel"><div className="section-title"><h2>Home Assistant · mesures</h2><span className={'badge '+(connections.home_assistant?'green':'neutral')}>{connections.home_assistant?'Accès enregistré':'À connecter'}</span></div>
       <div className="form-grid"><label>Adresse Home Assistant<input type="url" placeholder="https://homeassistant.exemple.fr" value={value.home_assistant.url} onChange={e=>set({...value,home_assistant:{...value.home_assistant,url:e.target.value}})}/></label>
         <label>Jeton longue durée<input type="password" autoComplete="new-password" placeholder={connections.home_assistant?'Accès conservé si vide':''} value={haToken} onChange={e=>setHaToken(e.target.value)}/></label>
         <label>Entité puissance réseau signée<input placeholder="sensor.puissance_reseau" value={value.home_assistant.grid_entity} onChange={e=>set({...value,home_assistant:{...value.home_assistant,grid_entity:e.target.value}})}/></label>
         <label>Entité production solaire<input placeholder="sensor.production_solaire" value={value.home_assistant.solar_entity} onChange={e=>set({...value,home_assistant:{...value.home_assistant,solar_entity:e.target.value}})}/></label>
+        <label>Entité prix actuel du réseau (€/kWh)<input placeholder="sensor.prix_electricite_actuel" value={value.home_assistant.price_entity||''} onChange={e=>set({...value,home_assistant:{...value.home_assistant,price_entity:e.target.value.trim()}})}/></label>
         <label>Entité consommation totale de la maison (facultatif)<input placeholder="sensor.consommation_totale_maison" value={value.home_assistant.house_entity||''} onChange={e=>set({...value,home_assistant:{...value.home_assistant,house_entity:e.target.value.trim()}})}/></label>
         {value.devices.map(d=><label key={d.id}>Puissance mesurée · {d.name}<input placeholder="sensor.puissance_appareil" value={value.home_assistant.device_power_entities[d.id]||''} onChange={e=>set({...value,home_assistant:{...value.home_assistant,device_power_entities:{...value.home_assistant.device_power_entities,[d.id]:e.target.value}}})}/></label>)}</div>
       <p className="hint">La consommation maison inclut la voiture et le ballon, sur toutes les phases. Ce capteur facultatif doit mesurer la consommation totale en W ou kW. Si le champ reste vide, la carte calcule réseau + solaire. Avec un capteur configuré indisponible, elle affiche « — ».</p>
+      <PhaseSettings value={value.home_assistant} onChange={home_assistant=>set({...value,home_assistant})}/>
       <label className="check"><input type="checkbox" checked={value.home_assistant.invert_grid} onChange={e=>set({...value,home_assistant:{...value.home_assistant,invert_grid:e.target.checked}})}/>Inverser le signe réseau (la convention attendue est import positif, export négatif)</label>
       <div className="actions"><button onClick={()=>run(()=>api('/connections/home-assistant/test','POST',{config:value.home_assistant,token:haToken||null}),'Connexion HA vérifiée')}>Tester Home Assistant</button>
         <button className="primary" onClick={()=>run(async()=>{await api('/connections/home-assistant','PUT',{config:value.home_assistant,token:haToken||null});setHaToken('')},'Connexion HA enregistrée')}>Enregistrer Home Assistant</button></div>

@@ -27,10 +27,11 @@ def mix_context(snapshot,solar_price):
     fraction=None
     if grid is not None and solar is not None and solar>=0:
         used=max(0,solar-max(0,-grid)); imported=max(0,grid)
-        if used+imported>0: fraction=imported/(used+imported)
+        scale=max(used,imported)
+        if scale>0: fraction=(imported/scale)/(used/scale+imported/scale)
     effective=(fraction*(price or 0)+(1-fraction)*solar_price
                if fraction is not None and (price is not None or fraction==0) else None)
-    return fraction,price,effective
+    return fraction,price,effective if finite(effective) else None
 
 
 class ChargingTracker:
@@ -75,7 +76,9 @@ class ChargingTracker:
                             session['points']=[[when,0.]]
                     elif when>session['last_at']:
                         delta=raw-session['last_meter']
-                        if delta<0:
+                        plausible=(not device.max_power_w or
+                            delta<=device.max_power_w*(when-session['last_at'])/3600*1.5+50)
+                        if delta<0 or not plausible or not finite(session['energy_wh']+delta):
                             session['meter_partial']=True
                             session['soc_gap_at']=when
                         else:
@@ -104,8 +107,10 @@ class ChargingTracker:
                 session['allocated_wh']+=energy
                 session['solar_wh']+=energy*(1-fraction)
                 if price is not None or fraction==0:
-                    session['cost_eur']+=energy/1000*(fraction*(price or 0)+(1-fraction)*solar_price)
-                    session['priced_wh']+=energy
+                    cost=energy/1000*(fraction*(price or 0)+(1-fraction)*solar_price)
+                    if finite(cost) and finite(session['cost_eur']+cost):
+                        session['cost_eur']+=cost
+                        session['priced_wh']+=energy
 
     def soc(self,session,snapshot,config,device,state,vehicle):
         raw=snapshot.vehicle_telemetry.get(device.vehicle_id)
@@ -131,7 +136,8 @@ class ChargingTracker:
             session['soc_usable']=bool(state.connected and (session.get('soc_gap_at') is None or
                 anchor['at']>=session['soc_gap_at']) and
                 (idle or (session['last_at'] is not None and now-session['last_at']<=max(90,config.sample_max_age_s))))
-        elif raw and raw.fresh(snapshot.at,config.peugeot.max_age_s):
+        elif (raw and raw.fresh(snapshot.at,config.peugeot.max_age_s)
+              and (idle or now-session['started_at']<=90)):
             session['soc']=raw.soc;session['soc_estimated']=False;session['soc_usable']=True
 
     def target_reached(self,device_id,target):

@@ -1787,6 +1787,18 @@
             "title": "Phases",
             "default": 1
           },
+          "grid_phases": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "L1",
+                "L2",
+                "L3"
+              ]
+            },
+            "type": "array",
+            "title": "Grid Phases"
+          },
           "voltage": {
             "type": "number",
             "maximum": 300.0,
@@ -1905,6 +1917,25 @@
             "type": "string",
             "title": "House Entity",
             "default": ""
+          },
+          "price_entity": {
+            "type": "string",
+            "title": "Price Entity",
+            "default": ""
+          },
+          "phases": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PhaseConfig"
+            },
+            "propertyNames": {
+              "enum": [
+                "L1",
+                "L2",
+                "L3"
+              ]
+            },
+            "type": "object",
+            "title": "Phases"
           },
           "invert_grid": {
             "type": "boolean",
@@ -2074,6 +2105,35 @@
         ],
         "title": "PeugeotInput"
       },
+      "PhaseConfig": {
+        "properties": {
+          "current_entity": {
+            "type": "string",
+            "title": "Current Entity",
+            "default": ""
+          },
+          "voltage_entity": {
+            "type": "string",
+            "title": "Voltage Entity",
+            "default": ""
+          },
+          "power_entity": {
+            "type": "string",
+            "title": "Power Entity",
+            "default": ""
+          },
+          "max_current_a": {
+            "type": "number",
+            "maximum": 1000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Current A",
+            "default": 20
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PhaseConfig"
+      },
       "Scenario": {
         "properties": {
           "surplus_w": {
@@ -2125,6 +2185,25 @@
             "minimum": 0.0,
             "title": "Export Margin W",
             "default": 100
+          },
+          "phase_control_enabled": {
+            "type": "boolean",
+            "title": "Phase Control Enabled",
+            "default": false
+          },
+          "phase_margin_a": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Phase Margin A",
+            "default": 1
+          },
+          "solar_price_per_kwh": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Solar Price Per Kwh",
+            "default": 0
           },
           "sample_max_age_s": {
             "type": "integer",

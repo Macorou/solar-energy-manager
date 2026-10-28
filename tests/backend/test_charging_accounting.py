@@ -86,6 +86,7 @@ async def test_runtime_stops_manual_car_at_estimated_target_even_with_repeated_o
     tracker,store,cfg=setup_tracker(tmp_path);now=utcnow();old=now-timedelta(hours=1)
     cfg.devices[0].armed=True;cfg.devices[0].mode='manual'
     cfg.devices[0].min_power_w=1380;cfg.devices[0].max_power_w=3700
+    cfg.vehicles[0].capacity_kwh=.4  # Small simulated battery:20Wh means5%.
     store.save_settings(cfg.model_dump(mode='json'))
     store.set('manual_controls',{'ev':{'until':(now+timedelta(hours=2)).isoformat(),'previous_mode':'solar'}})
     class Adapter:
@@ -95,7 +96,7 @@ async def test_runtime_stops_manual_car_at_estimated_target_even_with_repeated_o
     for job in runtime.command_tasks.values(): await job
     assert runtime.dispatcher.records['ev']['action']=='set_power'
     # Start is observed before a second meter interval raises the effective SOC.
-    await runtime.tick(frame(now+timedelta(seconds=30),12000,stamp=old))
+    await runtime.tick(frame(now+timedelta(seconds=30),10020,stamp=old))
     for job in runtime.command_tasks.values(): await job
     assert runtime.dispatcher.records['ev']['action']=='suspend'
     assert runtime.public_state()['devices'][0]['charging']['soc']==80
@@ -146,3 +147,24 @@ def test_unplug_keeps_last_session_and_replug_starts_new_counters(tmp_path):
     assert not tracker.summary('ev')['active']
     tracker.update(frame(now+timedelta(seconds=90),12000,soc=70,stamp=now+timedelta(seconds=90)),cfg)
     assert tracker.summary('ev')['energy_kwh']==0
+
+
+def test_missing_meter_does_not_permit_targeted_charging_indefinitely_on_fresh_soc(tmp_path):
+    tracker,_,cfg=setup_tracker(tmp_path);now=utcnow()
+    first=frame(now,10000,stamp=now)
+    first=replace(first,device_states={'ev':replace(first.device_states['ev'],energy_wh=None,energy_measured_at=None)})
+    tracker.update(first,cfg)
+    later=frame(now+timedelta(minutes=3),10000,stamp=now)
+    later=replace(later,device_states={'ev':replace(later.device_states['ev'],energy_wh=None,energy_measured_at=None)})
+    tracker.update(later,cfg)
+    assert tracker.summary('ev')['soc_usable'] is False
+
+
+def test_impossible_counter_jump_does_not_create_energy_or_infinite_cost(tmp_path):
+    tracker,_,cfg=setup_tracker(tmp_path);cfg.devices[0].max_power_w=3700
+    now=utcnow();old=now-timedelta(hours=1)
+    tracker.update(frame(now,10000,stamp=old),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),1e308,price=1e308,stamp=old),cfg)
+    assert tracker.summary('ev')['energy_kwh']==0
+    assert tracker.summary('ev')['energy_partial'] is True
+    assert tracker.summary('ev')['soc_usable'] is False

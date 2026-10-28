@@ -17,7 +17,7 @@ export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:
     setEditing({id:createId(),name:kind==='charger'?'Wallbox Pulsar Plus':'Ariston NUOS',kind,mode:'off',
       armed:false,capabilities_verified:false,offline_behavior_verified:false,priority:settings.devices.length+1,
       min_power_w:kind==='charger'?1380:700,max_power_w:kind==='charger'?3700:700,min_current_a:6,max_current_a:16,
-      phases:1,voltage:230,charge_point_id:'',allow_insecure_identity:false,connector_id:1,vehicle_id:kind==='charger'?(settings.vehicles[0]?.id||''):'',
+      phases:1,grid_phases:[],voltage:230,charge_point_id:'',allow_insecure_identity:false,connector_id:1,vehicle_id:kind==='charger'?(settings.vehicles[0]?.id||''):'',
       gateway_id:'',target:kind==='charger'?null:55,solar_target:null,default_soc_target:80,confirmation_timeout_s:kind==='charger'?90:300,cloud:{...cloudDefaults}})
   }
   return <><div className="section-title"><p className="subtitle">{kind==='charger'?'Enregistrez vos bornes OCPP et associez chaque véhicule.':'Une demande native de chauffe, avec sa puissance électrique mesurée.'}</p>
@@ -49,7 +49,9 @@ export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:
           {kind==='charger'?<><label>Identifiant de la borne OCPP<input required value={editing.charge_point_id} onChange={e=>setEditing({...editing,charge_point_id:e.target.value})}/></label>
             <label>Numéro de connecteur<input type="number" min="1" required value={editing.connector_id} onChange={e=>setEditing({...editing,connector_id:Number(e.target.value)})}/></label>
             <label>Véhicule associé<select required value={editing.vehicle_id} onChange={e=>setEditing({...editing,vehicle_id:e.target.value})}><option value="">Choisir</option>{settings.vehicles.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
-            <label>Phases<select value={editing.phases} onChange={e=>setEditing({...editing,phases:Number(e.target.value) as 1|3})}><option value="1">Monophasé</option><option value="3">Triphasé</option></select></label>
+            <label>Phases<select value={editing.phases} onChange={e=>setEditing({...editing,phases:Number(e.target.value) as 1|3,grid_phases:[]})}><option value="1">Monophasé</option><option value="3">Triphasé</option></select></label>
+            <label>Phase réseau utilisée<select value={(editing.grid_phases||[]).join(',')} onChange={e=>setEditing({...editing,grid_phases:e.target.value?e.target.value.split(',') as Device['grid_phases']:[]})}>
+              <option value="">À renseigner pour la limitation par phase</option>{editing.phases===1?['L1','L2','L3'].map(p=><option key={p} value={p}>{p}</option>):<><option value="L1,L2,L3">L1, L2, L3</option><option value="L2,L3,L1">L2, L3, L1</option><option value="L3,L1,L2">L3, L1, L2</option></>}</select></label>
             <label>Courant minimal (A)<input required type="number" min="6" value={editing.min_current_a} onChange={e=>setEditing({...editing,min_current_a:Number(e.target.value)})}/></label>
             <label>Courant maximal (A)<input required type="number" min="6" max="80" value={editing.max_current_a} onChange={e=>setEditing({...editing,max_current_a:Number(e.target.value)})}/></label>
             <label>Objectif solaire habituel (%)<input type="number" min="1" max="100" required value={editing.default_soc_target} onChange={e=>setEditing({...editing,default_soc_target:Number(e.target.value)})}/></label></>:
@@ -65,7 +67,9 @@ export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:
       {settings.vehicles.map(v=><div className="list-row" key={v.id}><div><strong>{v.name}</strong><span className="hint">{v.vin?'VIN renseigné':'VIN à renseigner'}</span></div><button onClick={()=>setVehicle(v)}>Modifier</button></div>)}
       {vehicle&&<form onSubmit={e=>{e.preventDefault();run(async()=>{await save({...settings,vehicles:[...settings.vehicles.filter(v=>v.id!==vehicle.id),vehicle]});setVehicle(null)},'Véhicule enregistré')}}>
         <div className="form-grid"><label>Nom du véhicule<input required value={vehicle.name} onChange={e=>setVehicle({...vehicle,name:e.target.value})}/></label><label>VIN Peugeot<input value={vehicle.vin} onChange={e=>setVehicle({...vehicle,vin:e.target.value.trim().toUpperCase()})}/></label>
-          <label>Capacité utile connue (kWh, facultatif)<input type="number" min="1" step=".1" value={vehicle.capacity_kwh??''} onChange={e=>setVehicle({...vehicle,capacity_kwh:e.target.value?Number(e.target.value):null})}/></label></div>
+          <label>Capacité utile connue (kWh, facultatif)<input type="number" min="1" step=".1" value={vehicle.capacity_kwh??''} onChange={e=>setVehicle({...vehicle,capacity_kwh:e.target.value?Number(e.target.value):null})}/></label>
+          <label>Rendement de charge (%)<input required type="number" min="1" max="100" step="1" value={Math.round(vehicle.efficiency*100)} onChange={e=>setVehicle({...vehicle,efficiency:Number(e.target.value)/100})}/></label></div>
+        <p className="hint">La capacité utile et le rendement permettent d’estimer la batterie à partir des kWh de la borne et d’arrêter à la cible entre deux mesures Peugeot. Sans capacité ou énergie fiable, une ancienne mesure seule ne permet pas de poursuivre.</p>
         <div className="actions"><button className="primary">Enregistrer le véhicule</button><button type="button" onClick={()=>setVehicle(null)}>Annuler</button></div></form>}</section>}
   </>
 }

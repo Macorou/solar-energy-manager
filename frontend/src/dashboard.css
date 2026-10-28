@@ -36,6 +36,17 @@
 .solar-context>b {color:#66778b;font-weight:550}
 .tariff-context {padding-left:12px;border-left:1px solid #d9e1ed}
 .tariff-context.off-peak {color:#278a7c}
+.vehicle-connection {font-size:12px;color:#48617f;margin:0 0 12px;overflow-wrap:anywhere}
+.charge-session {border-top:1px solid #e7edf5;padding:14px 0 4px;min-width:0}
+.charge-totals,.phase-readings {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.charge-totals div,.phase-readings div {display:flex;flex-direction:column;gap:6px;min-width:0}
+.charge-totals span,.phase-readings span {font-size:12px;color:#69809d;overflow-wrap:anywhere}
+.charge-totals strong {font-size:20px;overflow-wrap:anywhere}
+.phase-readings strong {font-size:18px}
+.phase-settings {margin:20px 0}
+.phase-settings fieldset {min-width:0;border:1px solid #dce6f2;border-radius:10px;margin:12px 0;padding:16px}
+.phase-settings legend {font-weight:700;padding:0 6px}
+@media(max-width:440px){.charge-totals{gap:8px}.charge-totals strong{font-size:17px}.charge-totals span{font-size:10px}.phase-readings{grid-template-columns:1fr}}
 button.text-button {border:0;padding:0;min-height:24px;background:transparent;box-shadow:none;color:#738299;font-size:11px;font-weight:450}
 button.text-button:hover {color:#267bc9;background:transparent;text-decoration:underline}
 .dashboard-context .text-button {font-size:10px;min-height:18px}

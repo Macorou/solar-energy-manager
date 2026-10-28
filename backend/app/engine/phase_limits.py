@@ -38,6 +38,7 @@ def phase_power_limit(snapshot,spec,desired_w,extra):
             snapshot.phase_limits_a.get(phase,0),snapshot.phase_margin_a))
     amps=math.floor(max(0,requested)+1e-9)
     limited=amps*spec.voltage*count if amps>=spec.min_current_a else 0
+    if not limited: return 0,'Limite de courant sur la phase réseau'
     # Reserve only additional current, measured current is already in the grid meter.
     for index,phase in enumerate(spec.grid_phases):
         own=state.currents.get('L'+str(index+1)) if state else None

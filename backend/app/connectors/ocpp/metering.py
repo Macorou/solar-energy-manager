@@ -39,6 +39,6 @@ async def prepare_metering(station):
             return ('Télémétrie OCPP : redémarrage de la borne requis' if result.status=='RebootRequired'
                     else 'Télémétrie OCPP : réglage des mesures refusé')
     if changes:rows=await read()
-    if not set(REQUIRED).issubset(measurands(rows)) or not 1<=interval(rows)<=10:
+    if not set(desired).issubset(measurands(rows)) or not 1<=interval(rows)<=10:
         return 'Télémétrie OCPP : réglages des mesures non confirmés'
     return None

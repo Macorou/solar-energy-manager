@@ -25,9 +25,9 @@
 ### Task 1 : correctif OCPP et régulation
 **Files:** backend/app/connectors/ocpp/registry.py, metering.py ; backend/app/domain/devices.py ; backend/app/engine/engine.py, phase_limits.py ; backend/app/runtime/coordinator.py, dispatcher.py ; tests/protocol/test_ocpp_metering.py ; tests/runtime/test_ocpp_stop_confirmation.py ; tests/backend/test_phase_limits.py.
 **Interfaces:** prepare_metering(station) configure/relit la seule télémétrie et renvoie None ou un code d’erreur ; ChargerAdapter(...,metering_required=False) l’appelle avant un nouveau départ. DeviceState expose transaction_active/start_pending optionnels. phase_power_limit(...,waiting_current=False) peut maintenir/réduire le précédent profil pendant le premier délai, jamais augmenter. Le coordinateur relit StatusNotification une fois par arrêt à réconcilier.
-- [ ] Écrire et observer les tests RED sur chaque rupture et les cinq risques ci-dessus.
-- [ ] Implémenter le minimum ; tests GREEN puis suite Python complète.
-- [ ] Commit et revue indépendante ciblée38b1c9c..HEAD ; une passe de corrections importantes RED→GREEN.
+- [x] Écrire et observer les tests RED sur chaque rupture et les cinq risques ci-dessus.
+- [x] Implémenter le minimum ; tests GREEN puis suite Python complète.
+- [x] Commit et revue indépendante ciblée38b1c9c..797fea9 ; trois corrections importantes RED→GREEN, dont le délai durant Preparing. Suite289Python réussie,1Docker ignoré ;42UI et6navigateur réussis, schéma/TypeScript/build.
 
 ### Task 2 : livraison0.1.13
 **Files:** versions backend/frontend/compose ; docs/deployment/patch-0.1.13.md et livrable outputs/mise-a-jour-portainer-0.1.13.md.
@@ -35,3 +35,10 @@
 - [ ] Versions/schema/types/build/UI/navigateur/Compose ; documenter préparation des mesures et limites matérielles non vérifiées.
 - [ ] Commit, tag immuable, CI complète, image privée/digest/pull vérifiés, préversion et guide identique.
 - [ ] Conserver PR en brouillon, branche et notes locales, aucun déploiement.
+
+Décisions : suivi du plan par PowerShell car le mappage des chemins Bash ne peut
+pas écrire dans ce sandbox Windows ; sans changement du produit. Packaging
+contrôlé séparément sur le tag final ; faute de contrôle, installation impossible.
+Firmware et temps de remontée réels hors essais autorisés : aucune action sur
+l’installation ; après mise à jour, un refus de réglage bloque encore le départ
+avec son motif précis. Aucune anomalie mineure différée.

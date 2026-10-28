@@ -30,6 +30,7 @@ def phase_power_limit(snapshot,spec,desired_w,extra,previous_w=0,waiting_current
     if not spec.grid_phases: return 0,'Configurer la phase réseau de la borne'
     count=len(spec.grid_phases)
     requested=min(spec.max_current_a,desired_w/(spec.voltage*count))
+    if waiting_current:requested=min(requested,max(0,previous_w/(spec.voltage*count)))
     idle=bool(state and state.connected and state.observed_state in
               ('Available','Preparing','SuspendedEV','SuspendedEVSE','Finishing'))
     for index,phase in enumerate(spec.grid_phases):
@@ -39,7 +40,7 @@ def phase_power_limit(snapshot,spec,desired_w,extra,previous_w=0,waiting_current
         old,coherent=current_credit(snapshot,spec,index)
         own=state.currents.get('L'+str(index+1)) if state else None
         missing=not own or not own.usable(snapshot.at,snapshot.sample_max_age_s)
-        if not coherent and not idle and missing and not (waiting_current and previous_w>0):
+        if missing and (not idle or previous_w>0) and not (waiting_current and previous_w>0):
             return 0,'Courant réel de recharge indisponible'
         measured=grid.value
         power=snapshot.phase_powers.get(phase)

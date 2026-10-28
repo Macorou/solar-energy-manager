@@ -77,7 +77,7 @@ class Dispatcher:
                 # A fresh native OFF read plus checked idle HA power can confirm
                 # an unchanged zero; this never confirms the effect of a start.
                 if not native_stop: continue
-            elif charger_stop and power.measured_at<=sent:
+            elif charger_stop:
                 if not native_charger_stop:continue
             elif config and config.kind=='water_heater' and record['action']=='set_temperature':
                 if not (state.connected and not state.fault and state.measured_at

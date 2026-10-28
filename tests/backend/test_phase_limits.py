@@ -267,3 +267,22 @@ def test_lost_current_during_an_established_charge_gets_no_startup_wait():
     lost=engine.evaluate(frame({}),[spec],{'ev':policy},{})
     assert lost.commands[0].action=='suspend'
     assert lost.reasons['ev']=='Courant réel de recharge indisponible'
+
+
+@pytest.mark.parametrize('elapsed,expected',[(7,2300),(31,0)])
+def test_preparing_after_start_cannot_raise_profile_or_extend_first_current_timeout(elapsed,expected):
+    from app.simulation.clock import SimulatedClock
+    clock=SimulatedClock();engine=EnergyEngine(clock)
+    spec=DeviceSpec('ev','charger',min_power_w=1380,max_power_w=6000,grid_phases=('L1',),max_current_a=20)
+    policy=DevicePolicy('ev','manual',armed=True,manual_until=clock.now()+timedelta(hours=1))
+    def frame(amps,pending=False):
+        now=clock.now();s=lambda v,u='W':Sample(v,u,'test',now,now)
+        return SiteSnapshot(now,grid=s(700),solar=s(0),site_limit_w=11000,
+            device_states={'ev':DeviceState('ev',s(0),'Preparing',True,start_pending=pending,transaction_active=False)},
+            phase_currents={'L1':s(amps,'A')},phase_limits_a={'L1':20},phase_margin_a=1,phase_control_enabled=True)
+    initial=engine.evaluate(frame(8.5),[spec],{'ev':policy},{})
+    assert initial.commands[0].limit_w==2300
+    clock.advance(elapsed)
+    result=engine.evaluate(frame(1,pending=True),[spec],{'ev':policy},{})
+    assert engine.requested['ev']==expected
+    if not expected:assert result.commands[0].action=='suspend'

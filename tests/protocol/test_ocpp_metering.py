@@ -11,10 +11,10 @@ from app.storage.database import SQLiteStore
 
 
 class MeterWire:
-    def __init__(self, *, readonly=False, reject=None, maximum='10', verify=True):
+    def __init__(self, *, readonly=False, reject=None, maximum='10', verify=True,drop_existing=False):
         self.values={'MeterValuesSampledData':'Energy.Active.Import.Register,Voltage',
                      'MeterValueSampleInterval':'60','MeterValuesSampledDataMaxLength':maximum}
-        self.readonly=readonly; self.reject=reject; self.verify=verify; self.calls=[]
+        self.readonly=readonly; self.reject=reject; self.verify=verify; self.calls=[];self.drop_existing=drop_existing
 
     async def call(self, message):
         name=message.__class__.__name__; self.calls.append(message)
@@ -23,7 +23,10 @@ class MeterWire:
                 'readonly':self.readonly} for key,value in self.values.items() if key in message.key],unknown_key=[])
         if name=='ChangeConfiguration':
             status=self.reject or 'Accepted'
-            if status=='Accepted' and self.verify:self.values[message.key]=message.value
+            if status=='Accepted' and self.verify:
+                self.values[message.key]=message.value
+                if self.drop_existing and message.key=='MeterValuesSampledData':
+                    self.values[message.key]=','.join(v for v in message.value.split(',') if v!='Voltage')
             return SimpleNamespace(status=status)
         return SimpleNamespace(status='Accepted')
 
@@ -55,7 +58,7 @@ async def test_phase_control_prepares_and_verifies_metering_before_remote_start(
 
 @pytest.mark.parametrize('options',[
     {'readonly':True},{'reject':'Rejected'},{'reject':'RebootRequired'},
-    {'maximum':'2'},{'verify':False}])
+    {'maximum':'2'},{'verify':False},{'drop_existing':True}])
 async def test_unverified_metering_never_reaches_a_profile_or_start(tmp_path,options):
     wire=MeterWire(**options); result=await adapter(tmp_path,wire).execute(start())
     assert not result.accepted and result.error

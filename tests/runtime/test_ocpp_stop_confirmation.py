@@ -43,7 +43,8 @@ def test_native_ocpp_stop_and_checked_unchanged_zero_confirm_the_stop(tmp_path):
 
 
 @pytest.mark.parametrize('invalid',['transaction','pending','unknown_transaction','charging','old_status','future_status','offline','fault','old_check','nonzero','estimated'])
-def test_old_zero_cannot_confirm_a_stop_without_native_idle_proof(tmp_path,invalid):
+@pytest.mark.parametrize('fresh_power',[False,True])
+def test_old_zero_cannot_confirm_a_stop_without_native_idle_proof(tmp_path,invalid,fresh_power):
     dispatcher,snapshot,config=stopped_frame(tmp_path)
     state=snapshot.device_states['ev'];power=state.observed_power
     if invalid=='transaction':state=replace(state,transaction_active=True)
@@ -57,6 +58,7 @@ def test_old_zero_cannot_confirm_a_stop_without_native_idle_proof(tmp_path,inval
     elif invalid=='old_check':power=replace(power,checked_at=snapshot.at-timedelta(seconds=5))
     elif invalid=='nonzero':power=replace(power,value=500)
     elif invalid=='estimated':power=replace(power,quality=Quality.ESTIMATED)
+    if fresh_power:power=replace(power,measured_at=snapshot.at)
     state=replace(state,observed_power=power)
     assert dispatcher.reconcile(replace(snapshot,device_states={'ev':state}),{'ev':config})==[]
 

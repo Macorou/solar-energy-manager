@@ -89,9 +89,27 @@ public state exposes `effective_target` and `target_source` per device.
 
 **Interfaces:** One fresh final code review, tests before immutable tag and push.
 
-- [ ] Review complete patch on the most capable available reviewer; fix critical/
+- [x] Review complete patch on the most capable available reviewer; fix critical/
   important findings in one RED→GREEN pass and record rulings/minors.
-- [ ] Set version0.1.7; rerun schema/build and required complete suites.
-- [ ] Publish branch/tag; wait for Python/UI/browser/Docker/private-pull CI success.
-- [ ] Record verified digest and checks in guide, publish private release asset;
+- [x] Set version0.1.7; rerun schema/build and required complete suites.
+- [x] Publish branch/tag; wait for Python/UI/browser/Docker/private-pull CI success.
+- [x] Record verified digest and checks in guide, publish private release asset;
   leave deployment to user. Verify only intended local notes remain untracked.
+
+## Verified result
+
+Release commit d324b6087ba8b5c9a86ae38069e9c0aad02fcbb4, immutable tag v0.1.7.
+Workflow40641011085 succeeded: Python181, UI22, browser4 and Docker smoke1,
+schema/build/Compose plus private visibility and authenticated digest pull.
+Digest sha256:af6b4fbfaa75542b59ff61e56719782d25a79ed7ce14fe8a912cc8e48b0aaf88.
+Final independent review: three Important findings reproduced and fixed in one
+pass (five RED cases, six additional regressions total); no deferred minors.
+Native Windows bookkeeping substituted for Bash path limitations. Network
+permission and pending stop now share an atomic document, with safe repeated stop
+after restart if still unconfirmed. Hardware commissioning remains user-owned;
+distribution checked by CI, unrelated older topics outside scope. No deployment.
+
+Private prerelease published (not draft):
+https://github.com/Macorou/solar-energy-manager/releases/tag/v0.1.7
+Asset mise-a-jour-portainer-0.1.7.md uploaded, 6226 bytes,
+SHA25666ee4457d5a6ccf5e11de0cd4d091efe259355811e8627dab851bb2f4a084891.

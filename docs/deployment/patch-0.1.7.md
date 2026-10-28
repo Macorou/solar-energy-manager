@@ -41,8 +41,16 @@ matériel restent distincts du moment où SEM demande l'arrêt.
 
 ## Mise à jour Portainer
 
-Image prévue : `ghcr.io/macorou/solar-energy-manager:0.1.7`, privée, Linux amd64.
-Publication, digest et résultats CI seront consignés après vérification.
+Image publiée : `ghcr.io/macorou/solar-energy-manager:0.1.7`, privée, Linux amd64.
+
+Digest : `sha256:af6b4fbfaa75542b59ff61e56719782d25a79ed7ce14fe8a912cc8e48b0aaf88`.
+
+[Publication et contrôles réussis](https://github.com/Macorou/solar-energy-manager/actions/runs/40641011085)
+sur le commit `d324b6087ba8b5c9a86ae38069e9c0aad02fcbb4` : **181 tests Python**,
+**22 tests UI**, **4 parcours navigateur**, schéma API/TypeScript et build,
+validation Compose, construction Docker et test de démarrage/persistance/non-root.
+Le workflow a vérifié la visibilité privée du paquet, le téléchargement
+authentifié par digest et le refus de la demande anonyme.
 
 Dans la **Stack existante**, modifier uniquement `SEM_VERSION=0.1.7` si cette
 variable est utilisée, ou la ligne :
@@ -73,9 +81,21 @@ Ils ont été reproduits puis corrigés : suivi distinct de l'arrêt effectiveme
 de l'autorisation avec l'arrêt en attente. Six cas de régression supplémentaires
 couvrent ces chemins, dont le parcours complet arrêt à 55 °C puis reprise solaire.
 
-Tests locaux : suite Python complète et 22 tests UI réussis, schéma et build de
-production vérifiés. Les nombres finaux et la validation CI seront consignés
-après vérification de la publication.
+Tests locaux : **181 tests Python réussis**, un test Docker réservé à CI,
+**22 tests UI réussis**, schéma et build de production vérifiés. Les mêmes suites
+et les quatre parcours navigateur ont réussi sous Linux ; le test Docker
+supplémentaire a réussi dans GitHub Actions.
+
+Le suivi distingue l'arrêt de frontière d'un ancien arrêt déjà observé. Un arrêt
+encore non confirmé peut être redemandé après redémarrage ; un ancien démarrage
+n'est pas rejoué depuis une file persistée. L'état d'autorisation et l'arrêt à
+effectuer sont enregistrés ensemble dans une écriture SQLite atomique.
+
+La revue a laissé les observations matérielles à la mise en service, les
+contrôles de distribution à la CI et les anciens sujets indépendants hors de ce
+patch. Aucun point mineur différé n'a été relevé. La trace de développement a été
+tenue avec les outils Windows natifs, le helper Bash étant incompatible avec les
+droits de chemin de cet environnement ; cela n'affecte pas le logiciel livré.
 
 Les essais antérieurs de démarrage/arrêt manuels et de chauffe HC ont été
 confirmés par l'utilisateur avec la version 0.1.6. Les nouveaux comportements

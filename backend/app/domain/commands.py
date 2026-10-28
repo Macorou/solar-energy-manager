@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+CHARGER_START_WAIT_S = 300
+
 
 @dataclass(frozen=True)
 class CommandIntent:

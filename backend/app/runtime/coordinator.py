@@ -5,7 +5,7 @@ from app.settings import SettingsDocument
 from app.domain.devices import DeviceSpec,DeviceState,Reservation
 from app.domain.measurements import Quality,utcnow
 from app.domain.site import SiteSnapshot
-from app.domain.commands import CommandIntent
+from app.domain.commands import CommandIntent,CHARGER_START_WAIT_S
 from app.engine.engine import EnergyEngine
 from app.engine.policies import DevicePolicy
 from app.engine.budget import solar_budget_w
@@ -273,10 +273,13 @@ class Coordinator:
             for intent in batch.commands:
                 if not self.enqueue(intent,configs[intent.device_id]) and intent.action=='suspend':
                     self.engine.network_stop_issued.discard(intent.device_id)
-            # Renew finite OCPP profiles without issuing another remote start before observation.
+            # Keep the same finite profile alive while the first power sample is pending.
+            # Dispatcher preserves the original confirmation deadline on these renewals.
             for device in config.devices:
                 record=self.dispatcher.records.get(device.id)
-                if (device.kind=='charger' and device.armed and record and record['status']=='observed'
+                if (device.kind=='charger' and device.armed and record
+                    and (record['status']=='observed' or record['status']=='accepted'
+                         and snapshot.at<datetime.fromisoformat(record['confirm_by']))
                     and record['power_w']>0 and self.engine.requested.get(device.id,0)>0
                     and (snapshot.at-datetime.fromisoformat(record['sent_at'])).total_seconds()>40
                     and not any(c.device_id==device.id for c in batch.commands)):
@@ -328,6 +331,8 @@ class Coordinator:
                     self.engine.forget(command.device_id); continue
                 window=max(device.confirmation_timeout_s,
                     2*current.ariston.poll_interval_s+30 if device.kind=='water_heater' else 90)
+                if device.kind=='charger' and command.action=='set_power' and command.limit_w:
+                    window=max(window,CHARGER_START_WAIT_S)
                 result=await self.dispatcher.dispatch(command,self.adapters[command.device_id],window)
                 source=self.adapters[command.device_id]
                 if device.kind=='water_heater' and result.accepted and hasattr(source,'read_state'):

@@ -61,6 +61,6 @@ def phase_power_limit(snapshot,spec,desired_w,extra,previous_w=0,waiting_current
     for index,phase in enumerate(spec.grid_phases):
         old,_=current_credit(snapshot,spec,index)
         extra[phase]=extra.get(phase,0)+max(0,amps-old)
-    return limited,('Attente du premier courant de recharge (30 s maximum)'
+    return limited,('Attente du premier courant de recharge (5 min maximum)'
         if waiting_current and not idle and limited>=previous_w else
         'Limite de courant sur la phase réseau' if limited<desired_w else None)

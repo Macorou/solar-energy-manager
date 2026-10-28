@@ -2,7 +2,7 @@ from dataclasses import dataclass,replace,field
 from datetime import timedelta
 import math
 import uuid
-from app.domain.commands import CommandIntent
+from app.domain.commands import CommandIntent,CHARGER_START_WAIT_S
 from app.domain.devices import Reservation
 from app.engine.budget import solar_budget_w,power_coherent,measurements_coherent
 from app.engine.hysteresis import Timers
@@ -195,7 +195,7 @@ class EnergyEngine:
                     and state.currents['L'+str(i+1)].usable(now,snapshot.sample_max_age_s)
                     for i in range(len(spec.grid_phases))):self.phase_current_seen.add(spec.id)
                 waiting_current=(spec.id not in self.phase_current_seen and previous is not None and previous>0
-                    and mono-self.running_since.get(spec.id,-math.inf)<30)
+                    and mono-self.running_since.get(spec.id,-math.inf)<CHARGER_START_WAIT_S)
                 other={p:max(0,value-phase_reserves.get(spec.id,{}).get(p,0)) for p,value in phase_extra.items()}
                 desired,phase_reason=phase_power_limit(snapshot,spec,desired,other,previous or 0,waiting_current)
                 for p,value in other.items(): phase_extra[p]=max(phase_extra.get(p,0),value)

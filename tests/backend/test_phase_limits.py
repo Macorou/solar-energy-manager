@@ -234,7 +234,7 @@ def test_first_current_can_arrive_after_charging_status_without_a_premature_stop
     clock.advance(3)
     overload=engine.evaluate(frame('Charging',22),[spec],{'ev':policy},{})
     assert overload.commands[0].limit_w==3220
-    clock.advance(30)
+    clock.advance(290)
     timeout=engine.evaluate(frame('Charging',15),[spec],{'ev':policy},{})
     assert timeout.commands[0].action=='suspend'
     assert timeout.reasons['ev']=='Courant réel de recharge indisponible'
@@ -269,7 +269,7 @@ def test_lost_current_during_an_established_charge_gets_no_startup_wait():
     assert lost.reasons['ev']=='Courant réel de recharge indisponible'
 
 
-@pytest.mark.parametrize('elapsed,expected',[(7,2300),(31,0)])
+@pytest.mark.parametrize('elapsed,expected',[(7,2300),(299,2300),(300,0)])
 def test_preparing_after_start_cannot_raise_profile_or_extend_first_current_timeout(elapsed,expected):
     from app.simulation.clock import SimulatedClock
     clock=SimulatedClock();engine=EnergyEngine(clock)

@@ -27,6 +27,15 @@ class Dispatcher:
                 'expires_at':intent.expires_at.isoformat() if intent.expires_at else None,
                 'confirm_by':(now+timedelta(seconds=confirmation_timeout_s)).isoformat(),
                 'reason':intent.reason,'status':'sending','target_temperature':intent.target_temperature}
+            renewal=bool(prior and prior['status'] in ('accepted','observed')
+                and intent.reason=='Renouvellement du profil autorisé'
+                and intent.action==prior['action']=='set_power' and intent.limit_w
+                and intent.limit_w==prior['power_w'])
+            if renewal:
+                record['effect_since']=prior.get('effect_since',prior['sent_at'])
+                if prior['status']=='accepted':
+                    record['confirm_by']=prior.get('confirm_by') or (
+                        datetime.fromisoformat(record['effect_since'])+timedelta(seconds=confirmation_timeout_s)).isoformat()
             self.records[intent.device_id]=record
             self.save()  # Durable before the network side effect.
             try:
@@ -51,7 +60,7 @@ class Dispatcher:
             state=snapshot.device_states.get(key)
             power=state.observed_power if state else None
             if not power or not power.usable(snapshot.at,snapshot.sample_max_age_s): continue
-            sent=datetime.fromisoformat(record['sent_at'])
+            sent=datetime.fromisoformat(record.get('effect_since',record['sent_at']))
             desired=record['power_w']
             config=configs.get(key)
             heater_stop=bool(config and config.kind=='water_heater' and not desired

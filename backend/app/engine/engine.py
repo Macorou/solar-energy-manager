@@ -32,6 +32,7 @@ class EnergyEngine:
         self.network_stop_issued = set()
         self.requested_targets = {}
         self.heater_targets = HeaterTargets()
+        self.phase_current_seen = set()
 
     def forget(self, device_id):
         self.requested.pop(device_id,None)
@@ -95,6 +96,7 @@ class EnergyEngine:
                 self.running_since.setdefault(spec.id,mono)
             else:
                 self.running_since.pop(spec.id,None)
+                self.phase_current_seen.discard(spec.id)
             desired, reason = 0.0, 'En attente'
             eligible = bool(policy and policy.armed and state and state.connected and not state.fault)
             auth = authorizations.get(spec.id)
@@ -189,8 +191,13 @@ class EnergyEngine:
             if desired < spec.min_power_w:
                 desired = 0
             if desired:
+                if state and spec.grid_phases and all(state.currents.get('L'+str(i+1))
+                    and state.currents['L'+str(i+1)].usable(now,snapshot.sample_max_age_s)
+                    for i in range(len(spec.grid_phases))):self.phase_current_seen.add(spec.id)
+                waiting_current=(spec.id not in self.phase_current_seen and previous is not None and previous>0
+                    and mono-self.running_since.get(spec.id,-math.inf)<30)
                 other={p:max(0,value-phase_reserves.get(spec.id,{}).get(p,0)) for p,value in phase_extra.items()}
-                desired,phase_reason=phase_power_limit(snapshot,spec,desired,other,previous or 0)
+                desired,phase_reason=phase_power_limit(snapshot,spec,desired,other,previous or 0,waiting_current)
                 for p,value in other.items(): phase_extra[p]=max(phase_extra.get(p,0),value)
                 if phase_reason: reason=phase_reason
             occupied = max(desired,committed.get(spec.id,0))
@@ -222,6 +229,7 @@ class EnergyEngine:
                 self.requested[spec.id] = desired
                 if spec.kind=='water_heater': self.requested_targets[spec.id]=target if desired else None
                 if desired:
+                    self.running_since.setdefault(spec.id,mono)
                     reservations.append(Reservation(spec.id,max(desired,measured.get(spec.id,0)),command.id,
                         now+timedelta(seconds=90)))
                 else:

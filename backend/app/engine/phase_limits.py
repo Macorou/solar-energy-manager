@@ -24,7 +24,7 @@ def current_credit(snapshot,spec,index):
     return (max(0,own.value) if coherent else 0),coherent
 
 
-def phase_power_limit(snapshot,spec,desired_w,extra,previous_w=0):
+def phase_power_limit(snapshot,spec,desired_w,extra,previous_w=0,waiting_current=False):
     if not snapshot.phase_control_enabled or spec.kind!='charger': return desired_w,None
     state=snapshot.device_states.get(spec.id)
     if not spec.grid_phases: return 0,'Configurer la phase réseau de la borne'
@@ -38,7 +38,8 @@ def phase_power_limit(snapshot,spec,desired_w,extra,previous_w=0):
             return 0,'Courant réseau indisponible : '+phase
         old,coherent=current_credit(snapshot,spec,index)
         own=state.currents.get('L'+str(index+1)) if state else None
-        if not coherent and not idle and (not own or not own.usable(snapshot.at,snapshot.sample_max_age_s)):
+        missing=not own or not own.usable(snapshot.at,snapshot.sample_max_age_s)
+        if not coherent and not idle and missing and not (waiting_current and previous_w>0):
             return 0,'Courant réel de recharge indisponible'
         measured=grid.value
         power=snapshot.phase_powers.get(phase)
@@ -59,4 +60,6 @@ def phase_power_limit(snapshot,spec,desired_w,extra,previous_w=0):
     for index,phase in enumerate(spec.grid_phases):
         old,_=current_credit(snapshot,spec,index)
         extra[phase]=extra.get(phase,0)+max(0,amps-old)
-    return limited,('Limite de courant sur la phase réseau' if limited<desired_w else None)
+    return limited,('Attente du premier courant de recharge (30 s maximum)'
+        if waiting_current and not idle and limited>=previous_w else
+        'Limite de courant sur la phase réseau' if limited<desired_w else None)

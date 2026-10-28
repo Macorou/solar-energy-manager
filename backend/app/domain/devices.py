@@ -37,6 +37,8 @@ class DeviceState:
     energy_transaction_id: int | None = None
     energy_transaction_start_wh: float | None = None
     energy_transaction_started_at: datetime | None = None
+    transaction_active: bool | None = None
+    start_pending: bool | None = None
 
 
 @dataclass(frozen=True)

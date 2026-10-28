@@ -42,6 +42,7 @@ class Coordinator:
         self.lock=asyncio.Lock()
         self.command_tasks={}; self.workers={}; self.cache={}; self.telemetry={}; self.errors={}
         self.queued_intents={};self.refresh_tasks=set()
+        self.stop_status_requests={}
         if store.get('queued_intents',{}):
             store.append_event({'kind':'queued_commands_require_reconciliation'})
         store.set('queued_intents',{})  # Recalculate from fresh state; never replay queued starts.
@@ -122,7 +123,7 @@ class Coordinator:
                 elif 'ha' in self.workers:
                     self.workers.pop('ha').cancel()
             for device in config.devices:
-                if device.kind=='charger': self.adapters[device.id]=ChargerAdapter(self.app.state.ocpp,device)
+                if device.kind=='charger': self.adapters[device.id]=ChargerAdapter(self.app.state.ocpp,device,config.phase_control_enabled)
                 elif self.running:
                     from types import SimpleNamespace
                     source=ariston_adapter(SimpleNamespace(app=self.app),device)
@@ -221,6 +222,7 @@ class Coordinator:
                     states[d.id]=replace(states[d.id],target_reached=self.charging.target_reached(d.id,target))
             snapshot=replace(snapshot,device_states=states)
             waiting_manual_stops=set()
+            blocked_reasons={}
             for key,record in self.dispatcher.records.items():
                 if record['status'] in ('sending','accepted','unknown'):
                     confirmation=datetime.fromisoformat(record.get('confirm_by',record['expires_at'] or record['sent_at']))
@@ -228,16 +230,31 @@ class Coordinator:
                         # Pending physical effects are never retried as new starts.
                         if key in policies: policies[key]=replace(policies[key],mode='off')
                         self.errors[key]='Résultat de commande inconnu : vérification requise'
+                        blocked_reasons[key]='Vérification requise : '+(record.get('error') or record.get('reason') or 'Résultat de commande inconnu')
                     elif record['action']=='suspend' and key in policies:
                         policies[key]=replace(policies[key],mode='off')
+                        blocked_reasons[key]='Arrêt en cours : '+record.get('reason','Arrêt demandé')
                         if configs[key].kind=='water_heater' and configs[key].mode=='manual':
                             waiting_manual_stops.add(key)
+                    if record['action']=='suspend' and key in configs and configs[key].kind=='charger':
+                        source=self.adapters.get(key)
+                        if (hasattr(source,'request_status') and self.stop_status_requests.get(key)!=record['id']):
+                            self.stop_status_requests[key]=record['id']
+                            async def read_status(adapter=source):
+                                try:await asyncio.wait_for(adapter.request_status(),10)
+                                except (Exception,asyncio.CancelledError):pass
+                            task=asyncio.create_task(read_status())
+                            self.refresh_tasks.add(task);task.add_done_callback(self.refresh_tasks.discard)
             for key,(queued,_) in self.queued_intents.items():
                 if queued.action=='suspend' and key in policies: policies[key]=replace(policies[key],mode='off')
             specs=[DeviceSpec(d.id,d.kind,min_power_w=d.min_power_w,max_power_w=d.max_power_w,
                 priority=d.priority,grid_phases=tuple(d.grid_phases),voltage=d.voltage,
                 min_current_a=d.min_current_a,max_current_a=d.max_current_a) for d in config.devices]
             batch=self.engine.evaluate(snapshot,specs,policies,authorizations)
+            if blocked_reasons:
+                batch=replace(batch,reasons=batch.reasons|blocked_reasons,
+                    commands=tuple(replace(command,reason=blocked_reasons[command.device_id])
+                        if command.device_id in blocked_reasons else command for command in batch.commands))
             # Persist a boundary stop before queueing it: a crash cannot turn
             # an expired network authorization into a new cloud grace period.
             self.store.set('runtime_network_state',{'allowed':self.engine.network_allowed,

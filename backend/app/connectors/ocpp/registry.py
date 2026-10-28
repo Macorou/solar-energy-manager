@@ -39,7 +39,8 @@ class OcppRegistry:
             # Charging without a power sample always remains unknown.
             state=replace(state,observed_power=Sample(0,'W',
                 'OCPP estimation état '+state.observed_state,utcnow(),utcnow(),Quality.ESTIMATED))
-        return state
+        return replace(state,transaction_active=(config.charge_point_id,config.connector_id) in self.active,
+            start_pending=device_id in self.pending_start)
 
     def authorized(self,config):
         until=self.allowed_until.get(config.id)
@@ -67,8 +68,9 @@ class OcppRegistry:
 
 
 class ChargerAdapter:
-    def __init__(self,registry,config):
+    def __init__(self,registry,config,metering_required=False):
         self.registry,self.config=registry,config
+        self.metering_required=metering_required
 
     async def read_state(self):
         return self.registry.state(self.config.id)
@@ -77,6 +79,12 @@ class ChargerAdapter:
         station=self.registry.stations.get(self.config.charge_point_id)
         if not station:return False
         result=await station.call(call.TriggerMessage(requested_message='MeterValues',connector_id=self.config.connector_id))
+        return result.status=='Accepted'
+
+    async def request_status(self):
+        station=self.registry.stations.get(self.config.charge_point_id)
+        if not station:return False
+        result=await station.call(call.TriggerMessage(requested_message='StatusNotification',connector_id=self.config.connector_id))
         return result.status=='Accepted'
 
     async def probe_capabilities(self):
@@ -111,6 +119,10 @@ class ChargerAdapter:
                     return CommandResult(intent.id,zero,zero,error=None if zero else 'Transaction inconnue',checked_at=utcnow())
                 result=await station.call(call.RemoteStopTransaction(transaction_id=transaction['transaction_id']))
                 return CommandResult(intent.id,result.status=='Accepted',False,checked_at=utcnow())
+            if self.metering_required and not transaction and self.config.id not in self.registry.pending_start:
+                from .metering import prepare_metering
+                error=await prepare_metering(station)
+                if error:return CommandResult(intent.id,False,error=error,checked_at=utcnow())
             profile=build_profile(self.config,intent.limit_w,transaction['transaction_id'] if transaction else None,intent.expires_at)
             result=await station.call(call.SetChargingProfile(connector_id=self.config.connector_id,cs_charging_profiles=profile))
             if result.status!='Accepted':

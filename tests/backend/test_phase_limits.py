@@ -212,3 +212,58 @@ def test_three_phase_charge_is_limited_by_its_most_constrained_mapped_phase():
         phase_currents={'L1':s(13),'L2':s(12),'L3':s(4)},phase_limits_a={'L1':20,'L2':18,'L3':20})
     spec=DeviceSpec('ev','charger',grid_phases=('L1','L2','L3'),max_current_a=16)
     assert phase_power_limit(snapshot,spec,11000,{})[0]==7590
+
+
+def test_first_current_can_arrive_after_charging_status_without_a_premature_stop():
+    from app.simulation.clock import SimulatedClock
+    clock=SimulatedClock();engine=EnergyEngine(clock)
+    spec=DeviceSpec('ev','charger',min_power_w=1380,max_power_w=6000,grid_phases=('L1',),max_current_a=20)
+    policy=DevicePolicy('ev','manual',armed=True,manual_until=clock.now()+timedelta(hours=1))
+    def frame(status,amps):
+        now=clock.now();s=lambda v,u='W':Sample(v,u,'test',now,now)
+        return SiteSnapshot(now,grid=s(700),solar=s(0),site_limit_w=11000,
+            device_states={'ev':DeviceState('ev',s(0),status,True,vehicle_connected=True)},
+            phase_currents={'L1':s(1.5 if status=='Preparing' else amps,'A')},
+            phase_limits_a={'L1':20},phase_margin_a=1,phase_control_enabled=True)
+    initial=engine.evaluate(frame('Preparing',1.5),[spec],{'ev':policy},{})
+    assert initial.commands[0].limit_w==3910
+    clock.advance(7)
+    waiting=engine.evaluate(frame('Charging',18.5),[spec],{'ev':policy},{})
+    assert not waiting.commands
+    assert 'premier courant' in waiting.reasons['ev']
+    clock.advance(3)
+    overload=engine.evaluate(frame('Charging',22),[spec],{'ev':policy},{})
+    assert overload.commands[0].limit_w==3220
+    clock.advance(30)
+    timeout=engine.evaluate(frame('Charging',15),[spec],{'ev':policy},{})
+    assert timeout.commands[0].action=='suspend'
+    assert timeout.reasons['ev']=='Courant réel de recharge indisponible'
+
+
+def test_startup_wait_never_spends_other_pending_current_or_ignores_a_missing_grid():
+    from app.engine.phase_limits import phase_power_limit
+    now=utcnow();s=lambda v:Sample(v,'A','test',now,now)
+    snapshot=SiteSnapshot(now,phase_control_enabled=True,
+        device_states={'ev':DeviceState('ev',observed_state='Charging',connected=True)},
+        phase_currents={'L1':s(13)},phase_limits_a={'L1':20},phase_margin_a=1)
+    spec=DeviceSpec('ev','charger',grid_phases=('L1',),max_current_a=20)
+    assert phase_power_limit(snapshot,spec,4600,{'L1':10},2300,True)[0]==1380
+    missing=replace(snapshot,phase_currents={})
+    assert phase_power_limit(missing,spec,4600,{},2300,True)[0]==0
+
+
+def test_lost_current_during_an_established_charge_gets_no_startup_wait():
+    from app.simulation.clock import SimulatedClock
+    clock=SimulatedClock();engine=EnergyEngine(clock)
+    spec=DeviceSpec('ev','charger',min_power_w=1380,max_power_w=3700,grid_phases=('L1',),max_current_a=16)
+    policy=DevicePolicy('ev','manual',armed=True,manual_until=clock.now()+timedelta(hours=1))
+    def frame(currents):
+        now=clock.now();s=lambda v,u='W':Sample(v,u,'test',now,now)
+        return SiteSnapshot(now,grid=s(3000),solar=s(0),site_limit_w=11000,
+            device_states={'ev':DeviceState('ev',s(2300),'Charging',True,currents=currents)},
+            phase_currents={'L1':s(13,'A')},phase_limits_a={'L1':20},phase_margin_a=1,phase_control_enabled=True)
+    engine.evaluate(frame({'L1':Sample(10,'A','test',clock.now(),clock.now())}),[spec],{'ev':policy},{})
+    clock.advance(2)
+    lost=engine.evaluate(frame({}),[spec],{'ev':policy},{})
+    assert lost.commands[0].action=='suspend'
+    assert lost.reasons['ev']=='Courant réel de recharge indisponible'

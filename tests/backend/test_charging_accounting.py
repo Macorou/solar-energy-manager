@@ -179,6 +179,48 @@ def test_persisted_uncovered_peugeot_reference_survives_repeat_reboot_and_replug
     assert tracker.summary('ev')['soc_usable'] is True
 
 
+def test_last_peugeot_reference_survives_restart_and_replug_without_cloud(tmp_path):
+    tracker,store,cfg=setup_tracker(tmp_path);now=utcnow();old=now-timedelta(days=2)
+    tracker.update(frame(now,10000,stamp=old),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),12000,stamp=old),cfg)
+    tracker.update(frame(now+timedelta(seconds=60),12000,stamp=old,plugged=False),cfg)
+    # Upgrade path: 0.1.10 persisted only the session's raw Peugeot anchor.
+    store.set('peugeot_soc_references',{})
+    from app.runtime.charging import ChargingTracker
+    tracker=ChargingTracker(store)
+    tracker.update(replace(frame(now+timedelta(seconds=90),12000),vehicle_telemetry={}),cfg)
+    assert tracker.summary('ev')['soc']==75
+    assert tracker.summary('ev')['soc_usable'] is True
+    tracker.update(replace(frame(now+timedelta(seconds=120),14000),vehicle_telemetry={}),cfg)
+    assert tracker.summary('ev')['soc']==80
+
+
+def test_latest_peugeot_received_while_unplugged_is_used_after_restart(tmp_path):
+    tracker,store,cfg=setup_tracker(tmp_path);now=utcnow()
+    tracker.update(frame(now,10000,stamp=now-timedelta(days=2)),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),10000,plugged=False),cfg)
+    tracker.update(frame(now+timedelta(seconds=60),10000,soc=70,stamp=now+timedelta(seconds=60),plugged=False),cfg)
+    from app.runtime.charging import ChargingTracker
+    tracker=ChargingTracker(store)
+    tracker.update(replace(frame(now+timedelta(seconds=90),10000),vehicle_telemetry={}),cfg)
+    assert tracker.summary('ev')['soc']==70
+    tracker.update(replace(frame(now+timedelta(seconds=120),12000),vehicle_telemetry={}),cfg)
+    assert tracker.summary('ev')['soc']==75
+
+
+def test_persisted_peugeot_reference_is_never_reused_for_a_different_vin(tmp_path):
+    tracker,store,cfg=setup_tracker(tmp_path);now=utcnow()
+    cfg.vehicles[0].vin='VF3AAAAAAAAAAAAAA'
+    tracker.update(frame(now,10000,stamp=now-timedelta(days=2)),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),10000,plugged=False),cfg)
+    cfg.vehicles[0].vin='VF3BBBBBBBBBBBBBB'
+    from app.runtime.charging import ChargingTracker
+    tracker=ChargingTracker(store)
+    tracker.update(replace(frame(now+timedelta(seconds=60),10000),vehicle_telemetry={}),cfg)
+    assert tracker.summary('ev')['soc'] is None
+    assert tracker.summary('ev')['soc_usable'] is False
+
+
 def test_manual_soc_reference_api_is_no_longer_available(tmp_path):
     from fastapi.testclient import TestClient
     from app.main import create_app

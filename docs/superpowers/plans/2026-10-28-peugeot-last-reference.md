@@ -24,13 +24,13 @@
 ### Task 1 : corriger la référence et retirer la saisie
 **Files:** backend/app/runtime/charging.py, backend/app/api/devices.py, frontend/src/components/DeviceCard.tsx, SocReference.tsx/test, dashboard.css, api/types.ts/schema.ts ; tests/backend/test_charging_accounting.py ; frontend/tests/e2e/configuration.spec.ts ; ChargingDashboard.test.tsx.
 **Interfaces:** Consumes VehicleTelemetry et index OCPP ; produces soc/soc_usable/soc_reference_at. Plus de POST soc-reference.
-- [ ] Tests RED : remplacer refus du SOC ancien par référence automatique, migration manuelle, nouvelle donnée avant historique, répétition/reboot et arrêt runtime avec ancien SOC ; absence du champ dans la vraie carte.
-- [ ] Ajuster l'ancre et la base d'énergie au premier point disponible, garder les règles de perte d'index et le recalage d'une mesure plus récente ; supprimer la saisie/route/type manuel.
-- [ ] GREEN : pytest complet, Vitest complet, schéma/types/build et navigateur (6 parcours), revue indépendante du correctif.
-- [ ] Corriger les éventuels défauts importants reproduits et committer.
+- [x] Tests RED : remplacer refus du SOC ancien par référence automatique, migration manuelle, nouvelle donnée avant historique, répétition/reboot et arrêt runtime avec ancien SOC ; absence du champ dans la vraie carte.
+- [x] Ajuster l'ancre et la base d'énergie au premier point disponible, garder les règles de perte d'index et le recalage d'une mesure plus récente ; supprimer la saisie/route/type manuel.
+- [x] GREEN : pytest complet, Vitest complet, schéma/types/build et navigateur (6 parcours), revue indépendante du correctif.
+- [x] Corriger les éventuels défauts importants reproduits et committer.
 
 ### Task 2 : livrer 0.1.11
 **Files:** versions backend/frontend/compose, docs/deployment/patch-0.1.11.md, livrable outputs.
-- [ ] Bump 0.1.11, générer schéma et guide ciblé ; contrôles puis commit/tag immuable.
+- [x] Bump 0.1.11, générer schéma et guide ciblé ; contrôles puis commit/tag immuable.
 - [ ] Push branche privée/tag, attendre CI et publication image privée ; vérifier digest/pull dans le workflow.
 - [ ] Publier la préversion et son guide, vérifier l'asset ; documenter le résultat, conserver le worktree/PR en brouillon.

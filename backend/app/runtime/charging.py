@@ -39,10 +39,31 @@ class ChargingTracker:
     def __init__(self,store):
         self.store=store
         self.sessions=store.get('charging_sessions',{})
+        self.peugeot_references=store.get('peugeot_soc_references',{})
+        # Migrate references from older releases without reusing estimated gains.
+        for session in self.sessions.values():
+            anchor=session.get('anchor')
+            if anchor and anchor.get('source','vehicle')=='vehicle':
+                self.remember_peugeot(*session['vehicle'],anchor['soc'],anchor['at'])
         self.effective_price=None
+
+    def remember_peugeot(self,vehicle_id,vin,soc,stamp):
+        if not vehicle_id or not finite(soc) or not 0<=soc<=100 or not finite(stamp): return
+        key=vehicle_id+'|'+vin
+        previous=self.peugeot_references.get(key)
+        if not previous or stamp>previous['at']:
+            self.peugeot_references[key]={'soc':soc,'at':stamp}
 
     def update(self,snapshot,config):
         now=snapshot.at.timestamp(); vehicles={v.id:v for v in config.vehicles}
+        # Keep the latest constructor reference even outside a plug session.
+        for vehicle in config.vehicles:
+            raw=snapshot.vehicle_telemetry.get(vehicle.id)
+            if (raw and finite(raw.soc) and 0<=raw.soc<=100
+                and raw.measured_at and raw.measured_at.tzinfo and raw.measured_at<=snapshot.at
+                and raw.quality!=Quality.ESTIMATED):
+                self.remember_peugeot(vehicle.id,vehicle.vin,raw.soc,raw.measured_at.timestamp())
+        self.store.set('peugeot_soc_references',self.peugeot_references)
         fraction,price,self.effective_price=mix_context(snapshot,config.solar_price_per_kwh)
         for device in config.devices:
             if device.kind!='charger': continue
@@ -127,16 +148,14 @@ class ChargingTracker:
         if session['anchor'] and session['anchor'].get('source')=='manual':
             session['anchor']=None
             session['reached_target']=None;session['reached_at']=None
-        valid=(raw and finite(raw.soc) and 0<=raw.soc<=100
-            and raw.measured_at and raw.measured_at.tzinfo and raw.measured_at<=snapshot.at
-            and raw.quality!=Quality.ESTIMATED)
-        if valid:
-            stamp=raw.measured_at.timestamp()
+        reference=self.peugeot_references.get(device.vehicle_id+'|'+vehicle.vin) if vehicle else None
+        if reference and reference['at']<=now:
+            stamp=reference['at']
             if not session['anchor'] or stamp>session['anchor']['at']:
-                session['anchor']={'soc':raw.soc,'at':stamp,'energy':None,'source':'vehicle'}
+                session['anchor']={'soc':reference['soc'],'at':stamp,'energy':None,'source':'vehicle'}
                 # Real later measurements override the estimate, with 1% hysteresis.
                 if (session['reached_target'] is not None and session.get('reached_at') is not None
-                    and stamp>session['reached_at'] and raw.soc<session['reached_target']-1):
+                    and stamp>session['reached_at'] and reference['soc']<session['reached_target']-1):
                     session['reached_target']=None;session['reached_at']=None
         anchor=session['anchor']; session['soc_usable']=False
         session['soc']=anchor['soc'] if anchor else None

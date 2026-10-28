@@ -67,8 +67,9 @@ class Dispatcher:
                 if not native_stop: continue
                 if (grid.availability_at<power.checked_at
                     or (grid.availability_at-power.checked_at).total_seconds()>2): continue
-            elif (power.measured_at<=sent or grid.measured_at<power.measured_at
-                  or (grid.measured_at-power.measured_at).total_seconds()>2): continue
+            elif (power.measured_at<=sent or grid.availability_at<power.availability_at
+                  or grid.availability_at<power.measured_at
+                  or (grid.availability_at-power.availability_at).total_seconds()>2): continue
             matched=(power.value<=20 if not desired else 20<power.value<=desired+max(100,desired*.1))
             if desired and config and config.kind=='water_heater' and config.target is not None:
                 matched=matched and state.target_temperature==config.target and state.observed_state=='on'

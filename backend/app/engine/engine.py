@@ -4,7 +4,7 @@ import math
 import uuid
 from app.domain.commands import CommandIntent
 from app.domain.devices import Reservation
-from app.engine.budget import solar_budget_w,power_coherent
+from app.engine.budget import solar_budget_w,power_coherent,measurements_coherent
 from app.engine.hysteresis import Timers
 from app.simulation.clock import Clock
 
@@ -134,7 +134,9 @@ class EnergyEngine:
                 desired = spec.max_power_w if site_available>=spec.max_power_w else 0
             if not coherent and desired:
                 desired=min(desired,previous or 0)
-                reason='Attente de mesures électriques cohérentes : aucune augmentation'
+                reason=('Commande en attente de confirmation : aucune augmentation'
+                        if snapshot.transition_blocked and measurements_coherent(snapshot)
+                        else 'Attente de mesures électriques cohérentes : aucune augmentation')
             if desired and not running and policy.start_not_before and now<policy.start_not_before:
                 desired=0
                 remaining=(policy.start_not_before-now).total_seconds()

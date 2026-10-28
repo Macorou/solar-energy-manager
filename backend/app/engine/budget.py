@@ -1,12 +1,16 @@
 from app.domain.site import SiteSnapshot
 
 
-def power_coherent(snapshot: SiteSnapshot) -> bool:
+def measurements_coherent(snapshot: SiteSnapshot) -> bool:
     samples=[snapshot.grid]+[state.observed_power for state in snapshot.device_states.values()]
     if not all(sample and sample.usable(snapshot.at,snapshot.sample_max_age_s) for sample in samples):
         return False
     stamps=[sample.availability_at for sample in samples]
-    return (max(stamps)-min(stamps)).total_seconds()<=2 and not snapshot.transition_blocked
+    return (max(stamps)-min(stamps)).total_seconds()<=2
+
+
+def power_coherent(snapshot: SiteSnapshot) -> bool:
+    return measurements_coherent(snapshot) and not snapshot.transition_blocked
 
 
 def solar_budget_w(snapshot: SiteSnapshot) -> float | None:

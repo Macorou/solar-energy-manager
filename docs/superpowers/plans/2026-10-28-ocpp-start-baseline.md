@@ -38,5 +38,12 @@
 
 ### Task 2 : livraison0.1.12
 - [x] Versions et guide ciblé, schéma et build ; tag immuable.
-- [ ] Publication privée, CI et digest/pull vérifiés ; préversion avec guide identique au livrable local.
-- [ ] Documentation finale ; garder branche/worktree/PR en brouillon, sans déploiement ni fusion.
+- [x] Publication privée, CI et digest/pull vérifiés ; préversion avec guide identique au livrable local.
+- [x] Documentation finale ; garder branche/worktree/PR en brouillon, sans déploiement ni fusion.
+
+Livraison : v0.1.12 au commit97e2688e857fe163bc1aae92d0e770adf7d80428.
+Workflow40774394475 réussi : Python248/UI42/navigateur6/Docker1, schéma/build/Compose.
+Image privée digest sha256:a910e54a090f9cf365ebaa6700733e01c39e1abf41aadca79859952a5ab3619b,
+téléchargement authentifié vérifié. Guide4490octets,
+SHA256dc12d3bb787391b82b61fac924dbbb8e5e79e3644c04225cfb9c1c6057d43107,
+identique au livrable local et à l'asset GitHub. Aucune action réelle ni fusion main.

@@ -1,5 +1,8 @@
 # Mise à jour 0.1.11 — référence Peugeot automatique
 
+Version complétée par **0.1.12**, qui corrige le suivi d'index au démarrage
+d'une transaction. Voir [le guide 0.1.12](patch-0.1.12.md).
+
 ## Comportement corrigé
 
 Le dernier pourcentage remonté par Peugeot sert automatiquement de référence,

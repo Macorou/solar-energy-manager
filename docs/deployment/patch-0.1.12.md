@@ -34,8 +34,10 @@ utilisables : le correctif ne remplace pas ces mesures par un courant commandé.
 
 ## Portainer
 
-Image privée Linux amd64 : `ghcr.io/macorou/solar-energy-manager:0.1.12`.
-Publication et digest à compléter après les contrôles GitHub.
+Image privée Linux amd64 publiée : `ghcr.io/macorou/solar-energy-manager:0.1.12`.
+Digest immuable : `sha256:a910e54a090f9cf365ebaa6700733e01c39e1abf41aadca79859952a5ab3619b`.
+Code livré : `97e2688e857fe163bc1aae92d0e770adf7d80428`, tag `v0.1.12`.
+[Workflow de validation et publication](https://github.com/Macorou/solar-energy-manager/actions/runs/40774394475).
 
 Dans la Stack existante :
 
@@ -62,4 +64,13 @@ puis sont rejoués par GitHub sur le tag final. Le test du coordinateur utilise 
 adaptateur simulé et les mesures anonymisées du cas observé ; il produit un ordre
 à3910W avec la limite par phase, sans commander la vraie installation.
 
-Résultats définitifs de publication/Docker : à compléter après CI.
+Le tag final a passé **248 tests Python, 42 tests d'interface, 6 parcours navigateur
+et 1 test Docker**, ainsi que les contrôles du schéma, TypeScript, build et Compose.
+Le test Docker est ignoré dans la suite ordinaire puis exécuté séparément.
+La publication a vérifié le paquet privé, son téléchargement authentifié par
+digest et le refus d'une demande anonyme. Le workflow référencé ci-dessus est
+terminé avec succès. Aucun test logiciel ne vaut validation matérielle de cette
+reprise sur la Wallbox réelle ; le serveur n'a pas été mis à jour par l'assistant.
+
+La branche existante, le worktree et la PR en brouillon sont conservés.
+Aucune fusion dans main.

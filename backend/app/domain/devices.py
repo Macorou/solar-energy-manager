@@ -11,6 +11,10 @@ class DeviceSpec:
     min_power_w: float = 0
     max_power_w: float = 0
     priority: int = 1
+    grid_phases: tuple[str,...] = ()
+    voltage: float = 230
+    min_current_a: int = 6
+    max_current_a: int = 32
 
 
 @dataclass(frozen=True)
@@ -26,6 +30,8 @@ class DeviceState:
     measured_at: datetime | None = None
     vehicle_connected: bool | None = None
     energy_wh: float | None = None
+    energy_measured_at: datetime | None = None
+    currents: dict[str,Sample] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

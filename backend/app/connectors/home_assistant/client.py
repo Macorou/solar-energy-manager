@@ -63,7 +63,22 @@ class HomeAssistantSource:
         if house and house.value is not None and house.value<0:
             house=replace(house,quality=Quality.UNAVAILABLE)
         return SiteSnapshot(at=utcnow(), grid=self.power(self.config.grid_entity,self.config.invert_grid),
-            solar=self.power(self.config.solar_entity), sample_max_age_s=self.max_age_s,house=house)
+            solar=self.power(self.config.solar_entity), sample_max_age_s=self.max_age_s,house=house,
+            phase_currents={p:self.measure(c.current_entity,{'A':1,'mA':.001},'A') for p,c in self.config.phases.items()},
+            phase_voltages={p:self.measure(c.voltage_entity,{'V':1},'V') for p,c in self.config.phases.items()},
+            phase_powers={p:self.measure(c.power_entity,{'W':1,'kW':1000},'W') for p,c in self.config.phases.items()},
+            phase_limits_a={p:c.max_current_a for p,c in self.config.phases.items()},
+            price=self.measure(self.config.price_entity,{'€/kWh':1,'EUR/kWh':1,'EUR/kwh':1},'€/kWh'))
+
+    def measure(self, entity, units, unit):
+        if not entity or entity not in self.states: return None
+        try:
+            raw=self.states[entity]; attrs=raw.get('attributes',{})
+            scale=units[attrs.get('unit_of_measurement')]
+            normalized=dict(raw,state=str(float(raw['state'])*scale),attributes=dict(attrs,unit_of_measurement='W'))
+            result=replace(normalize_power(normalized,self.received.get(entity,utcnow())),unit=unit)
+            return result if self.connected else replace(result,quality=Quality.UNAVAILABLE)
+        except (ValueError,KeyError,TypeError,AttributeError,OverflowError): return None
 
     def device_power(self, device_id):
         return self.power(self.config.device_power_entities.get(device_id,''))

@@ -151,6 +151,7 @@ class Coordinator:
             states[device.id]=replace(state,observed_power=power or state.observed_power)
         base=self.ha.snapshot() if self.ha else SiteSnapshot(now)
         return replace(base,at=now,device_states=states,vehicle_telemetry=dict(self.telemetry),
+            phase_control_enabled=config.phase_control_enabled,phase_margin_a=config.phase_margin_a,
             site_limit_w=config.site_limit_w,export_margin_w=config.export_margin_w,
             sample_max_age_s=config.sample_max_age_s,reservations=tuple(self.reservations.values()))
 
@@ -213,7 +214,8 @@ class Coordinator:
             for key,(queued,_) in self.queued_intents.items():
                 if queued.action=='suspend' and key in policies: policies[key]=replace(policies[key],mode='off')
             specs=[DeviceSpec(d.id,d.kind,min_power_w=d.min_power_w,max_power_w=d.max_power_w,
-                priority=d.priority) for d in config.devices]
+                priority=d.priority,grid_phases=tuple(d.grid_phases),voltage=d.voltage,
+                min_current_a=d.min_current_a,max_current_a=d.max_current_a) for d in config.devices]
             batch=self.engine.evaluate(snapshot,specs,policies,authorizations)
             # Persist a boundary stop before queueing it: a crash cannot turn
             # an expired network authorization into a new cloud grace period.

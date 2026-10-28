@@ -43,7 +43,9 @@ class Station(ChargePoint):
                     self.registry.pending_start.pop(config.id,None);self.registry.save_pending()
             self.registry.states[config.id]=replace(old,connected=True,observed_state=status,
                 fault=None if error_code=='NoError' and status!='Faulted' else error_code,
-                observed_power=power,vehicle_connected=status not in ('Available','Unavailable'),measured_at=utcnow())
+                observed_power=power,vehicle_connected=False if status=='Available' else
+                    True if status in ('Preparing','Charging','SuspendedEV','SuspendedEVSE','Finishing') else None,
+                measured_at=utcnow())
         return call_result.StatusNotification()
 
     @on(Action.start_transaction)
@@ -56,7 +58,12 @@ class Station(ChargePoint):
         cancelled=bool(pending and pending['state']=='cancel_requested') or not self.registry.authorized(config)
         if cancelled and self.registry.on_transaction: self.registry.on_transaction(config.id)
         old=self.registry.states.get(config.id,DeviceState(config.id))
-        self.registry.states[config.id]=replace(old,connected=True,vehicle_connected=True,observed_state='Charging')
+        try:
+            stamp=datetime.fromisoformat(timestamp.replace('Z','+00:00'))
+            if stamp.tzinfo and math.isfinite(meter_start) and meter_start>=0 and (not old.energy_measured_at or stamp>=old.energy_measured_at):
+                old=replace(old,energy_wh=float(meter_start),energy_measured_at=stamp)
+        except (ValueError,TypeError,AttributeError): pass
+        self.registry.states[config.id]=replace(old,connected=True,vehicle_connected=True,observed_state='Preparing')
         return call_result.StartTransaction(transaction_id=transaction,
             id_tag_info={'status':'Accepted' if self.registry.authorized(config) else 'Invalid'})
 
@@ -68,6 +75,11 @@ class Station(ChargePoint):
                 if config:
                     self.registry.pending_start.pop(config.id,None);self.registry.save_pending()
                     old=self.registry.states.get(config.id,DeviceState(config.id))
+                    try:
+                        stamp=datetime.fromisoformat(timestamp.replace('Z','+00:00'))
+                        if stamp.tzinfo and math.isfinite(meter_stop) and meter_stop>=0 and (not old.energy_measured_at or stamp>=old.energy_measured_at):
+                            old=replace(old,energy_wh=float(meter_stop),energy_measured_at=stamp)
+                    except (ValueError,TypeError,AttributeError): pass
                     self.registry.states[config.id]=replace(old,observed_state='Finishing',
                         observed_power=Sample(0,'W','OCPP fin de transaction',utcnow(),utcnow(),Quality.ESTIMATED))
                 del self.registry.active[key]
@@ -88,6 +100,7 @@ class Station(ChargePoint):
                     power_values=[]
                     total=None
                     energy=old.energy_wh
+                    currents=dict(old.currents)
                     for sample in values:
                         value=float(sample['value'])
                         if not math.isfinite(value) or value<0:
@@ -101,7 +114,16 @@ class Station(ChargePoint):
                             else:
                                 total=watts
                         if measurand=='Energy.Active.Import.Register' and unit in ('Wh','kWh'):
-                            energy=value*(1000 if unit=='kWh' else 1)
+                            candidate=value*(1000 if unit=='kWh' else 1)
+                            if math.isfinite(candidate) and (not old.energy_measured_at or stamp>old.energy_measured_at):
+                                energy=candidate
+                                old=replace(old,energy_wh=energy,energy_measured_at=stamp)
+                        if measurand=='Current.Import' and unit in ('A','mA'):
+                            phase=sample.get('phase','L1' if config.phases==1 else '')
+                            prior=currents.get(phase)
+                            if phase in ('L1','L2','L3') and (not prior or stamp>=prior.measured_at):
+                                currents[phase]=Sample(value*(.001 if unit=='mA' else 1),'A','OCPP '+config.id,stamp,utcnow())
+                    old=replace(old,currents=currents,connected=True)
                     if total is None and power_values:
                         total=sum(power_values)
                     if total is not None and (not old.observed_power or not old.observed_power.measured_at

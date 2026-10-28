@@ -7,6 +7,7 @@ from app.domain.devices import Reservation
 from app.engine.budget import solar_budget_w,power_coherent,measurements_coherent
 from app.engine.hysteresis import Timers
 from app.engine.heater_targets import HeaterTargets
+from app.engine.phase_limits import phase_power_limit
 from app.simulation.clock import Clock
 
 
@@ -51,8 +52,21 @@ class EnergyEngine:
         tolerance_spent = 0
         reasons, commands, reservations = {}, [], []
         effective_targets, target_sources = {}, {}
+        phase_extra={}
         pending = {r.device_id:r.power_w for r in snapshot.reservations}
         committed={s.id:max(measured.get(s.id,0),pending.get(s.id,0),self.requested.get(s.id,0)) for s in specs}
+        phase_reserves={}
+        for s in specs:
+            if s.kind!='charger' or not s.grid_phases: continue
+            state=snapshot.device_states.get(s.id)
+            offered=max(pending.get(s.id,0),self.requested.get(s.id,0))/(s.voltage*len(s.grid_phases))
+            holds={}
+            for i,p in enumerate(s.grid_phases):
+                current=state.currents.get('L'+str(i+1)) if state else None
+                actual=max(0,current.value) if current and current.usable(now,snapshot.sample_max_age_s) else 0
+                holds[p]=max(0,offered-actual)
+                phase_extra[p]=phase_extra.get(p,0)+holds[p]
+            phase_reserves[s.id]=holds
         coherent=power_coherent(snapshot)
         if not coherent and grid_valid and all_power_valid and snapshot.site_limit_w is not None:
             # Mixed frames can maintain or reduce an existing authorization, never increase it.
@@ -175,6 +189,11 @@ class EnergyEngine:
                 self.timers.reached(spec.id+':start',False,0,mono)
             if desired < spec.min_power_w:
                 desired = 0
+            if desired:
+                other={p:max(0,value-phase_reserves.get(spec.id,{}).get(p,0)) for p,value in phase_extra.items()}
+                desired,phase_reason=phase_power_limit(snapshot,spec,desired,other)
+                for p,value in other.items(): phase_extra[p]=max(phase_extra.get(p,0),value)
+                if phase_reason: reason=phase_reason
             occupied = max(desired,committed.get(spec.id,0))
             if not network:
                 tolerance_spent += max(0,desired-max(0,solar_available))

@@ -18,4 +18,11 @@ class SiteSnapshot:
     sample_max_age_s: float = 30
     transition_blocked: bool = False
     house: Sample | None = None
+    phase_currents: dict[str,Sample | None] = field(default_factory=dict)
+    phase_voltages: dict[str,Sample | None] = field(default_factory=dict)
+    phase_powers: dict[str,Sample | None] = field(default_factory=dict)
+    phase_limits_a: dict[str,float] = field(default_factory=dict)
+    phase_control_enabled: bool = False
+    phase_margin_a: float = 1
+    price: Sample | None = None
 

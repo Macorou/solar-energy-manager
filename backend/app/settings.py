@@ -39,6 +39,7 @@ class DeviceConfig(Model):
     min_current_a: int = Field(6, ge=1, le=80)
     max_current_a: int = Field(32, ge=1, le=80)
     phases: Literal[1, 3] = 1
+    grid_phases: list[Literal['L1','L2','L3']] = Field(default_factory=list)
     voltage: float = Field(230, ge=100, le=300)
     charge_point_id: str = ''
     allow_insecure_identity: bool = False
@@ -53,6 +54,8 @@ class DeviceConfig(Model):
 
     @model_validator(mode='after')
     def limits(self):
+        if self.grid_phases and (len(set(self.grid_phases))!=len(self.grid_phases) or len(self.grid_phases)!=self.phases):
+            raise ValueError('Associer une phase réseau par phase de recharge')
         if self.max_power_w and self.max_power_w < self.min_power_w:
             raise ValueError('Maximum power must cover the minimum')
         if self.max_current_a < self.min_current_a:
@@ -113,11 +116,20 @@ class OffPeakWindow(Model):
         return sorted(set(value))
 
 
+class PhaseConfig(Model):
+    current_entity: str = ''
+    voltage_entity: str = ''
+    power_entity: str = ''
+    max_current_a: float = Field(20,gt=0,le=1000)
+
+
 class HomeAssistantConfig(Model):
     url: str = ''
     grid_entity: str = ''
     solar_entity: str = ''
     house_entity: str = ''
+    price_entity: str = ''
+    phases: dict[Literal['L1','L2','L3'],PhaseConfig] = Field(default_factory=dict)
     invert_grid: bool = False
     device_power_entities: dict[str, str] = Field(default_factory=dict)
 
@@ -140,6 +152,9 @@ class SettingsDocument(Model):
     timezone: str = 'Europe/Paris'
     site_limit_w: float | None = Field(None, gt=0)
     export_margin_w: float = Field(100, ge=0)
+    phase_control_enabled: bool = False
+    phase_margin_a: float = Field(1,ge=0,le=100)
+    solar_price_per_kwh: float = Field(0,ge=0,le=100)
     sample_max_age_s: int = Field(30, ge=5, le=3600)
     devices: list[DeviceConfig] = Field(default_factory=list)
     vehicles: list[VehicleConfig] = Field(default_factory=list)

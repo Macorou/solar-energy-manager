@@ -31,6 +31,8 @@ class DeviceState:
     vehicle_connected: bool | None = None
     energy_wh: float | None = None
     energy_measured_at: datetime | None = None
+    energy_terminal: bool = False
+    status_measured_at: datetime | None = None
     currents: dict[str,Sample] = field(default_factory=dict)
 
 

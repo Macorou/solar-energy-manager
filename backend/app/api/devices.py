@@ -1,6 +1,7 @@
 from fastapi import APIRouter,Depends,Request,HTTPException
 from pydantic import BaseModel,Field,SecretStr
 from datetime import timedelta
+import asyncio
 from app.api.auth import require_auth
 from app.settings import SettingsDocument
 from app.domain.measurements import utcnow
@@ -17,6 +18,41 @@ def lookup(request,device_id):
 
 class ManualRequest(BaseModel):
     duration_minutes:int=Field(30,ge=1,le=720)
+
+
+class SocReferenceRequest(BaseModel):
+    soc:float=Field(ge=0,le=100,allow_inf_nan=False)
+    session_id:str=Field(min_length=1,max_length=100)
+
+
+@router.post('/devices/{device_id}/meter-read')
+async def meter_read(device_id:str,request:Request):
+    _,device=lookup(request,device_id)
+    if device.kind!='charger':raise HTTPException(409,'Lecture réservée aux bornes OCPP')
+    from app.connectors.ocpp.registry import ChargerAdapter
+    try:
+        accepted=await asyncio.wait_for(ChargerAdapter(request.app.state.ocpp,device).request_meter(),10)
+    except Exception:accepted=False
+    if not accepted:raise HTTPException(409,'La borne ne permet pas cette demande de mesure ou est hors connexion')
+    return {'ok':True,'status':'meter_requested'}
+
+
+@router.post('/devices/{device_id}/soc-reference')
+async def confirm_soc(device_id:str,body:SocReferenceRequest,request:Request):
+    runtime=request.app.state.coordinator
+    async with runtime.lock:
+        config,device=lookup(request,device_id)
+        now=utcnow();state=runtime.snapshot.device_states.get(device_id)
+        vehicle=next((v for v in config.vehicles if v.id==device.vehicle_id),None)
+        if (device.kind!='charger' or not vehicle or not vehicle.capacity_kwh or not state
+            or not state.connected or state.vehicle_connected is not True or state.fault
+            or not 0<=(now-runtime.snapshot.at).total_seconds()<=config.sample_max_age_s):
+            raise HTTPException(409,'Véhicule branché, capacité utile et mesures actuelles requis')
+        try:runtime.charging.confirm_soc(device_id,body.soc,now,body.session_id)
+        except ValueError as error:raise HTTPException(409,str(error))
+        runtime.store.append_event({'kind':'soc_reference_confirmed','device_id':device_id,
+            'details':{'soc':body.soc,'origin':'web'}})
+    return {'ok':True,'session_id':body.session_id}
 
 
 @router.post('/devices/{device_id}/manual')

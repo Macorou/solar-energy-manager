@@ -41,3 +41,12 @@ it('never interprets an offline charger as a physically disconnected car',()=>{
   expect(screen.getByText(/Voiture : État inconnu · borne hors connexion/)).toBeTruthy()
   expect(screen.queryByText(/Voiture : Débranchée/)).toBeNull()
 })
+
+it('shows the manual default target rather than the unrelated scheduled target and deadline',()=>{
+  const device={config:{id:'ev',name:'EV',kind:'charger',armed:true,mode:'manual',priority:1,default_soc_target:80},
+    state:{observed_state:'Preparing',connected:true,vehicle_connected:true},reason:'Commande manuelle',command:null,
+    authorization:{target_soc:90,expires_at:'2026-10-28T05:45:00Z'}} as unknown as LiveDevice
+  render(<DeviceCard device={device} onAction={()=>{}}/>)
+  expect(screen.getByText('Objectif 80 %')).toBeTruthy()
+  expect(screen.queryByText(/Objectif 90/)).toBeNull()
+})

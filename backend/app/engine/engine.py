@@ -7,7 +7,7 @@ from app.domain.devices import Reservation
 from app.engine.budget import solar_budget_w,power_coherent,measurements_coherent
 from app.engine.hysteresis import Timers
 from app.engine.heater_targets import HeaterTargets
-from app.engine.phase_limits import phase_power_limit
+from app.engine.phase_limits import phase_power_limit,current_credit
 from app.simulation.clock import Clock
 
 
@@ -62,8 +62,7 @@ class EnergyEngine:
             offered=max(pending.get(s.id,0),self.requested.get(s.id,0))/(s.voltage*len(s.grid_phases))
             holds={}
             for i,p in enumerate(s.grid_phases):
-                current=state.currents.get('L'+str(i+1)) if state else None
-                actual=max(0,current.value) if current and current.usable(now,snapshot.sample_max_age_s) else 0
+                actual,_=current_credit(snapshot,s,i)
                 holds[p]=max(0,offered-actual)
                 phase_extra[p]=phase_extra.get(p,0)+holds[p]
             phase_reserves[s.id]=holds
@@ -191,7 +190,7 @@ class EnergyEngine:
                 desired = 0
             if desired:
                 other={p:max(0,value-phase_reserves.get(spec.id,{}).get(p,0)) for p,value in phase_extra.items()}
-                desired,phase_reason=phase_power_limit(snapshot,spec,desired,other)
+                desired,phase_reason=phase_power_limit(snapshot,spec,desired,other,previous or 0)
                 for p,value in other.items(): phase_extra[p]=max(phase_extra.get(p,0),value)
                 if phase_reason: reason=phase_reason
             occupied = max(desired,committed.get(spec.id,0))

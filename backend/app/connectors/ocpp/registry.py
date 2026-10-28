@@ -72,6 +72,12 @@ class ChargerAdapter:
     async def read_state(self):
         return self.registry.state(self.config.id)
 
+    async def request_meter(self):
+        station=self.registry.stations.get(self.config.charge_point_id)
+        if not station:return False
+        result=await station.call(call.TriggerMessage(requested_message='MeterValues',connector_id=self.config.connector_id))
+        return result.status=='Accepted'
+
     async def probe_capabilities(self):
         station=self.registry.stations.get(self.config.charge_point_id)
         if not station:

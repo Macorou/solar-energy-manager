@@ -55,16 +55,19 @@ class ChargingTracker:
                 session={'id':str(uuid.uuid4()),'vehicle':list(identity),'active':True,'started_at':now,
                     'ended_at':None,'energy_wh':0.,'cost_eur':0.,'priced_wh':0.,'solar_wh':0.,'allocated_wh':0.,
                     'last_meter':None,'last_at':None,'points':[],'contexts':[],'anchor':None,
-                    'meter_partial':False,'soc_gap_at':None,'soc':None,'soc_usable':False,
+                    'meter_partial':False,'terminal_pending':False,'soc_gap_at':None,'soc':None,'soc_usable':False,
                     'soc_estimated':False,'reached_target':None,'reached_at':None}
                 self.sessions[device.id]=session
             if not session: continue
             # Do not feed a completed session with a different vehicle's measurements.
             if tuple(session['vehicle'])!=identity: continue
-            if session['active']:
+            terminal=bool(not session['active'] and state.connected and state.vehicle_connected is False
+                and state.energy_terminal and now-session['ended_at']<=90)
+            if session['active'] or terminal:
                 session['checked_at']=now
                 contexts=session['contexts']; entry=[now,fraction,price,config.solar_price_per_kwh]
-                if not contexts or now-contexts[-1][0]>=10 or price!=contexts[-1][2]:
+                if (not contexts or now-contexts[-1][0]>=10 or price!=contexts[-1][2]
+                    or (fraction is None)!=(contexts[-1][1] is None)):
                     contexts.append(entry)
                 session['contexts']=contexts[-8192:]
                 raw,stamp=state.energy_wh,state.energy_measured_at
@@ -82,14 +85,18 @@ class ChargingTracker:
                             session['meter_partial']=True
                             session['soc_gap_at']=when
                         else:
-                            self.allocate(session,delta,session['last_at'],when,config.sample_max_age_s)
+                            self.allocate(session,delta,session['last_at'],
+                                min(when,session['ended_at']) if terminal else when,config.sample_max_age_s)
                             session['energy_wh']+=delta
                         session['last_meter']=raw;session['last_at']=when
                         session['points'].append([when,session['energy_wh']])
                         session['points']=session['points'][-4096:]
                 self.soc(session,snapshot,config,device,state,vehicle)
+                if state.energy_terminal:session['terminal_pending']=False
                 if state.connected and state.vehicle_connected is False:
-                    session['active']=False;session['ended_at']=now
+                    if session['active']:
+                        session['active']=False;session['ended_at']=now
+                        session['terminal_pending']=session['energy_wh']>0 and not state.energy_terminal
             # Disconnection of the controller never closes a plug session.
         self.store.set('charging_sessions',self.sessions)
 
@@ -118,13 +125,17 @@ class ChargingTracker:
         if raw and raw.usable(snapshot.at,config.peugeot.max_age_s):
             stamp=raw.measured_at.timestamp()
             if not session['anchor'] or stamp>session['anchor']['at']:
-                session['anchor']={'soc':raw.soc,'at':stamp,'energy':None}
+                covered=bool(session['points'] and stamp>=session['points'][0][0]-2)
+                session['anchor']={'soc':raw.soc,'at':stamp,'energy':None,'covered':covered,'source':'vehicle'}
                 # Real later measurements override the estimate, with 1% hysteresis.
                 if (session['reached_target'] is not None and session.get('reached_at') is not None
                     and stamp>session['reached_at'] and raw.soc<session['reached_target']-1):
                     session['reached_target']=None;session['reached_at']=None
         anchor=session['anchor']; session['soc_usable']=False
         idle=state.observed_state in ('Available','Preparing','SuspendedEV','SuspendedEVSE','Finishing')
+        if anchor and not anchor.get('covered',False):
+            session['soc']=anchor['soc'];session['soc_estimated']=True
+            return
         if anchor and vehicle and vehicle.capacity_kwh and session['points']:
             base=anchor.get('energy')
             if base is None:
@@ -139,6 +150,16 @@ class ChargingTracker:
         elif (raw and raw.fresh(snapshot.at,config.peugeot.max_age_s)
               and (idle or now-session['started_at']<=90)):
             session['soc']=raw.soc;session['soc_estimated']=False;session['soc_usable']=True
+
+    def confirm_soc(self,device_id,value,now,session_id=None):
+        session=self.sessions.get(device_id)
+        if (not finite(value) or not 0<=value<=100 or not session or not session['active']
+            or session_id is not None and session_id!=session['id'] or session['last_at'] is None
+            or not 0<=now.timestamp()-session['last_at']<=90):
+            raise ValueError('Session branchée et index récent requis')
+        session['anchor']={'soc':float(value),'at':now.timestamp(),'energy':None,'covered':True,'source':'manual'}
+        session['reached_target']=None;session['reached_at']=None
+        self.store.set('charging_sessions',self.sessions)
 
     def target_reached(self,device_id,target):
         session=self.sessions.get(device_id)
@@ -156,13 +177,16 @@ class ChargingTracker:
         session=self.sessions.get(device_id)
         if not session:return None
         energy=session['energy_wh']
+        partial=session['meter_partial'] or session.get('terminal_pending',False)
         return {'id':session['id'],'active':session['active'],
             'ended_at':datetime.fromtimestamp(session['ended_at'],timezone.utc).isoformat() if session['ended_at'] else None,
-            'energy_kwh':energy/1000,'energy_partial':session['meter_partial'],
+            'energy_kwh':energy/1000,'energy_partial':partial,
             'cost_eur':session['cost_eur'] if session['priced_wh']>0 or energy==0 else None,
-            'cost_partial':session['priced_wh']+1e-6<energy,
-            'solar_percent':100*session['solar_wh']/energy if energy>0 and session['allocated_wh']+1e-6>=energy else None,
-            'average_price_per_kwh':session['cost_eur']/(energy/1000) if energy>0 and session['priced_wh']+1e-6>=energy else None,
+            'cost_partial':partial or session['priced_wh']+1e-6<energy,
+            'solar_percent':100*session['solar_wh']/energy if not partial and energy>0 and session['allocated_wh']+1e-6>=energy else None,
+            'average_price_per_kwh':session['cost_eur']/(energy/1000) if not partial and energy>0 and session['priced_wh']+1e-6>=energy else None,
             'effective_price_per_kwh':self.effective_price,
             'soc':session['soc'],'soc_estimated':session['soc_estimated'],'soc_usable':session['soc_usable'],
+            'soc_reference_missing':not session['anchor'] or not session['anchor'].get('covered',False),
+            'soc_reference_source':session['anchor'].get('source','vehicle') if session['anchor'] else None,
             'soc_reference_at':datetime.fromtimestamp(session['anchor']['at'],timezone.utc).isoformat() if session['anchor'] else None}

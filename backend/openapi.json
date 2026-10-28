@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Solar Energy Manager",
-    "version": "0.1.8"
+    "version": "0.1.9"
   },
   "paths": {
     "/api/v1/setup/status": {
@@ -1077,6 +1077,90 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ArmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{device_id}/meter-read": {
+      "post": {
+        "summary": "Meter Read",
+        "operationId": "meter_read_api_v1_devices__device_id__meter_read_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{device_id}/soc-reference": {
+      "post": {
+        "summary": "Confirm Soc",
+        "operationId": "confirm_soc_api_v1_devices__device_id__soc_reference_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SocReferenceRequest"
               }
             }
           }
@@ -2280,6 +2364,28 @@
           "token"
         ],
         "title": "Setup"
+      },
+      "SocReferenceRequest": {
+        "properties": {
+          "soc": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Soc"
+          },
+          "session_id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "soc",
+          "session_id"
+        ],
+        "title": "SocReferenceRequest"
       },
       "ValidationError": {
         "properties": {

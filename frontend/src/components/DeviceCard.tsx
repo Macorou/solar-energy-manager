@@ -3,6 +3,7 @@ import {watts} from '../api/client'
 import {Icon} from './Icon'
 import {DeviceIllustration} from './DeviceIllustration'
 import {ChargeSession,vehicleStatus} from './ChargeSession'
+import {SocReference} from './SocReference'
 
 export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{device:LiveDevice;telemetry?:Telemetry;
   onAction:(id:string,action:string)=>void;timezone?:string}) {
@@ -26,8 +27,8 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
     pending?['amber','En attente de confirmation','clock']:
     !config.armed?['neutral','Observation','eye']:
     !state.connected?['neutral','Hors connexion','link']:['amber','En attente','clock']
-  const target=car?(device.authorization?.target_soc??config.default_soc_target):(device.effective_target??config.target)
-  const deadline=car&&device.authorization?.expires_at?new Date(device.authorization.expires_at)
+  const target=car?(config.mode==='manual'?config.default_soc_target:device.authorization?.target_soc??config.default_soc_target):(device.effective_target??config.target)
+  const deadline=car&&config.mode!=='manual'&&device.authorization?.expires_at?new Date(device.authorization.expires_at)
     .toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:timezone}):null
   const automatic=config.mode!=='off'&&config.mode!=='manual'
   return <article className={'device-card '+(car?'ev':'tank')} aria-label={config.name}>
@@ -55,6 +56,7 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
       </div>
     </div>
     {car&&session&&<ChargeSession value={session}/>}
+    {car&&session?.active&&session.soc_reference_missing&&state.connected&&<SocReference key={session.id} deviceId={config.id} sessionId={session.id}/>}
     <div className="device-feedback"><span className="reason"><span className="status-dot"/>{device.reason}</span><span className="device-priority">Priorité {config.priority}</span></div>
     {command&&<div className="command-status">Demande {watts(command.power_w)} · {({sending:'envoi en cours',accepted:'acceptée, en attente de mesure',observed:'effet observé',unknown:'résultat inconnu'} as Record<string,string>)[command.status]||command.status}</div>}
     {car&&value!=null&&<span className="measure-date">{batteryDate?<>Batterie relevée le <time dateTime={telemetry!.measured_at!}>{batteryDate}</time></>:'Date de mesure indisponible'}</span>}

@@ -212,7 +212,7 @@ test('charge accounting and phase measurements fit desktop and phone with fictio
     await expect(page.getByText(/Voiture : En attente de charge/)).toBeVisible()
     await expect(page.getByRole('region',{name:'Gestion de la charge par phase'})).toBeVisible()
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
-    await page.screenshot({path:path.join(process.env.SEM_SCREENSHOT_DIR||'test-results',`solar-energy-manager-v0.1.9-charge-${width}.png`),fullPage:true})
+    await page.screenshot({path:path.join(process.env.SEM_SCREENSHOT_DIR||'test-results',`solar-energy-manager-v0.1.10-charge-${width}.png`),fullPage:true})
   }
   expect(await (await page.request.get('/api/v1/settings')).json()).toEqual(settings)
 })

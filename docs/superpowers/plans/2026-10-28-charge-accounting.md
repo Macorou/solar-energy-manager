@@ -27,33 +27,33 @@ Files settings.py, domain/site.py/devices.py, connectors/home_assistant/client.p
 connectors/ocpp/station.py, engine/phase_limits.py, engine/engine.py, runtime/coordinator.py.
 Consumes Sample, DeviceConfig ; produces phase_power_limit(snapshot,device,desired_w)
 et snapshots phase_currents/voltages/powers/tariff, index/courant OCPP horodatés.
-- [ ] Écrire tests limites mono/tri, propre courant inclus, minimum et source absente,
+- [x] Écrire tests limites mono/tri, propre courant inclus, minimum et source absente,
   courant inexistant, réservation plusieurs bornes, normalisation tarif/A et trames énergie seules.
-- [ ] Exécuter pytest ciblé et constater RED.
-- [ ] Implémenter interfaces/validation et intégrer après budget avant réservation.
-- [ ] GREEN ciblé et suite Python puis commit.
+- [x] Exécuter pytest ciblé et constater RED.
+- [x] Implémenter interfaces/validation et intégrer après budget avant réservation.
+- [x] GREEN ciblé et suite Python puis commit.
 
 ### Task2 : registre session, coût et SOC
 Files runtime/charging.py, domain/vehicles.py, runtime/coordinator.py, engine/engine.py.
 Consumes snapshots normalisés ; produces ChargingTracker.update(snapshot,config),
 public device charging summary, effective telemetry + target latch.
-- [ ] Tests75→80 arrêt, énergie seule, duplicate/reset/reboot, mesure retardée,
+- [x] Tests75→80 arrêt, énergie seule, duplicate/reset/reboot, mesure retardée,
   mêmes anciennes75 répétées, véhicule changé, pauses, coût tarif variable/absence.
-- [ ] RED puis implémentation persistée, source SOC, limites tous modes.
-- [ ] GREEN ciblé + suite Python puis commit.
+- [x] RED puis implémentation persistée, source SOC, limites tous modes.
+- [x] GREEN ciblé + suite Python puis commit.
 
 ### Task3 : configuration et dashboard
 Files pages/Settings.tsx/Devices.tsx, components/DeviceCard.tsx/Overview.tsx,
 api/types.ts, dashboard.css, tests UI/browser.
 Consumes schema réglages et public summaries ; produces champs phase/tarif/capacité/
 rendement, courant par phase, état voiture, énergie/coût/%solaire/SOC estimé.
-- [ ] Tests des seuils W/kW et rendu état/coût/source estimée, sauvegarde réglages.
-- [ ] RED, génération schema, implémentation responsive préservant dessins.
-- [ ] UI GREEN, TypeScript/build et Python suite puis commit.
+- [x] Tests des seuils W/kW et rendu état/coût/source estimée, sauvegarde réglages.
+- [x] RED, génération schema, implémentation responsive préservant dessins.
+- [x] UI GREEN, TypeScript/build et Python suite puis commit.
 
 ### Task4 : revue et livraison
 - [ ] Revue fraîche du diff complet15933fa..HEAD ; corrections importantes RED→GREEN.
-- [ ] Bump0.1.9 et guide avec limites/configuration ; schema/build/Compose.
+- [ ] Bump0.1.10 et guide avec limites/configuration ; schema/build/Compose.
 - [ ] Commit/tag immuable et publication privée autorisée ; CI Python/UI/browser/Docker.
 - [ ] Vérifier image privée/digest, release et guide ; aucun déploiement matériel.
 

@@ -117,6 +117,18 @@ async def test_schedule_completion_accepts_trusted_effective_soc(tmp_path):
     assert store.get('schedule_results')['due']['result']=='complete'
 
 
+@pytest.mark.asyncio
+async def test_schedule_does_not_count_untracked_old_soc_as_verified_completion(tmp_path):
+    from app.runtime.coordinator import Coordinator
+    _,store,cfg=setup_tracker(tmp_path);now=utcnow()
+    store.save_settings(cfg.model_dump(mode='json'))
+    store.set('schedule_results',{'due':{'program_id':'p','vehicle_id':'car','target_soc':80,
+        'deadline':now.isoformat(),'result':'pending'}})
+    runtime=Coordinator(store)
+    await runtime.tick(frame(now,10000,soc=90,stamp=now-timedelta(hours=1),plugged=False))
+    assert store.get('schedule_results')['due']['result']=='incomplete'
+
+
 def test_user_confirmed_initial_soc_is_bound_to_current_plug_session(tmp_path):
     tracker,store,cfg=setup_tracker(tmp_path);now=utcnow();old=now-timedelta(hours=1)
     tracker.update(frame(now,10000,stamp=old),cfg)

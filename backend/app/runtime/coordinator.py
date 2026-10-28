@@ -280,7 +280,8 @@ class Coordinator:
         for value in tracked.values():
             if value['result']!='pending' or datetime.fromisoformat(value['deadline'])>snapshot.at: continue
             telemetry=snapshot.vehicle_telemetry.get(value['vehicle_id'])
-            complete=bool(telemetry and telemetry.usable(snapshot.at,config.peugeot.max_age_s)
+            complete=bool(telemetry and (telemetry.fresh(snapshot.at,config.peugeot.max_age_s)
+                          or telemetry.quality==Quality.ESTIMATED and telemetry.usable(snapshot.at,config.peugeot.max_age_s))
                           and telemetry.soc>=value['target_soc'])
             value['estimated']=bool(telemetry and telemetry.quality==Quality.ESTIMATED)
             value['result']='complete' if complete else 'incomplete'

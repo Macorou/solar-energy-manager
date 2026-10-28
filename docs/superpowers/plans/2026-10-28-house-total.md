@@ -1,6 +1,6 @@
 # House total Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Show total household consumption and allow an optional HA power entity.
 **Architecture:** Optional display-only sample through existing HA snapshot;
@@ -31,12 +31,12 @@ new tests/backend/test_house_consumption.py; generated OpenAPI/schema.
 **Interfaces:** `house_entity: str=''`, `SiteSnapshot.house: Sample|None=None`
 appended to dataclass, `LiveState.house` and `house_configured` optional on client.
 
-- [ ] Write failing frontend tests for total import/export, independence from
+- [x] Write failing frontend tests for total import/export, independence from
   device meters, checked_at pairing, direct sensor0/invalid/no silent fallback.
-- [ ] Write failing HA snapshot/public-state tests and form persistence test.
-- [ ] Run focused tests and confirm RED for missing behavior.
-- [ ] Implement minimal existing-path extension; regenerate schema.
-- [ ] Run full Python/UI suites and build, then commit.
+- [x] Write failing HA snapshot/public-state tests and form persistence test.
+- [x] Run focused tests and confirm RED for missing behavior.
+- [x] Implement minimal existing-path extension; regenerate schema.
+- [x] Run full Python/UI suites and build, then commit.
 
 ### Task 2: Review and private delivery
 

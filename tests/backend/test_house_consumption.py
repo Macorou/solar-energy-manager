@@ -66,3 +66,27 @@ def test_house_mapping_and_sample_are_exposed_without_changing_control_budget(tm
 def test_old_configuration_keeps_calculation_selected(tmp_path):
     config=HomeAssistantConfig.model_validate({'grid_entity':'sensor.grid','solar_entity':'sensor.solar'})
     assert config.house_entity==''
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('invalid',['numeric_timestamp','overflow_kw','null_attributes','list_attributes'])
+async def test_malformed_optional_sensor_keeps_control_and_public_json_available(tmp_path,invalid):
+    from fastapi.encoders import jsonable_encoder
+    from starlette.responses import JSONResponse
+    house=entity('sensor.house',700)
+    if invalid=='numeric_timestamp': house['attributes']['measurement_timestamp']=1793188800
+    elif invalid=='overflow_kw': house['state']='1e308'; house['attributes']['unit_of_measurement']='kW'
+    elif invalid=='null_attributes': house['attributes']=None
+    elif invalid=='list_attributes': house['attributes']=['invalid']
+    states=[entity('sensor.grid',400),house]
+    config=HomeAssistantConfig(url='http://ha.test',grid_entity='sensor.grid',house_entity='sensor.house')
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _:httpx.Response(200,json=states))) as http:
+        source=HomeAssistantSource(config,'test-only',http=http)
+        await source.connect(); snapshot=source.snapshot()
+        store=SQLiteStore(tmp_path/'db'); store.save_settings(SettingsDocument(home_assistant=config).model_dump(mode='json'))
+        runtime=Coordinator(store); runtime.snapshot=snapshot
+        response=JSONResponse(jsonable_encoder(runtime.public_state()))
+        assert response.status_code==200
+        assert snapshot.house is None or not snapshot.house.usable(snapshot.at,30)
+        assert source.connected and snapshot.grid.usable(snapshot.at,30)
+        assert power_coherent(snapshot)

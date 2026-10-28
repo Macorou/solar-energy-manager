@@ -14,10 +14,12 @@ def normalize_power(state: dict, received_at: datetime, invert=False) -> Sample:
         if unit not in ('W', 'kW') or not math.isfinite(value):
             raise ValueError('Invalid power')
         value *= 1000 if unit == 'kW' else 1
+        if not math.isfinite(value):
+            raise ValueError('Invalid normalized power')
         if invert:
             value *= -1
         raw_time = attributes.get('measurement_timestamp') or state.get('last_reported') or state.get('last_updated')
-        measured_at = datetime.fromisoformat(raw_time.replace('Z','+00:00')) if raw_time else None
+        measured_at = datetime.fromisoformat(raw_time.replace('Z','+00:00')) if isinstance(raw_time,str) else None
         if measured_at is not None and measured_at.tzinfo is None:
             measured_at = None
         quality = Quality.FRESH if measured_at else Quality.UNAVAILABLE

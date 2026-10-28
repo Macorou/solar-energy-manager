@@ -58,7 +58,7 @@ class HomeAssistantSource:
         # invalidate the electrical sources used by the controller.
         try:
             house=self.power(self.config.house_entity)
-        except (ValueError,TypeError):
+        except (ValueError,TypeError,AttributeError,OverflowError):
             house=None
         if house and house.value is not None and house.value<0:
             house=replace(house,quality=Quality.UNAVAILABLE)

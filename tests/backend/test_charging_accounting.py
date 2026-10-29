@@ -13,7 +13,7 @@ def setup_tracker(tmp_path):
     from app.runtime.charging import ChargingTracker
     store=SQLiteStore(tmp_path/'db')
     config=SettingsDocument(devices=[{'id':'ev','name':'EV','kind':'charger','vehicle_id':'car'}],
-        vehicles=[{'id':'car','capacity_kwh':40,'efficiency':1}])
+        vehicles=[{'id':'car','capacity_kwh':34,'efficiency':1}])
     return ChargingTracker(store),store,config
 
 
@@ -40,12 +40,12 @@ def test_energy_cost_solar_soc_and_reboot_are_cumulative(tmp_path):
     assert tracker.summary('ev')['soc']==80
 
 
-def test_new_delayed_api_measurement_reanchors_with_energy_since_its_date(tmp_path):
+def test_changed_peugeot_percentage_reanchors_at_current_energy_ignoring_its_date(tmp_path):
     tracker,_,cfg=setup_tracker(tmp_path);now=utcnow();old=now
     tracker.update(frame(now,10000,stamp=old),cfg)
     tracker.update(frame(now+timedelta(seconds=30),12000,stamp=old),cfg)
     tracker.update(frame(now+timedelta(seconds=60),14000,soc=76,stamp=now+timedelta(seconds=30)),cfg)
-    assert tracker.summary('ev')['soc']==pytest.approx(81)
+    assert tracker.summary('ev')['soc']==pytest.approx(76)
 
 
 def test_tariff_change_is_integrated_and_unknown_price_is_not_zero(tmp_path):
@@ -233,11 +233,11 @@ def test_last_peugeot_soc_is_the_automatic_reference_even_before_meter_history(t
     assert tracker.target_reached('ev',80)
 
 
-def test_newer_peugeot_soc_before_history_replaces_reference_and_keeps_known_energy(tmp_path):
+def test_changed_peugeot_soc_replaces_estimate_without_readding_previous_energy(tmp_path):
     tracker,_,cfg=setup_tracker(tmp_path);now=utcnow()
     tracker.update(frame(now,10000,stamp=now-timedelta(hours=2)),cfg)
     tracker.update(frame(now+timedelta(seconds=30),12000,soc=76,stamp=now-timedelta(hours=1)),cfg)
-    assert tracker.summary('ev')['soc']==81
+    assert tracker.summary('ev')['soc']==76
     assert tracker.summary('ev')['soc_usable'] is True
 
 
@@ -396,7 +396,7 @@ async def test_runtime_stops_manual_car_at_estimated_target_even_with_repeated_o
     tracker,store,cfg=setup_tracker(tmp_path);now=utcnow();old=now-timedelta(days=2)
     cfg.devices[0].armed=True;cfg.devices[0].mode='manual'
     cfg.devices[0].min_power_w=1380;cfg.devices[0].max_power_w=3700
-    cfg.vehicles[0].capacity_kwh=.4  # Small simulated battery:20Wh means5%.
+    cfg.vehicles[0].capacity_kwh=.34  # EVCC 85%: 20Wh means 5%.
     store.save_settings(cfg.model_dump(mode='json'))
     store.set('manual_controls',{'ev':{'until':(now+timedelta(hours=2)).isoformat(),'previous_mode':'solar'}})
     class Adapter:
@@ -464,7 +464,7 @@ def test_missing_meter_does_not_permit_targeted_charging_indefinitely_on_fresh_s
     first=frame(now,10000,stamp=now)
     first=replace(first,device_states={'ev':replace(first.device_states['ev'],energy_wh=None,energy_measured_at=None)})
     tracker.update(first,cfg)
-    later=frame(now+timedelta(minutes=3),10000,stamp=now)
+    later=frame(now+timedelta(minutes=6),10000,stamp=now)
     later=replace(later,device_states={'ev':replace(later.device_states['ev'],energy_wh=None,energy_measured_at=None)})
     tracker.update(later,cfg)
     assert tracker.summary('ev')['soc_usable'] is False

@@ -68,7 +68,8 @@ class VehicleConfig(Model):
     name: str = 'Peugeot e-208'
     vin: str = ''
     capacity_kwh: float | None = Field(None, gt=0)
-    efficiency: float = Field(0.9, gt=0, le=1)
+    efficiency: float = Field(0.85, gt=0, le=1, deprecated=True,
+        description='Ancien réglage conservé pour compatibilité ; estimation EVCC automatique à 85 % initialement.')
 
 
 class ChargeProgram(Model):

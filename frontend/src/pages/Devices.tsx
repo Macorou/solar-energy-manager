@@ -63,13 +63,13 @@ export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:
         {kind==='charger'&&<label className="check"><input type="checkbox" checked={editing.allow_insecure_identity} onChange={e=>setEditing({...editing,allow_insecure_identity:e.target.checked})}/>Autoriser l’identité OCPP sans mot de passe sur le réseau local de confiance</label>}
         <CloudSettingsForm value={editing.cloud} onChange={cloud=>setEditing({...editing,cloud})}/>
         <button className="primary">Enregistrer l’appareil</button></form></section>}
-    {kind==='charger'&&<section className="panel"><div className="section-title"><h2>Véhicules</h2><button onClick={()=>setVehicle({id:createId(),name:'Peugeot e-208 2020',vin:'',capacity_kwh:null,efficiency:.9})}>Ajouter un véhicule</button></div>
+    {kind==='charger'&&<section className="panel"><div className="section-title"><h2>Véhicules</h2><button onClick={()=>setVehicle({id:createId(),name:'Peugeot e-208 2020',vin:'',capacity_kwh:null,efficiency:.85})}>Ajouter un véhicule</button></div>
       {settings.vehicles.map(v=><div className="list-row" key={v.id}><div><strong>{v.name}</strong><span className="hint">{v.vin?'VIN renseigné':'VIN à renseigner'}</span></div><button onClick={()=>setVehicle(v)}>Modifier</button></div>)}
       {vehicle&&<form onSubmit={e=>{e.preventDefault();run(async()=>{await save({...settings,vehicles:[...settings.vehicles.filter(v=>v.id!==vehicle.id),vehicle]});setVehicle(null)},'Véhicule enregistré')}}>
         <div className="form-grid"><label>Nom du véhicule<input required value={vehicle.name} onChange={e=>setVehicle({...vehicle,name:e.target.value})}/></label><label>VIN Peugeot<input value={vehicle.vin} onChange={e=>setVehicle({...vehicle,vin:e.target.value.trim().toUpperCase()})}/></label>
           <label>Capacité utile connue (kWh, facultatif)<input type="number" min="1" step=".1" value={vehicle.capacity_kwh??''} onChange={e=>setVehicle({...vehicle,capacity_kwh:e.target.value?Number(e.target.value):null})}/></label>
-          <label>Rendement de charge (%)<input required type="number" min="1" max="100" step="1" value={Math.round(vehicle.efficiency*100)} onChange={e=>setVehicle({...vehicle,efficiency:Number(e.target.value)/100})}/></label></div>
-        <p className="hint">La capacité utile et le rendement permettent d’estimer la batterie à partir des kWh de la borne et d’arrêter à la cible entre deux mesures Peugeot. Sans capacité ou énergie fiable, une ancienne mesure seule ne permet pas de poursuivre.</p>
+          </div>
+        <p className="hint">L’estimation EVCC utilise la capacité et les kWh de la borne pour suivre la batterie entre les réponses Peugeot. Son rendement initial de 85 % s’ajuste automatiquement aux relevés du véhicule.</p>
         <div className="actions"><button className="primary">Enregistrer le véhicule</button><button type="button" onClick={()=>setVehicle(null)}>Annuler</button></div></form>}</section>}
   </>
 }

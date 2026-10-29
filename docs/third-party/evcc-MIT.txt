@@ -1,6 +1,9 @@
 Adapted circuit current limiting principle from EVCC
 https://github.com/evcc-io/evcc/tree/9404d825d6a659d8ce7f47d3b0d2e14ac04506e0
 core/circuit/circuit.go (ValidateCurrent), adapted per physical phase.
+core/soc/estimator.go (SoC estimation) and estimator_test.go reference vectors,
+ported to backend/app/engine/evcc_soc.py and tests/backend/test_evcc_soc.py.
+Peugeot timestamps are deliberately not an input to the EVCC estimator.
 
 MIT License
 

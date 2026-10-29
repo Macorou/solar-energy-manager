@@ -7,6 +7,8 @@ import math
 import uuid
 from datetime import datetime, timezone
 from app.domain.measurements import Quality
+from app.engine.evcc_soc import SocEstimator
+from app.domain.commands import CHARGER_START_WAIT_S
 
 
 def finite(value):
@@ -43,16 +45,15 @@ class ChargingTracker:
         # Migrate references from older releases without reusing estimated gains.
         for session in self.sessions.values():
             anchor=session.get('anchor')
-            if anchor and anchor.get('source','vehicle')=='vehicle':
+            if (anchor and anchor.get('source','vehicle')=='vehicle'
+                    and '|'.join(session['vehicle']) not in self.peugeot_references):
                 self.remember_peugeot(*session['vehicle'],anchor['soc'],anchor['at'])
         self.effective_price=None
 
     def remember_peugeot(self,vehicle_id,vin,soc,stamp):
-        if not vehicle_id or not finite(soc) or not 0<=soc<=100 or not finite(stamp): return
+        if not vehicle_id or not finite(soc) or not 0<=soc<=100: return
         key=vehicle_id+'|'+vin
-        previous=self.peugeot_references.get(key)
-        if not previous or stamp>previous['at']:
-            self.peugeot_references[key]={'soc':soc,'at':stamp}
+        self.peugeot_references[key]={'soc':soc,'at':stamp}
 
     def update(self,snapshot,config):
         now=snapshot.at.timestamp(); vehicles={v.id:v for v in config.vehicles}
@@ -60,9 +61,9 @@ class ChargingTracker:
         for vehicle in config.vehicles:
             raw=snapshot.vehicle_telemetry.get(vehicle.id)
             if (raw and finite(raw.soc) and 0<=raw.soc<=100
-                and raw.measured_at and raw.measured_at.tzinfo and raw.measured_at<=snapshot.at
                 and raw.quality!=Quality.ESTIMATED):
-                self.remember_peugeot(vehicle.id,vehicle.vin,raw.soc,raw.measured_at.timestamp())
+                stamp=raw.measured_at.timestamp() if raw.measured_at and raw.measured_at.tzinfo else None
+                self.remember_peugeot(vehicle.id,vehicle.vin,raw.soc,stamp)
         self.store.set('peugeot_soc_references',self.peugeot_references)
         fraction,price,self.effective_price=mix_context(snapshot,config.solar_price_per_kwh)
         for device in config.devices:
@@ -190,61 +191,52 @@ class ChargingTracker:
 
     def soc(self,session,snapshot,config,device,state,vehicle):
         raw=snapshot.vehicle_telemetry.get(device.vehicle_id)
-        now=snapshot.at.timestamp()
-        # Upgrade 0.1.10 sessions: Peugeot is now the only source of reference.
-        if session['anchor'] and session['anchor'].get('source')=='manual':
-            session['anchor']=None
-            session['reached_target']=None;session['reached_at']=None
         reference=self.peugeot_references.get(device.vehicle_id+'|'+vehicle.vin) if vehicle else None
-        if reference and reference['at']<=now:
-            stamp=reference['at']
-            if not session['anchor'] or stamp>session['anchor']['at']:
-                session['anchor']={'soc':reference['soc'],'at':stamp,'energy':None,'source':'vehicle'}
-                # Real later measurements override the estimate, with 1% hysteresis.
-                if (session['reached_target'] is not None and session.get('reached_at') is not None
-                    and stamp>session['reached_at'] and reference['soc']<session['reached_target']-1):
-                    session['reached_target']=None;session['reached_at']=None
-        anchor=session['anchor']; session['soc_usable']=False
-        session['soc']=anchor['soc'] if anchor else None
-        session['soc_estimated']=bool(anchor and (not raw or not raw.fresh(snapshot.at,config.peugeot.max_age_s)))
+        fetched=(raw.soc if raw and finite(raw.soc) and 0<=raw.soc<=100
+                 and raw.quality not in (Quality.ESTIMATED,Quality.UNAVAILABLE) else None)
+        # Last known Peugeot values can seed a new session after a cloud outage.
+        # No Peugeot measurement time participates in the estimator decisions.
+        capacity=vehicle.capacity_kwh if vehicle else None
+        estimator=SocEstimator.restore(capacity,session.get('evcc_soc')) if capacity else None
+        if estimator and not estimator.sampled and fetched is None and reference:
+            fetched=reference['soc']
+        if estimator:
+            if estimator.sampled and fetched is not None and fetched!=estimator.prev_soc:
+                session['evcc_gap_cleared']=session.get('soc_gap_at')
+            session['soc']=estimator.soc(fetched,session['energy_wh'])
+            session['evcc_soc']=estimator.dump()
+            session['soc_usable']=estimator.sampled
+            baseline=estimator.prev_soc if estimator.sampled else None
+            if not estimator.sampled:session['soc']=None
+        else:
+            baseline=fetched if fetched is not None else reference['soc'] if reference else None
+            session['soc']=baseline
+            session['soc_usable']=baseline is not None
+        # Energy-source integrity is separate from EVCC's percentage calculation.
+        # These checks use electrical telemetry only, never a Peugeot timestamp.
+        gap=session.get('soc_gap_at')
+        valid_energy=gap is None or session.get('evcc_gap_cleared')==gap
         idle=state.observed_state in ('Available','Preparing','SuspendedEV','SuspendedEVSE','Finishing')
-        if anchor and vehicle and vehicle.capacity_kwh and session['points']:
-            base=anchor.get('energy')
-            if base is None:
-                # An older Peugeot reading starts from the first available index.
-                # Only observed energy is added; nothing before that index is invented.
-                base=energy_at(session['points'],anchor['at'])
-                if anchor['at']<=session['points'][-1][0]: anchor['energy']=base
-            gain=max(0,session['energy_wh']-base)
-            session['soc']=min(100,max(0,anchor['soc']+100*gain*vehicle.efficiency/(vehicle.capacity_kwh*1000)))
-            session['soc_estimated']=gain>0 or not raw or not raw.fresh(snapshot.at,config.peugeot.max_age_s)
-            session['soc_usable']=bool(state.connected and (session.get('soc_gap_at') is None or
-                anchor['at']>=session['soc_gap_at']) and
-                (idle or (session['last_at'] is not None and now-session['last_at']<=max(90,config.sample_max_age_s))))
-        elif (anchor and state.connected
-              and (session.get('soc_gap_at') is None or anchor['at']>=session['soc_gap_at'])
-              and (idle or now-session['started_at']<=90)):
-            session['soc_usable']=True
-        session['soc_reason']=None
-        if not session['soc_usable']:
-            session['soc_reason']=("Batterie Peugeot indisponible" if not anchor else
-                "Borne hors connexion" if not state.connected else
-                "Compteur d’énergie de la borne incohérent" if session.get('soc_gap_at') is not None and anchor['at']<session['soc_gap_at'] else
-                "Capacité utile de la batterie à configurer" if not vehicle or not vehicle.capacity_kwh else
-                "Index d’énergie de la borne absent" if session['last_at'] is None else
-                "Index d’énergie de la borne trop ancien")
+        recent=(session['last_at'] is not None and
+                snapshot.at.timestamp()-session['last_at']<=max(90,config.sample_max_age_s))
+        starting=session['last_at'] is None and snapshot.at.timestamp()-session['started_at']<=CHARGER_START_WAIT_S
+        if session['soc_usable'] and not (state.connected and valid_energy and (idle or recent or starting)):
+            session['soc_usable']=False
+            session['soc_reason']=('Borne hors connexion' if not state.connected else
+                'Compteur d’énergie de la borne incohérent' if not valid_energy else
+                'Index d’énergie de la borne absent' if session['last_at'] is None else
+                'Index d’énergie de la borne trop ancien')
+        else:
+            session['soc_reason']=None if session['soc_usable'] else 'Batterie Peugeot indisponible'
+        session['soc_estimated']=bool(session['soc_usable'] and
+            (fetched is None or session['soc']!=fetched))
+        session['anchor']=({'soc':baseline,'at':reference.get('at') if reference else None,
+                            'source':'vehicle'} if baseline is not None else None)
 
     def target_reached(self,device_id,target):
         session=self.sessions.get(device_id)
-        if not session or not session['active']: return False
-        reached=session['reached_target']
-        if reached is not None and target>reached:
-            session['reached_target']=None;reached=None
-        if session['soc_usable'] and session['soc'] is not None and session['soc']>=target:
-            session['reached_target']=target;reached=target
-            session['reached_at']=session.get('reached_at') or session['checked_at']
-        self.store.set('charging_sessions',self.sessions)
-        return reached is not None and target<=reached
+        return bool(session and session['active'] and session['soc_usable']
+                    and session['soc'] is not None and 0<target<100 and session['soc']>=target)
 
     def summary(self,device_id):
         session=self.sessions.get(device_id)
@@ -263,4 +255,4 @@ class ChargingTracker:
             'soc_reason':session.get('soc_reason'),
             'soc_reference_missing':not session['anchor'],
             'soc_reference_source':session['anchor'].get('source','vehicle') if session['anchor'] else None,
-            'soc_reference_at':datetime.fromtimestamp(session['anchor']['at'],timezone.utc).isoformat() if session['anchor'] else None}
+            'soc_reference_at':datetime.fromtimestamp(session['anchor']['at'],timezone.utc).isoformat() if session['anchor'] and session['anchor'].get('at') is not None else None}

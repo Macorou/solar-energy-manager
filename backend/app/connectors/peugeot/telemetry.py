@@ -17,7 +17,7 @@ def parse_telemetry(payload):
         if measured.tzinfo is None: measured = None
     except (KeyError,ValueError,TypeError): measured = None
     soc = number('level')
-    valid = soc is not None and 0 <= soc <= 100 and measured is not None
+    valid = soc is not None and 0 <= soc <= 100
     return VehicleTelemetry(soc if valid else None, number('autonomy'),
         energy.get('charging',{}).get('status','unknown').lower(), measured, now,
         Quality.FRESH if valid else Quality.UNAVAILABLE)

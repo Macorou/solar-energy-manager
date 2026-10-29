@@ -40,6 +40,7 @@ class DeviceState:
     transaction_active: bool | None = None
     start_pending: bool | None = None
     offered_current: Sample | None = None
+    status_received_at: datetime | None = None
 
 
 @dataclass(frozen=True)

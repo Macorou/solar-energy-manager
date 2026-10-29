@@ -53,7 +53,7 @@ class Station(ChargePoint):
         config=self.config(connector_id)
         if config:
             old=self.registry.states.get(config.id,DeviceState(config.id))
-            stamp=utcnow()
+            received=utcnow();stamp=received
             if kwargs.get('timestamp'):
                 try:
                     stamp=datetime.fromisoformat(kwargs['timestamp'].replace('Z','+00:00'))
@@ -66,17 +66,16 @@ class Station(ChargePoint):
             if status in ('Available','Preparing','Charging','SuspendedEV','SuspendedEVSE','Finishing'):
                 self.registry.rebooted.discard(config.id)
             power=old.observed_power
-            if status in ('SuspendedEV','SuspendedEVSE','Finishing'):
-                power=Sample(0,'W','OCPP état '+status,stamp,utcnow(),Quality.ESTIMATED,checked_at=utcnow())
+            if status in ('Available','SuspendedEV','SuspendedEVSE','Finishing'):
+                power=Sample(0,'W','OCPP état '+status,stamp,received,Quality.ESTIMATED,checked_at=received)
             if status=='Available':
-                power=Sample(0,'W','OCPP état Available',utcnow(),utcnow(),Quality.ESTIMATED)
                 if not self.registry.authorized(config) and (self.id,connector_id) not in self.registry.active:
                     self.registry.pending_start.pop(config.id,None);self.registry.save_pending()
             self.registry.states[config.id]=replace(old,connected=True,observed_state=status,
                 fault=None if error_code=='NoError' and status!='Faulted' else error_code,
                 observed_power=power,vehicle_connected=False if status=='Available' else
                     True if status in ('Preparing','Charging','SuspendedEV','SuspendedEVSE','Finishing') else None,
-                measured_at=stamp,status_measured_at=stamp)
+                measured_at=stamp,status_measured_at=stamp,status_received_at=received)
         return call_result.StatusNotification()
 
     @on(Action.start_transaction)
@@ -115,8 +114,10 @@ class Station(ChargePoint):
                         if stamp.tzinfo and math.isfinite(meter_stop) and meter_stop>=0 and (not old.energy_measured_at or stamp>=old.energy_measured_at):
                             old=replace(old,energy_wh=float(meter_stop),energy_measured_at=stamp,energy_terminal=True)
                     except (ValueError,TypeError,AttributeError): pass
-                    self.registry.states[config.id]=replace(old,observed_state='Finishing',status_measured_at=utcnow(),
-                        observed_power=Sample(0,'W','OCPP fin de transaction',utcnow(),utcnow(),Quality.ESTIMATED))
+                    received=utcnow()
+                    self.registry.states[config.id]=replace(old,observed_state='Finishing',status_measured_at=received,
+                        status_received_at=received,
+                        observed_power=Sample(0,'W','OCPP fin de transaction',received,received,Quality.ESTIMATED,checked_at=received))
                 del self.registry.active[key]
         self.registry.save_transactions()
         return call_result.StopTransaction(id_tag_info={'status':'Accepted'})

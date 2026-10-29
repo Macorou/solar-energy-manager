@@ -22,6 +22,14 @@ from .charger_measurements import select_power
 from app.domain.vehicles import VehicleTelemetry
 
 
+def command_reason(record):
+    value=record.get('error') or record.get('reason') or 'Arrêt demandé'
+    prefixes=('Arrêt en cours : ','Vérification requise : ')
+    while any(value.startswith(prefix) for prefix in prefixes):
+        value=next(value[len(prefix):] for prefix in prefixes if value.startswith(prefix))
+    return value
+
+
 class Coordinator:
     def __init__(self,store,app=None,adapters=None):
         self.store,self.app=store,app
@@ -239,16 +247,18 @@ class Coordinator:
                         # Pending physical effects are never retried as new starts.
                         if key in policies: policies[key]=replace(policies[key],mode='off')
                         self.errors[key]='Résultat de commande inconnu : vérification requise'
-                        blocked_reasons[key]='Vérification requise : '+(record.get('error') or record.get('reason') or 'Résultat de commande inconnu')
+                        blocked_reasons[key]='Vérification requise : '+command_reason(record)
                     elif record['action']=='suspend' and key in policies:
                         policies[key]=replace(policies[key],mode='off')
-                        blocked_reasons[key]='Arrêt en cours : '+record.get('reason','Arrêt demandé')
+                        blocked_reasons[key]='Arrêt en cours : '+command_reason(record)
                         if configs[key].kind=='water_heater' and configs[key].mode=='manual':
                             waiting_manual_stops.add(key)
                     if record['action']=='suspend' and key in configs and configs[key].kind=='charger':
                         source=self.adapters.get(key)
-                        if (hasattr(source,'request_status') and self.stop_status_requests.get(key)!=record['id']):
-                            self.stop_status_requests[key]=record['id']
+                        last=self.stop_status_requests.get(key)
+                        if (hasattr(source,'request_status') and (not last or last[0]!=record['id']
+                                or snapshot.at.timestamp()-last[1]>=15)):
+                            self.stop_status_requests[key]=(record['id'],snapshot.at.timestamp())
                             async def read_status(adapter=source):
                                 try:await asyncio.wait_for(adapter.request_status(),10)
                                 except (Exception,asyncio.CancelledError):pass

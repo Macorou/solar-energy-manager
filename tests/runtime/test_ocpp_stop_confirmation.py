@@ -25,6 +25,7 @@ def stopped_frame(tmp_path):
     registry.states['ev']=DeviceState('ev',connected=True,observed_state='Charging')
     registry.active[('box',1)]={'transaction_id':42,'meter_start':5000000,'timestamp':sent.isoformat()}
     registry.stations['box'].stop_transaction(5000922,now.isoformat(),42)
+    now=utcnow()  # The snapshot and checked power follow receipt of the stop.
     state=replace(registry.state('ev'),observed_power=Sample(0,'W','HA',now-timedelta(days=1),now,checked_at=now),
         status_measured_at=now)
     snapshot=SiteSnapshot(now,Sample(700,'W','HA-grid',now,now,checked_at=now),device_states={'ev':state},site_limit_w=11000)
@@ -51,7 +52,8 @@ def test_old_zero_cannot_confirm_a_stop_without_native_idle_proof(tmp_path,inval
     elif invalid=='pending':state=replace(state,start_pending=True)
     elif invalid=='unknown_transaction':state=replace(state,transaction_active=None)
     elif invalid=='charging':state=replace(state,observed_state='Charging')
-    elif invalid=='old_status':state=replace(state,status_measured_at=snapshot.at-timedelta(seconds=5))
+    elif invalid=='old_status':state=replace(state,status_measured_at=snapshot.at-timedelta(seconds=5),
+        status_received_at=snapshot.at-timedelta(seconds=5))
     elif invalid=='future_status':state=replace(state,status_measured_at=snapshot.at+timedelta(seconds=1))
     elif invalid=='offline':state=replace(state,connected=False)
     elif invalid=='fault':state=replace(state,fault='Faulted')
@@ -65,7 +67,8 @@ def test_old_zero_cannot_confirm_a_stop_without_native_idle_proof(tmp_path,inval
 
 async def test_pending_stop_retains_the_real_reason_and_reads_only_status(tmp_path):
     dispatcher,snapshot,config=stopped_frame(tmp_path)
-    snapshot=replace(snapshot,device_states={'ev':replace(snapshot.device_states['ev'],status_measured_at=snapshot.at-timedelta(seconds=5))})
+    snapshot=replace(snapshot,device_states={'ev':replace(snapshot.device_states['ev'],
+        status_measured_at=snapshot.at-timedelta(seconds=5),status_received_at=snapshot.at-timedelta(seconds=5))})
     calls=[]
     class Adapter:
         async def request_status(self):calls.append('status');return True
@@ -80,3 +83,59 @@ async def test_pending_stop_retains_the_real_reason_and_reads_only_status(tmp_pa
     await runtime.tick(snapshot)
     await asyncio.sleep(0)
     assert calls==['status']
+
+
+@pytest.mark.parametrize('provider_age',[0,7200])
+def test_fresh_unplugged_status_after_restart_confirms_persisted_stop(tmp_path,provider_age):
+    dispatcher,snapshot,config=stopped_frame(tmp_path)
+    dispatcher.records['ev']['error']='Suspension refusée'
+    dispatcher.records['ev']['status']='unknown'
+    dispatcher.save()
+    registry=OcppRegistry(dispatcher.store,lambda:[config],lambda _:None)
+    station=Station('box',None,registry);registry.stations['box']=station
+    station.status(1,'NoError','Available',timestamp=(utcnow()-timedelta(seconds=provider_age)).isoformat())
+    stamp=utcnow();state=registry.state('ev')
+    assert state.vehicle_connected is False
+    assert state.observed_power.value==0
+    restarted=Dispatcher(dispatcher.store)
+    # No grid measurement is needed to establish an unplugged car and no transaction.
+    assert restarted.reconcile(SiteSnapshot(stamp,device_states={'ev':state}),{'ev':config})==['ev']
+    assert restarted.records['ev']['status']=='observed'
+
+
+async def test_pending_stop_reason_is_not_nested_and_status_can_be_rechecked(tmp_path):
+    dispatcher,snapshot,config=stopped_frame(tmp_path)
+    dispatcher.records['ev']['reason']='Arrêt en cours : Arrêt en cours : Vérification requise : Suspension refusée'
+    snapshot=replace(snapshot,device_states={'ev':replace(snapshot.device_states['ev'],status_measured_at=None)})
+    calls=[]
+    class Adapter:
+        async def request_status(self):calls.append('status');return True
+    runtime=Coordinator(dispatcher.store,adapters={'ev':Adapter()})
+    runtime.dispatcher.records=dispatcher.records;runtime.engine.requested['ev']=0
+    await runtime.tick(snapshot);await asyncio.sleep(0)
+    assert runtime.reasons['ev']=='Arrêt en cours : Suspension refusée'
+    await runtime.tick(replace(snapshot,at=snapshot.at+timedelta(seconds=16)))
+    await asyncio.sleep(0)
+    assert calls==['status','status']
+
+
+async def test_reboot_reconciliation_clears_banner_and_reservation_without_another_stop(tmp_path):
+    dispatcher,snapshot,config=stopped_frame(tmp_path)
+    dispatcher.records['ev']['status']='unknown';dispatcher.save()
+    dispatcher.store.set('runtime_network_state',{'allowed':{},'stop_pending':['ev']})
+    registry=OcppRegistry(dispatcher.store,lambda:[config],lambda _:None)
+    station=Station('box',None,registry);registry.stations['box']=station
+    station.status(1,'NoError','Available')
+    class Adapter:
+        async def execute(self,_):raise AssertionError('No physical command is needed')
+        async def request_status(self):raise AssertionError('Already confirmed by native status')
+    runtime=Coordinator(dispatcher.store,adapters={'ev':Adapter()})
+    runtime.errors['ev']='Résultat de commande inconnu : vérification requise'
+    snapshot=replace(snapshot,at=utcnow(),device_states={'ev':registry.state('ev')})
+    await runtime.tick(snapshot)
+    assert runtime.dispatcher.records['ev']['status']=='observed'
+    assert 'ev' not in runtime.errors
+    assert 'ev' not in runtime.reservations
+    assert 'ev' not in runtime.engine.network_stop_pending
+    assert runtime.reasons['ev']=='Véhicule non branché'
+    assert not runtime.command_tasks and not runtime.refresh_tasks

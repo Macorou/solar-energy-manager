@@ -76,14 +76,23 @@ class Dispatcher:
                 and (snapshot.at-state.measured_at).total_seconds()<=snapshot.sample_max_age_s
                 and power.checked_at and power.checked_at>sent and 0<=power.value<=20)
             charger_stop=bool(config and config.kind=='charger' and not desired and record['action']=='suspend')
+            status_seen=state.status_received_at or state.status_measured_at
             native_charger_stop=bool(charger_stop and state.connected and not state.fault
                 and (state.observed_state=='SuspendedEVSE' or state.transaction_active is False)
                 and state.start_pending is False
                 and state.observed_state in ('Available','Preparing','SuspendedEV','SuspendedEVSE','Finishing')
-                and state.status_measured_at and sent<state.status_measured_at<=snapshot.at
-                and (snapshot.at-state.status_measured_at).total_seconds()<=snapshot.sample_max_age_s
+                and state.status_measured_at and state.status_measured_at<=snapshot.at
+                and status_seen and sent<status_seen<=snapshot.at
+                and (snapshot.at-status_seen).total_seconds()<=snapshot.sample_max_age_s
                 and (power.quality==Quality.FRESH or power.source.startswith('OCPP')) and power.checked_at
-                and state.status_measured_at<=power.checked_at and power.checked_at>sent and 0<=power.value<=20)
+                and status_seen<=power.checked_at and power.checked_at>sent and 0<=power.value<=20)
+            if native_charger_stop:
+                # A fresh native idle state and checked zero prove a stop without
+                # requiring the separate house/grid meter to be available.
+                record['status']='observed';observed.append(key)
+                self.store.append_event({'kind':'command_observed','device_id':key,
+                    'details':{'power_w':power.value,'action':record['action']}})
+                continue
             grid=snapshot.grid
             if not grid or not grid.usable(snapshot.at,snapshot.sample_max_age_s): continue
             checked=bool(grid.checked_at and power.checked_at)

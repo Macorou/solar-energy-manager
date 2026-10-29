@@ -30,8 +30,12 @@ test('grouped settings preserve configuration, handle failed saves and support b
     await page.screenshot({path:path.join(directory,'settings-'+theme+'-desktop.png'),fullPage:true})
     for(const width of [390,320]){
       await page.setViewportSize({width,height:844})
-      expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      // Cover wider fallback fonts as well as the Windows system font.
+      const fallback=width===320?await page.addStyleTag({content:':root{font-family:Verdana,sans-serif}'}):null
+      const layout=await page.evaluate(()=>({width:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('body *')].filter(n=>n.getBoundingClientRect().right>innerWidth+1).map(n=>({tag:n.tagName,class:n.className,right:n.getBoundingClientRect().right,text:n.textContent?.slice(0,80)})).slice(0,12)}))
+      expect(layout.width,JSON.stringify(layout.overflow)).toBeLessThanOrEqual(width)
       expect(await page.locator('.settings-card').evaluateAll(nodes=>nodes.filter(n=>n.scrollWidth>n.clientWidth+1).length)).toBe(0)
+      await fallback?.evaluate(node=>node.remove())
     }
     await page.setViewportSize({width:390,height:844})
     await page.screenshot({path:path.join(directory,'settings-'+theme+'-mobile.png'),fullPage:true})

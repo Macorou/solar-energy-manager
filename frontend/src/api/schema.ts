@@ -540,6 +540,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/connections/ocpp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ocpp Connections */
+        get: operations["ocpp_connections_api_v1_connections_ocpp_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/connections/ocpp/{station_id}": {
         parameters: {
             query?: never;
@@ -896,6 +913,12 @@ export interface components {
              */
             allow_insecure_identity: boolean;
             /**
+             * Ocpp Profile
+             * @default auto
+             * @enum {string}
+             */
+            ocpp_profile: "auto" | "standard" | "wallbox" | "wallbox_fw5";
+            /**
              * Connector Id
              * @default 1
              */
@@ -988,11 +1011,8 @@ export interface components {
         };
         /** OcppCredentials */
         OcppCredentials: {
-            /**
-             * Password
-             * Format: password
-             */
-            password: string;
+            /** Password */
+            password?: string | null;
         };
         /** OffPeakWindow */
         OffPeakWindow: {
@@ -1166,7 +1186,9 @@ export interface components {
             capacity_kwh?: number | null;
             /**
              * Efficiency
-             * @default 0.9
+             * @deprecated
+             * @description Ancien réglage conservé pour compatibilité ; estimation EVCC automatique à 85 % initialement.
+             * @default 0.85
              */
             efficiency: number;
         };
@@ -2344,6 +2366,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ocpp_connections_api_v1_connections_ocpp_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

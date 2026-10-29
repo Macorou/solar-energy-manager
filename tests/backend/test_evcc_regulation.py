@@ -96,3 +96,31 @@ def test_pv_control_does_not_reapply_import_to_its_new_offer_every_two_seconds()
         assert engine.requested['ev']==pytest.approx(2254)
         clock.advance(2)
     assert len(commands)==1
+
+
+def test_ignored_suspend_is_reconciled_again_after_the_evcc_settling_time():
+    clock=SimulatedClock();engine=EnergyEngine(clock)
+    spec=DeviceSpec('ev','charger',min_power_w=1380,max_power_w=3700)
+    policy=DevicePolicy('ev','off',armed=True)
+    def frame():
+        now=clock.now();sample=lambda v:Sample(v,'W','OCPP',now,now,checked_at=now)
+        return SiteSnapshot(now,grid=sample(4000),site_limit_w=11000,
+            device_states={'ev':DeviceState('ev',sample(3680),'Charging',True)})
+    assert engine.evaluate(frame(),[spec],{'ev':policy},{}).commands[0].action=='suspend'
+    clock.advance(59)
+    assert not engine.evaluate(frame(),[spec],{'ev':policy},{}).commands
+    clock.advance(2)
+    assert engine.evaluate(frame(),[spec],{'ev':policy},{}).commands[0].action=='suspend'
+
+
+def test_reported_offered_current_is_synchronized_before_pv_regulation():
+    clock=SimulatedClock();now=clock.now();engine=EnergyEngine(clock)
+    sample=lambda v,u='W':Sample(v,u,'OCPP',now,now,checked_at=now)
+    snapshot=SiteSnapshot(now,grid=sample(0),export_margin_w=0,site_limit_w=11000,
+        device_states={'ev':DeviceState('ev',sample(3680),'Charging',True,
+            currents={'L1':sample(16,'A')},offered_current=sample(16,'A'))})
+    engine.requested['ev']=1380
+    result=engine.evaluate(snapshot,[DeviceSpec('ev','charger',min_power_w=1380,max_power_w=4600)],
+        {'ev':DevicePolicy('ev',armed=True)}, {})
+    assert engine.requested['ev']==3680
+    assert not result.commands

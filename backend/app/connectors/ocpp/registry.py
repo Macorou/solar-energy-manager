@@ -1,17 +1,24 @@
 from dataclasses import replace
 from datetime import datetime,timedelta
+import zlib
 from ocpp.v16 import call
 from app.settings import DeviceConfig
 from app.domain.devices import DeviceState,CapabilityReport
 from app.domain.commands import CommandResult
 from app.domain.measurements import Quality,utcnow,Sample
-from .profiles import build_profile
+from .profiles import build_profile,profile_options,PROFILE_KEYS
 
 
 class OcppRegistry:
     def __init__(self,store,configs,secret_getter):
         self.store,self.configs,self.secret_getter=store,configs,secret_getter
-        self.stations,self.states,self.probes,self.metadata={}, {}, {}, {}
+        self.stations,self.states,self.probes={}, {}, {}
+        self.metadata=store.get('ocpp_metadata',{})
+        self.connection_errors={}
+        self.meter_cache={}
+        self.rebooted=set()
+        self.suspend_requested={}
+        self.profile_migrations=store.get('ocpp_profile_migrations',{})
         self.active={}
         self.allowed_until={}
         self.pending_start=store.get('ocpp_pending_start',{})
@@ -73,7 +80,24 @@ class ChargerAdapter:
         self.metering_required=metering_required
 
     async def read_state(self):
-        return self.registry.state(self.config.id)
+        state=self.registry.state(self.config.id)
+        firmware=(self.registry.metadata.get(self.config.charge_point_id,{}).get('firmware') or '').lstrip('vV')
+        wallbox='wallbox' in str(self.registry.metadata.get(self.config.charge_point_id,{}).get('vendor') or '').lower()
+        if self.config.ocpp_profile=='wallbox_fw5' or self.config.ocpp_profile=='auto' and wallbox and firmware.startswith('5.'):
+            state=replace(state,offered_current=None)
+        return state
+
+    def keep_authorized(self,until):
+        if self.config.armed:self.registry.allowed_until[self.config.id]=until
+
+    async def clear_legacy_profile(self,station):
+        if self.registry.profile_migrations.get(self.config.id):return True
+        result=await station.call(call.ClearChargingProfile(id=zlib.crc32(self.config.id.encode())&0x7fffffff,
+            connector_id=self.config.connector_id,charging_profile_purpose='TxProfile'))
+        if result.status not in ('Accepted','Unknown'):return False
+        self.registry.profile_migrations[self.config.id]=True
+        self.registry.store.set('ocpp_profile_migrations',self.registry.profile_migrations)
+        return True
 
     async def request_meter(self):
         station=self.registry.stations.get(self.config.charge_point_id)
@@ -108,25 +132,44 @@ class ChargerAdapter:
             return CommandResult(intent.id,False,error='Borne déconnectée',checked_at=utcnow())
         transaction=self.registry.active.get((self.config.charge_point_id,self.config.connector_id))
         try:
+            if not hasattr(station,'sem_profile_values'):
+                response=await station.call(call.GetConfiguration(key=PROFILE_KEYS))
+                station.sem_profile_values={row['key']:row.get('value','')
+                    for row in getattr(response,'configuration_key',None) or []}
+            options=profile_options(self.config,self.registry.metadata.get(self.config.charge_point_id,{}),station.sem_profile_values)
             if intent.action=='suspend':
                 self.registry.allowed_until.pop(self.config.id,None)
                 if self.config.id in self.registry.pending_start:
                     self.registry.pending_start[self.config.id]['state']='cancel_requested'
                     self.registry.save_pending()
-                if not transaction:
-                    state=await self.read_state()
-                    zero=bool(state.observed_power and state.observed_power.value==0)
-                    return CommandResult(intent.id,zero,zero,error=None if zero else 'Transaction inconnue',checked_at=utcnow())
-                result=await station.call(call.RemoteStopTransaction(transaction_id=transaction['transaction_id']))
-                return CommandResult(intent.id,result.status=='Accepted',False,checked_at=utcnow())
+                previous=self.registry.suspend_requested.setdefault(self.config.id,utcnow())
+                state=await self.read_state()
+                ignored=bool(transaction and (utcnow()-previous).total_seconds()>=60
+                    and state.observed_state=='Charging' and state.connected and state.observed_power
+                    and state.observed_power.usable(utcnow(),30) and state.observed_power.value>20)
+                result=await station.call(call.SetChargingProfile(connector_id=self.config.connector_id,
+                    cs_charging_profiles=build_profile(self.config,0,None,None,options)))
+                cleared=await self.clear_legacy_profile(station) if result.status=='Accepted' else False
+                fallback=False
+                if transaction and (result.status!='Accepted' or ignored or not cleared):
+                    result=await station.call(call.RemoteStopTransaction(transaction_id=transaction['transaction_id']))
+                    fallback=True
+                accepted=result.status=='Accepted' and (cleared or fallback)
+                return CommandResult(intent.id,accepted,False,
+                    error=None if accepted else 'Suspension refusée',checked_at=utcnow())
             if self.metering_required and not transaction and self.config.id not in self.registry.pending_start:
                 from .metering import prepare_metering
                 error=await prepare_metering(station)
                 if error:return CommandResult(intent.id,False,error=error,checked_at=utcnow())
-            profile=build_profile(self.config,intent.limit_w,transaction['transaction_id'] if transaction else None,intent.expires_at)
+            self.registry.suspend_requested.pop(self.config.id,None)
+            profile=build_profile(self.config,intent.limit_w,transaction['transaction_id'] if transaction else None,intent.expires_at,options)
             result=await station.call(call.SetChargingProfile(connector_id=self.config.connector_id,cs_charging_profiles=profile))
             if result.status!='Accepted':
                 return CommandResult(intent.id,False,error='Limite de courant refusée',checked_at=utcnow())
+            if not await self.clear_legacy_profile(station):
+                await station.call(call.SetChargingProfile(connector_id=self.config.connector_id,
+                    cs_charging_profiles=build_profile(self.config,0,None,None,options)))
+                return CommandResult(intent.id,False,error='Ancien profil de recharge non supprimé',checked_at=utcnow())
             self.registry.allowed_until[self.config.id]=intent.expires_at or utcnow()+timedelta(seconds=90)
             if not transaction and self.config.id not in self.registry.pending_start:
                 self.registry.pending_start[self.config.id]={'state':'sending','at':utcnow().isoformat()}
@@ -135,6 +178,8 @@ class ChargerAdapter:
                 if result.status!='Accepted':
                     self.registry.allowed_until.pop(self.config.id,None)
                     self.registry.pending_start.pop(self.config.id,None);self.registry.save_pending()
+                    await station.call(call.SetChargingProfile(connector_id=self.config.connector_id,
+                        cs_charging_profiles=build_profile(self.config,0,None,None,options)))
                     return CommandResult(intent.id,False,error='Démarrage refusé',checked_at=utcnow())
                 if self.config.id in self.registry.pending_start:
                     self.registry.pending_start[self.config.id]['state']='accepted'

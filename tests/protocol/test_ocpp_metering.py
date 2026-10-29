@@ -51,7 +51,7 @@ async def test_phase_control_prepares_and_verifies_metering_before_remote_start(
     assert wire.values['MeterValueSampleInterval']=='10'
     names=[m.__class__.__name__ for m in wire.calls]
     assert names.index('ChangeConfiguration')<names.index('SetChargingProfile')<names.index('RemoteStartTransaction')
-    assert names.count('GetConfiguration')==2
+    assert names.count('GetConfiguration')==3
     assert {m.key for m in wire.calls if m.__class__.__name__=='ChangeConfiguration'}=={
         'MeterValuesSampledData','MeterValueSampleInterval'}
 
@@ -78,14 +78,14 @@ async def test_already_suitable_readonly_metering_needs_no_write(tmp_path):
 async def test_no_metering_preparation_when_phase_control_is_disabled(tmp_path):
     wire=MeterWire(); source=adapter(tmp_path,wire);source.metering_required=False
     assert (await source.execute(start())).accepted
-    assert [m.__class__.__name__ for m in wire.calls]==['SetChargingProfile','RemoteStartTransaction']
+    assert [m.__class__.__name__ for m in wire.calls]==['GetConfiguration','SetChargingProfile','ClearChargingProfile','RemoteStartTransaction']
 
 
 async def test_existing_transaction_renewal_never_reconfigures_telemetry(tmp_path):
     wire=MeterWire(); source=adapter(tmp_path,wire)
     source.registry.active[('box',1)]={'transaction_id':4}
     assert (await source.execute(start())).accepted
-    assert [m.__class__.__name__ for m in wire.calls]==['SetChargingProfile']
+    assert [m.__class__.__name__ for m in wire.calls]==['GetConfiguration','SetChargingProfile','ClearChargingProfile']
 
 
 async def test_runtime_enables_meter_preparation_for_its_phase_limited_adapter(tmp_path):

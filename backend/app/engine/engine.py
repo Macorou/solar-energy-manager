@@ -39,6 +39,7 @@ class EnergyEngine:
         self.charger_offered = {}
         self.charger_start_credit = {}
         self.charger_pv_frame = {}
+        self.charger_ack_at = {}
 
     def forget(self, device_id):
         self.requested.pop(device_id,None)
@@ -47,14 +48,28 @@ class EnergyEngine:
         self.charger_pv.pop(device_id,None)
         self.charger_pv_frame.pop(device_id,None)
 
-    def command_result(self, intent, accepted):
+    def command_result(self, intent, accepted, at=None):
         if accepted:
             self.charger_offered[intent.device_id]=intent.limit_w or 0
+            self.charger_ack_at[intent.device_id]=at or self.clock.now()
         else:
-            self.requested[intent.device_id]=self.charger_offered.get(intent.device_id,0)
+            self.forget(intent.device_id)
 
     def evaluate(self, snapshot, specs, policies, authorizations):
         now, mono = snapshot.at, self.clock.monotonic()
+        for spec in specs:
+            state=snapshot.device_states.get(spec.id)
+            offered=state.offered_current if state else None
+            sent=self.charger_ack_at.get(spec.id)
+            if (spec.kind=='charger' and self.requested.get(spec.id,0)>0 and state
+                    and state.observed_state in ('Charging','SuspendedEV') and offered
+                    and offered.usable(now,snapshot.sample_max_age_s)
+                    and (sent is None or offered.availability_at>sent)):
+                unit=spec.voltage*(len(spec.grid_phases) or 1)
+                if abs(offered.value-self.requested[spec.id]/unit)>.23:
+                    self.requested[spec.id]=offered.value*unit
+                    self.charger_offered[spec.id]=offered.value*unit
+                    self.charger_pv_frame.pop(spec.id,None)
         solar = solar_budget_w(snapshot)
         measured = {key: max(0,state.observed_power.value or 0) if state.observed_power else 0
                     for key,state in snapshot.device_states.items()}
@@ -266,6 +281,11 @@ class EnergyEngine:
             must_change = (desired>0 and (previous is None or abs(desired-previous)>=step)) \
                 or (desired==0 and (previous is None and running or previous is not None and previous>0)) \
                 or (spec.id in self.network_stop_pending and spec.id not in self.network_stop_issued)
+            if (spec.kind=='charger' and desired==0 and previous==0 and state
+                and state.observed_state=='Charging' and state.observed_power
+                and state.observed_power.usable(now,snapshot.sample_max_age_s) and state.observed_power.value>20
+                and mono-self.charger_last_control.get(spec.id,-math.inf)>=60):
+                must_change=True
             target_changed=bool(desired and spec.kind=='water_heater' and target is not None
                 and target!=self.requested_targets.get(spec.id,state.target_temperature if state else None))
             if target_changed and not must_change:

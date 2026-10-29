@@ -1298,6 +1298,22 @@
         }
       }
     },
+    "/api/v1/connections/ocpp": {
+      "get": {
+        "summary": "Ocpp Connections",
+        "operationId": "ocpp_connections_api_v1_connections_ocpp_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/connections/ocpp/{station_id}": {
       "put": {
         "summary": "Credentials",
@@ -1853,6 +1869,17 @@
             "title": "Allow Insecure Identity",
             "default": false
           },
+          "ocpp_profile": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "standard",
+              "wallbox",
+              "wallbox_fw5"
+            ],
+            "title": "Ocpp Profile",
+            "default": "auto"
+          },
           "connector_id": {
             "type": "integer",
             "minimum": 1.0,
@@ -2032,16 +2059,20 @@
       "OcppCredentials": {
         "properties": {
           "password": {
-            "type": "string",
-            "format": "password",
-            "title": "Password",
-            "writeOnly": true
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
           }
         },
         "type": "object",
-        "required": [
-          "password"
-        ],
         "title": "OcppCredentials"
       },
       "OffPeakWindow": {
@@ -2392,7 +2423,9 @@
             "maximum": 1.0,
             "exclusiveMinimum": 0.0,
             "title": "Efficiency",
-            "default": 0.9
+            "description": "Ancien réglage conservé pour compatibilité ; estimation EVCC automatique à 85 % initialement.",
+            "default": 0.85,
+            "deprecated": true
           }
         },
         "additionalProperties": false,

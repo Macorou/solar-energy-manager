@@ -29,3 +29,18 @@ it('saves a chosen phase current limit and dynamic price without inserting real 
   fireEvent.click(screen.getByRole('button',{name:'Enregistrer les réglages'}))
   await waitFor(()=>expect(save).toHaveBeenCalledWith(expect.objectContaining({home_assistant:expect.objectContaining({price_entity:'sensor.price',phases:{L1:expect.objectContaining({current_entity:'sensor.phase_current',max_current_a:18})}})})))
 })
+
+it('shows stored OCPP identity and retains its secret on a blank save',async()=>{
+  vi.mocked(api).mockImplementation(async(path)=>path==='/connections/ocpp'?
+    {stations:[{station_id:'box',credentials_saved:true,connected:false,last_error:'heartbeat_timeout'}]} as never:
+    {ok:true} as never)
+  const settings=structuredClone(initial)
+  settings.devices=[{id:'ev',name:'Pulsar',kind:'charger',charge_point_id:'box'}] as Settings['devices']
+  render(<SettingsPage settings={settings} connections={{}} save={vi.fn()} run={async op=>{await op()}}/>)
+  await screen.findByText('Accès OCPP enregistrés')
+  expect((screen.getByLabelText('Identifiant OCPP enregistré') as HTMLSelectElement).value).toBe('box')
+  expect((screen.getByLabelText('Mot de passe OCPP') as HTMLInputElement).value).toBe('')
+  fireEvent.click(screen.getByRole('button',{name:'Enregistrer l’accès OCPP'}))
+  await waitFor(()=>expect(api).toHaveBeenCalledWith('/connections/ocpp/box','PUT',{password:null}))
+  expect(screen.getByText(/Délai de communication dépassé/)).toBeTruthy()
+})

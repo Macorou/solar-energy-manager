@@ -96,16 +96,28 @@ def disarm(device_id:str,request:Request):
     return {'ok':True}
 
 
-class OcppCredentials(BaseModel): password:SecretStr
+class OcppCredentials(BaseModel): password:SecretStr|None=None
+
+
+@router.get('/connections/ocpp')
+def ocpp_connections(request:Request):
+    registry=request.app.state.ocpp
+    identities=sorted({device.charge_point_id for device in registry.devices() if device.charge_point_id})
+    return {'stations':[{'station_id':identity,
+        'credentials_saved':request.app.state.secrets.present('ocpp_'+identity),
+        'connected':identity in registry.stations,'last_error':registry.connection_errors.get(identity),
+        'firmware':registry.metadata.get(identity,{}).get('firmware')} for identity in identities]}
 
 
 @router.put('/connections/ocpp/{station_id}')
 def credentials(station_id:str,body:OcppCredentials,request:Request):
     devices=request.app.state.ocpp.devices(station_id)
     if not devices: raise HTTPException(404,'Borne non enregistrée')
+    value=body.password.get_secret_value() if body.password else ''
+    if not value and request.app.state.secrets.present('ocpp_'+station_id):return {'ok':True,'retained':True}
     if any(d.armed for d in devices): raise HTTPException(409,'Désactiver la borne avant de changer son accès')
-    if len(body.password.get_secret_value())<12: raise HTTPException(422,'Au moins 12 caractères requis')
-    request.app.state.secrets.set('ocpp_'+station_id,body.password.get_secret_value())
+    if len(value)<12: raise HTTPException(422,'Au moins 12 caractères requis')
+    request.app.state.secrets.set('ocpp_'+station_id,value)
     return {'ok':True}
 
 

@@ -9,8 +9,10 @@ class Dispatcher:
     def __init__(self,store,timeout_s=25):
         self.store,self.timeout_s=store,timeout_s
         self.records=store.get('runtime_commands',{})
-        for record in self.records.values():
-            if record['status'] in ('sending','accepted'): record['status']='unknown'
+        kinds={item['id']:item['kind'] for item in (store.load_settings() or {}).get('devices',[])}
+        for key,record in self.records.items():
+            if record['status']=='sending' or record['status']=='accepted' and kinds.get(key)!='charger':
+                record['status']='unknown'
         self.locks={}
 
     def save(self): self.store.set('runtime_commands',self.records)
@@ -28,7 +30,7 @@ class Dispatcher:
                 'confirm_by':(now+timedelta(seconds=confirmation_timeout_s)).isoformat(),
                 'reason':intent.reason,'status':'sending','target_temperature':intent.target_temperature}
             renewal=bool(prior and prior['status'] in ('accepted','observed')
-                and intent.reason=='Renouvellement du profil autorisé'
+                and intent.reason in ('Renouvellement du profil autorisé','Migration du profil EVCC')
                 and intent.action==prior['action']=='set_power' and intent.limit_w
                 and intent.limit_w==prior['power_w'])
             if renewal:
@@ -36,6 +38,9 @@ class Dispatcher:
                 if prior['status']=='accepted':
                     record['confirm_by']=prior.get('confirm_by') or (
                         datetime.fromisoformat(record['effect_since'])+timedelta(seconds=confirmation_timeout_s)).isoformat()
+            if (prior and prior['status']=='accepted' and prior['action']==intent.action=='suspend'):
+                record['effect_since']=prior.get('effect_since',prior['sent_at'])
+                record['confirm_by']=prior.get('confirm_by',record['confirm_by'])
             self.records[intent.device_id]=record
             self.save()  # Durable before the network side effect.
             try:
@@ -77,7 +82,7 @@ class Dispatcher:
                 and state.observed_state in ('Available','Preparing','SuspendedEV','SuspendedEVSE','Finishing')
                 and state.status_measured_at and sent<state.status_measured_at<=snapshot.at
                 and (snapshot.at-state.status_measured_at).total_seconds()<=snapshot.sample_max_age_s
-                and power.quality==Quality.FRESH and power.checked_at
+                and (power.quality==Quality.FRESH or power.source.startswith('OCPP')) and power.checked_at
                 and state.status_measured_at<=power.checked_at and power.checked_at>sent and 0<=power.value<=20)
             grid=snapshot.grid
             if not grid or not grid.usable(snapshot.at,snapshot.sample_max_age_s): continue
@@ -92,6 +97,19 @@ class Dispatcher:
                 if not native_stop: continue
             elif charger_stop:
                 if not native_charger_stop:continue
+            elif config and config.kind=='charger' and desired:
+                offered=state.offered_current
+                limit=desired/(config.voltage*config.phases)
+                verified=bool(offered and offered.usable(snapshot.at,snapshot.sample_max_age_s)
+                    and offered.availability_at>sent and config.min_current_a<=offered.value<=limit+.23)
+                waiting=bool(state.observed_state=='SuspendedEV' and state.status_measured_at
+                    and sent<state.status_measured_at<=snapshot.at and state.connected and not state.fault)
+                if verified or waiting:
+                    record['status']='observed';observed.append(key)
+                    self.store.append_event({'kind':'command_observed','device_id':key,
+                        'details':{'action':record['action'],'effect':'authorization_verified'}})
+                    continue
+                if power.measured_at<=sent:continue
             elif config and config.kind=='water_heater' and record['action']=='set_temperature':
                 if not (state.connected and not state.fault and state.measured_at
                     and sent<state.measured_at<=snapshot.at

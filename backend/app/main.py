@@ -91,7 +91,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         new={d.id:d for d in body.devices}
         protected=('armed','capabilities_verified','offline_behavior_verified')
         identity=('kind','charge_point_id','connector_id','vehicle_id','gateway_id','min_power_w',
-                  'max_power_w','phases','grid_phases','voltage','min_current_a','max_current_a','allow_insecure_identity')
+                  'max_power_w','phases','grid_phases','voltage','min_current_a','max_current_a','allow_insecure_identity','ocpp_profile')
         for device in body.devices:
             prior=old.get(device.id)
             if any(getattr(device,p) != (getattr(prior,p) if prior else False) for p in protected):

@@ -15,7 +15,7 @@ async def test_current_is_floored_and_acceptance_is_not_observation(tmp_path):
         build_profile(config,100,None,utcnow()+timedelta(seconds=90))
 
 
-async def test_suspend_uses_transaction_stop_not_zero_current(tmp_path):
+async def test_suspend_uses_zero_profile_and_preserves_transaction(tmp_path):
     from app.connectors.ocpp.registry import OcppRegistry,ChargerAdapter
     from app.storage.database import SQLiteStore
     from app.settings import DeviceConfig
@@ -29,6 +29,8 @@ async def test_suspend_uses_transaction_stop_not_zero_current(tmp_path):
             return SimpleNamespace(status='Accepted')
     registry.stations['pulsar']=Wire()
     result=await ChargerAdapter(registry,config).execute(CommandIntent('stop','ev','suspend'))
-    assert calls[0].__class__.__name__=='RemoteStopTransaction'
-    assert calls[0].transaction_id==42
+    profiles=[call for call in calls if call.__class__.__name__=='SetChargingProfile']
+    assert profiles[0].cs_charging_profiles['charging_schedule']['charging_schedule_period'][0]['limit']==0
+    assert registry.active[('pulsar',1)]['transaction_id']==42
+    assert not any(call.__class__.__name__=='RemoteStopTransaction' for call in calls)
     assert result.accepted and not result.observed

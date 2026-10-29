@@ -41,3 +41,33 @@ def test_charger_power_prefers_native_measurement_and_can_derive_it_from_current
     assert select_power(state,ha,config,now,30)==native
     state=replace(state,observed_power=None,currents={'L1':Sample(16,'A','OCPP',now,now,checked_at=now)})
     assert select_power(state,ha,config,now,30).value==3680
+
+
+def test_fresh_offered_limit_confirms_cap_while_vehicle_is_waiting(tmp_path):
+    now=utcnow();dispatcher=Dispatcher(SQLiteStore(tmp_path/'db'))
+    dispatcher.records['ev']={'id':'limit','action':'set_power','power_w':3680,'status':'accepted',
+        'sent_at':(now-timedelta(seconds=10)).isoformat()}
+    power=Sample(0,'W','OCPP',now,now,checked_at=now)
+    state=DeviceState('ev',power,'SuspendedEV',True,status_measured_at=now,
+        offered_current=Sample(16,'A','OCPP Current.Offered',now,now,checked_at=now))
+    snapshot=SiteSnapshot(now,grid=Sample(500,'W','HA',now,now,checked_at=now),device_states={'ev':state})
+    assert dispatcher.reconcile(snapshot,{'ev':DeviceConfig(id='ev',name='EV',kind='charger')})==['ev']
+
+
+def test_restart_retains_accepted_charger_cap_for_fresh_state_reconciliation(tmp_path):
+    from app.settings import SettingsDocument
+    store=SQLiteStore(tmp_path/'db')
+    store.save_settings(SettingsDocument(devices=[DeviceConfig(id='ev',name='EV',kind='charger')]).model_dump(mode='json'))
+    store.set('runtime_commands',{'ev':{'id':'cap','action':'set_power','status':'accepted','power_w':3680}})
+    assert Dispatcher(store).records['ev']['status']=='accepted'
+
+
+def test_fresh_native_suspended_state_confirms_zero_without_waiting_for_ha_power(tmp_path):
+    from app.domain.measurements import Quality
+    now=utcnow();dispatcher=Dispatcher(SQLiteStore(tmp_path/'db'))
+    dispatcher.records['ev']={'id':'pause','action':'suspend','power_w':0,'status':'accepted',
+        'sent_at':(now-timedelta(seconds=10)).isoformat()}
+    power=Sample(0,'W','OCPP état SuspendedEVSE',now,now,Quality.ESTIMATED,checked_at=now)
+    state=DeviceState('ev',power,'SuspendedEVSE',True,status_measured_at=now,transaction_active=True,start_pending=False)
+    assert dispatcher.reconcile(SiteSnapshot(now,grid=Sample(500,'W','HA',now,now,checked_at=now),
+        device_states={'ev':state}),{'ev':DeviceConfig(id='ev',name='EV',kind='charger')})==['ev']

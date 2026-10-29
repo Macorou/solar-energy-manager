@@ -79,7 +79,7 @@ def test_ocpp_energy_only_and_current_frames_are_not_lost(tmp_path):
     assert registry.states['ev'].currents['L1'].value==10
 
 
-def test_ocpp_start_keeps_transaction_meter_base_until_later_meter_frames(tmp_path):
+def test_ocpp_start_keeps_transaction_meter_base_until_later_meter_frames(tmp_path,monkeypatch):
     from app.connectors.ocpp.registry import OcppRegistry
     from app.connectors.ocpp.station import Station
     from app.storage.database import SQLiteStore
@@ -87,6 +87,7 @@ def test_ocpp_start_keeps_transaction_meter_base_until_later_meter_frames(tmp_pa
     config=DeviceConfig(id='ev',name='EV',kind='charger',charge_point_id='box')
     registry=OcppRegistry(SQLiteStore(tmp_path/'db'),lambda:[config],lambda _:None)
     station=Station('box',None,registry);now=utcnow()
+    monkeypatch.setattr('app.connectors.ocpp.readings.utcnow',lambda:now+timedelta(seconds=11))
     result=station.start_transaction(1,'SEM',5000922,now.isoformat())
     station.meter_values(1,[{'timestamp':(now+timedelta(seconds=5)).isoformat(),
         'sampled_value':[{'value':'5000928','unit':'Wh'}]}],transaction_id=result.transaction_id)

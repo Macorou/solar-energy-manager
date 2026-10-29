@@ -85,3 +85,18 @@ def test_evcc_goal_releases_on_changed_percentage_without_date_hysteresis(tmp_pa
     assert tracker.target_reached('ev',80)
     tracker.update(frame(now+timedelta(seconds=30),10000,soc=79.5,stamp=now-timedelta(days=1)),cfg)
     assert not tracker.target_reached('ev',80)
+
+
+def test_upgrade_preserves_known_legacy_energy_basis_without_reading_peugeot_date(tmp_path):
+    from test_charging_accounting import setup_tracker,frame
+    from app.domain.measurements import utcnow
+    from app.runtime.charging import ChargingTracker
+    tracker,store,cfg=setup_tracker(tmp_path);now=utcnow()
+    tracker.update(frame(now,10000),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),12000),cfg)
+    legacy=tracker.sessions['ev'];legacy.pop('evcc_soc')
+    legacy['anchor']={'source':'vehicle','soc':75,'energy':0,'at':None}
+    store.set('charging_sessions',tracker.sessions)
+    tracker=ChargingTracker(store)
+    tracker.update(frame(now+timedelta(seconds=60),12000),cfg)
+    assert tracker.summary('ev')['soc']==pytest.approx(80)

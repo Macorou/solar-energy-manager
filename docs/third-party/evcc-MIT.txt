@@ -7,6 +7,11 @@ Peugeot timestamps are deliberately not an input to the EVCC estimator.
 core/loadpoint.go (effectiveCurrent, fixed-phase pvMaxCurrent, setLimit minimum
 current behavior), adapted in backend/app/engine/evcc_loadpoint.py and engine.py.
 ValidateCurrent is now fed independent current measurements, with 0.1A profiles.
+charger/ocpp.go and templates/definition/charger/ocpp-wallbox{,-fw5}.yaml:
+persistent TxDefault profiles, zero-current suspension and firmware adaptations.
+charger/ocpp/connector_core.go, connector.go and connector_test.go:
+local reception freshness, periodic/boundary ordering and transaction recovery,
+adapted in backend/app/connectors/ocpp/readings.py and station.py.
 
 MIT License
 

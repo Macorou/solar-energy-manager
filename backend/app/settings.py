@@ -43,6 +43,7 @@ class DeviceConfig(Model):
     voltage: float = Field(230, ge=100, le=300)
     charge_point_id: str = ''
     allow_insecure_identity: bool = False
+    ocpp_profile: Literal['auto','standard','wallbox','wallbox_fw5'] = 'auto'
     connector_id: int = Field(1, ge=1)
     vehicle_id: str = ''
     gateway_id: str = ''

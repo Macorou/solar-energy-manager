@@ -198,6 +198,12 @@ class ChargingTracker:
         # No Peugeot measurement time participates in the estimator decisions.
         capacity=vehicle.capacity_kwh if vehicle else None
         estimator=SocEstimator.restore(capacity,session.get('evcc_soc')) if capacity else None
+        legacy=session.get('anchor')
+        if (estimator and not estimator.sampled and not session.get('evcc_soc') and legacy
+            and legacy.get('source','vehicle')=='vehicle' and finite(legacy.get('soc'))
+            and 0<=legacy['soc']<=100 and finite(legacy.get('energy'))
+            and 0<=legacy['energy']<=session['energy_wh']):
+            estimator.soc(legacy['soc'],legacy['energy'])
         if estimator and not estimator.sampled and fetched is None and reference:
             fetched=reference['soc']
         if estimator:

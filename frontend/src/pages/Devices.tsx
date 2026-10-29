@@ -17,7 +17,7 @@ export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:
     setEditing({id:createId(),name:kind==='charger'?'Wallbox Pulsar Plus':'Ariston NUOS',kind,mode:'off',
       armed:false,capabilities_verified:false,offline_behavior_verified:false,priority:settings.devices.length+1,
       min_power_w:kind==='charger'?1380:700,max_power_w:kind==='charger'?3700:700,min_current_a:6,max_current_a:16,
-      phases:1,grid_phases:[],voltage:230,charge_point_id:'',allow_insecure_identity:false,connector_id:1,vehicle_id:kind==='charger'?(settings.vehicles[0]?.id||''):'',
+      phases:1,grid_phases:[],voltage:230,charge_point_id:'',allow_insecure_identity:false,ocpp_profile:'auto',connector_id:1,vehicle_id:kind==='charger'?(settings.vehicles[0]?.id||''):'',
       gateway_id:'',target:kind==='charger'?null:55,solar_target:null,default_soc_target:80,confirmation_timeout_s:kind==='charger'?90:300,cloud:{...cloudDefaults}})
   }
   return <><div className="section-title"><p className="subtitle">{kind==='charger'?'Enregistrez vos bornes OCPP et associez chaque véhicule.':'Une demande native de chauffe, avec sa puissance électrique mesurée.'}</p>
@@ -47,6 +47,7 @@ export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:
           <label>Puissance maximale (W)<input required type="number" min="1" value={editing.max_power_w} onChange={e=>setEditing({...editing,max_power_w:Number(e.target.value)})}/></label>
           <label>Délai de confirmation physique (s)<input required type="number" min="30" max="3600" value={editing.confirmation_timeout_s} onChange={e=>setEditing({...editing,confirmation_timeout_s:Number(e.target.value)})}/></label>
           {kind==='charger'?<><label>Identifiant de la borne OCPP<input required value={editing.charge_point_id} onChange={e=>setEditing({...editing,charge_point_id:e.target.value})}/></label>
+            <label>Compatibilité de la borne<select value={editing.ocpp_profile||'auto'} onChange={e=>setEditing({...editing,ocpp_profile:e.target.value as Device['ocpp_profile']})}><option value="auto">Automatique</option><option value="wallbox">Wallbox</option><option value="wallbox_fw5">Wallbox · firmware 5.x</option><option value="standard">OCPP standard</option></select></label>
             <label>Numéro de connecteur<input type="number" min="1" required value={editing.connector_id} onChange={e=>setEditing({...editing,connector_id:Number(e.target.value)})}/></label>
             <label>Véhicule associé<select required value={editing.vehicle_id} onChange={e=>setEditing({...editing,vehicle_id:e.target.value})}><option value="">Choisir</option>{settings.vehicles.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
             <label>Phases<select value={editing.phases} onChange={e=>setEditing({...editing,phases:Number(e.target.value) as 1|3,grid_phases:[]})}><option value="1">Monophasé</option><option value="3">Triphasé</option></select></label>

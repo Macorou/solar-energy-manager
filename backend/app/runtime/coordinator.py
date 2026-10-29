@@ -32,6 +32,11 @@ class Coordinator:
         self.engine.network_allowed=network_state.get('allowed',{})
         self.engine.network_stop_pending=set(network_state.get('stop_pending',[]))
         self.dispatcher=Dispatcher(store)
+        kinds={item['id']:item['kind'] for item in (store.load_settings() or {}).get('devices',[])}
+        for key,record in self.dispatcher.records.items():
+            if kinds.get(key)=='charger' and record['status'] in ('accepted','observed'):
+                self.engine.requested[key]=record['power_w']
+                self.engine.charger_offered[key]=record['power_w']
         self.reservations={}
         for key,value in store.get('runtime_reservations',{}).items():
             self.reservations[key]=Reservation(key,value['power_w'],value['command_id'],
@@ -275,19 +280,23 @@ class Coordinator:
             for intent in batch.commands:
                 if not self.enqueue(intent,configs[intent.device_id]) and intent.action=='suspend':
                     self.engine.network_stop_issued.discard(intent.device_id)
-            # Keep the same finite profile alive while the first power sample is pending.
-            # Dispatcher preserves the original confirmation deadline on these renewals.
+            # EVCC caps are persistent. Refresh only legacy finite profiles once,
+            # using the recalculated, currently authorized demand.
             for device in config.devices:
                 record=self.dispatcher.records.get(device.id)
                 if (device.kind=='charger' and device.armed and record
                     and (record['status']=='observed' or record['status']=='accepted'
                          and snapshot.at<datetime.fromisoformat(record['confirm_by']))
                     and record['power_w']>0 and self.engine.requested.get(device.id,0)>0
-                    and (snapshot.at-datetime.fromisoformat(record['sent_at'])).total_seconds()>40
+                    and not record.get('profile_persistent',False)
                     and not any(c.device_id==device.id for c in batch.commands)):
                     import uuid
                     self.enqueue(CommandIntent(str(uuid.uuid4()),device.id,'set_power',record['power_w'],
-                        snapshot.at+timedelta(seconds=90),'Renouvellement du profil autorisé'),device)
+                        snapshot.at+timedelta(seconds=90),'Migration du profil EVCC'),device)
+                source=self.adapters.get(device.id)
+                if (device.kind=='charger' and device.armed and self.engine.requested.get(device.id,0)>0
+                    and hasattr(source,'keep_authorized')):
+                    source.keep_authorized(snapshot.at+timedelta(seconds=90))
             self.snapshot=snapshot
             self.store.set('runtime_reservations',{key:{'power_w':r.power_w,'command_id':r.command_id,
                 'expires_at':r.expires_at.isoformat()} for key,r in self.reservations.items()})
@@ -336,7 +345,10 @@ class Coordinator:
                 if device.kind=='charger' and command.action=='set_power' and command.limit_w:
                     window=max(window,CHARGER_START_WAIT_S)
                 result=await self.dispatcher.dispatch(command,self.adapters[command.device_id],window)
-                if device.kind=='charger':self.engine.command_result(command,result.accepted)
+                if device.kind=='charger':self.engine.command_result(command,result.accepted,result.checked_at or utcnow())
+                if device.kind=='charger' and result.accepted:
+                    self.dispatcher.records[command.device_id]['profile_persistent']=True
+                    self.dispatcher.save()
                 source=self.adapters[command.device_id]
                 if device.kind=='water_heater' and result.accepted and hasattr(source,'read_state'):
                     task=asyncio.create_task(self.refresh_after_command(command.device_id,source))

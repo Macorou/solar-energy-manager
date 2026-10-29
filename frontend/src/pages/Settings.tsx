@@ -3,10 +3,11 @@ import type {Settings} from '../api/types'
 import type {Run} from './Devices'
 import {api} from '../api/client'
 import {PhaseSettings} from '../components/PhaseSettings'
+import {OcppSettings} from '../components/OcppSettings'
 export function SettingsPage({settings,save,run,connections}:{settings:Settings;save:(value:Settings)=>Promise<void>;run:Run;connections:Record<string,boolean>}) {
   const [value,set]=useState(structuredClone(settings))
   const [haToken,setHaToken]=useState(''),[password,setPassword]=useState(''),[refresh,setRefresh]=useState('')
-  const [callback,setCallback]=useState(''),[authUrl,setAuthUrl]=useState(''),[ocppSecret,setOcppSecret]=useState(''),[station,setStation]=useState('')
+  const [callback,setCallback]=useState(''),[authUrl,setAuthUrl]=useState('')
   return <><p className="subtitle">Les accès sont chiffrés sur le serveur. Les champs secrets restent vides après enregistrement.</p>
     <section className="panel"><h2>Installation</h2><form onSubmit={e=>{e.preventDefault();run(()=>save(value),'Réglages enregistrés')}}><div className="form-grid">
       <label>Limite totale de consommation (W)<input required type="number" min="1" value={value.site_limit_w??''} onChange={e=>set({...value,site_limit_w:e.target.value?Number(e.target.value):null})}/></label>
@@ -35,7 +36,7 @@ export function SettingsPage({settings,save,run,connections}:{settings:Settings;
       <div className="form-grid"><label>Compte Peugeot (repère)<input autoComplete="username" value={value.peugeot.username} onChange={e=>set({...value,peugeot:{...value.peugeot,username:e.target.value}})}/></label>
         <label>Pays<input value={value.peugeot.country} onChange={e=>set({...value,peugeot:{...value.peugeot,country:e.target.value}})}/></label>
         <label>Intervalle de lecture (s)<input type="number" min="300" value={value.peugeot.poll_interval_s} onChange={e=>set({...value,peugeot:{...value.peugeot,poll_interval_s:Number(e.target.value)}})}/></label>
-        <label>Âge maximal batterie (s)<input type="number" min="300" value={value.peugeot.max_age_s} onChange={e=>set({...value,peugeot:{...value.peugeot,max_age_s:Number(e.target.value)}})}/></label></div>
+        </div>
       <div className="actions"><button className="primary" onClick={()=>run(async()=>{await api('/connections/peugeot','PUT',{config:value.peugeot});const result=await api<{url:string}>('/connections/peugeot/auth','POST');setAuthUrl(result.url)})}>Connecter mon compte Peugeot</button>
         <button onClick={()=>run(()=>api('/connections/peugeot/test','POST'),'Accès Peugeot vérifié')}>Tester l’accès enregistré</button></div>
       {authUrl&&<div className="arm-box"><p><a href={authUrl} target="_blank" rel="noreferrer">Ouvrir la connexion sécurisée Peugeot ↗</a></p><label>Adresse de retour mymap://<input type="password" value={callback} onChange={e=>setCallback(e.target.value)}/></label>
@@ -49,8 +50,6 @@ export function SettingsPage({settings,save,run,connections}:{settings:Settings;
         <label>Intervalle Ariston (s)<input type="number" min="60" value={value.ariston.poll_interval_s} onChange={e=>set({...value,ariston:{...value.ariston,poll_interval_s:Number(e.target.value)}})}/></label></div>
       <button className="primary" onClick={()=>run(async()=>{await api('/connections/ariston','PUT',{config:value.ariston,password:password||null});setPassword('')},'Accès Ariston enregistré')}>Enregistrer Ariston</button>
       <p className="hint">Le test et l’activation se font sur la page Eau chaude. Une compatibilité non vérifiée laisse le ballon en observation.</p></section>
-    <section className="panel"><h2>Authentification OCPP</h2><p className="hint">Configurer la même identité et le même mot de passe dans la borne. Le point d’accès est /ocpp/IDENTIFIANT_BORNE, avec le sous-protocole ocpp1.6.</p>
-      <div className="form-grid"><label>Identifiant OCPP enregistré<input value={station} onChange={e=>setStation(e.target.value)}/></label><label>Mot de passe OCPP<input type="password" minLength={12} value={ocppSecret} onChange={e=>setOcppSecret(e.target.value)}/></label></div>
-      <button onClick={()=>run(async()=>{await api('/connections/ocpp/'+encodeURIComponent(station),'PUT',{password:ocppSecret});setOcppSecret('')},'Accès OCPP enregistré')}>Enregistrer l’accès OCPP</button></section>
+    <OcppSettings devices={value.devices} run={run}/>
   </>
 }

@@ -39,6 +39,7 @@ class DeviceState:
     energy_transaction_started_at: datetime | None = None
     transaction_active: bool | None = None
     start_pending: bool | None = None
+    offered_current: Sample | None = None
 
 
 @dataclass(frozen=True)

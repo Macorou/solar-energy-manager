@@ -8,6 +8,8 @@ export function Icon({name,size=22}:{name:string;size?:number}) {
     info:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M12 11v6M12 7v.1',leaf:'M19 3C8 2 3 7 5 13c2 6 11 4 14-10ZM4 21 15 9',
     hand:'M8 12V6a2 2 0 0 1 4 0v5-7a2 2 0 0 1 4 0v7-4a2 2 0 0 1 4 0v8c0 5-3 7-7 7-4 0-6-4-9-8-1-2 1-4 3-2l3 3',
     eye:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Zm14 0a4 4 0 1 0-8 0 4 4 0 0 0 8 0',
+    moon:'M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z',close:'m6 6 12 12M6 18 18 6',plug:'M8 2v5m8-5v5M6 7h12v4a6 6 0 0 1-12 0ZM12 17v5',sliders:'M4 7h9m4 0h3M4 17h3m4 0h9M13 4v6M7 14v6',battery:'M3 7h16v12H3ZM22 11v4M7 10v6m4-6v6m4-6v6',copy:'M9 3h12v12H9ZM3 9h3v12h12v-3',
+    tank:'M5 5a7 3 0 0 1 14 0v13a7 3 0 0 1-14 0ZM5 5a7 3 0 0 0 14 0M8 21v2m8-2v2M12 9v6m0 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3',up:'m6 15 6-6 6 6',down:'m6 9 6 6 6-6',
     chart:'M5 20V10m7 10V4m7 16V7',ha:'m3 10 9-8 9 8v12H3Zm9-3v11m0-5-5-4m5 7 5-5M7 8v2m10 0v2'}
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]||paths.bolt}/></svg>
 }

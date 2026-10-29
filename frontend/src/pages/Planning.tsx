@@ -1,33 +1,56 @@
 import {useState} from 'react'
-import type {Program,Settings} from '../api/types'
-import {ChargeProgramEditor} from '../components/Editors'
-import {api,date} from '../api/client'
+import type {Cloud,Device,Program,Settings} from '../api/types'
+import {createId} from '../api/id'
+import {Icon} from '../components/Icon'
 import type {Run} from './Devices'
-export function Planning({settings,save,run}:{settings:Settings;save:(value:Settings)=>Promise<void>;run:Run}) {
-  const [editing,setEditing]=useState<Program|true|null>(null)
-  const [windows,setWindows]=useState(settings.off_peak)
-  const [preview,setPreview]=useState<{id:string;deadline_at:string;target_soc:number;network_start_at:string}[]>([])
-  const days=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']
-  return <><div className="section-title"><p className="subtitle">Définissez l’heure de départ et laissez le solaire prendre de l’avance.</p><button className="primary" disabled={!settings.vehicles.length} onClick={()=>setEditing(true)}>Créer un programme</button></div>
-    {!settings.vehicles.length&&<p className="notice">Ajoutez d’abord un véhicule dans Bornes et véhicules.</p>}
-    <div className="program-grid">{settings.schedules.map(p=><article className="panel program" key={p.id}><div className="section-title"><h2>{p.name}</h2><span className={'badge '+(p.enabled?'green':'neutral')}>{p.enabled?'Actif':'Désactivé'}</span></div>
-      <div className="program-target"><strong>{p.target_soc}<small>%</small></strong><span>prêt à <b>{p.deadline}</b></span></div>
-      <div className="days static">{days.map((day,i)=><span className={p.weekdays.includes(i)?'selected':''} key={day}>{day}</span>)}</div>
-      <p>Réseau à partir de {p.earliest_start>=p.deadline?'la veille à ':''}<b>{p.earliest_start}</b></p><p className="hint">{p.solar_early?`Solaire autorisé jusqu’à ${p.solar_horizon_hours} h avant l’échéance`:'Solaire dans le créneau uniquement'}</p>
-      <div className="actions"><button onClick={()=>setEditing(p)}>Modifier</button><button onClick={()=>run(()=>api(`/schedules/${p.id}`,'PUT',{...p,enabled:!p.enabled}),'Programme mis à jour')}>{p.enabled?'Désactiver':'Activer'}</button>
-        <button className="danger" onClick={()=>run(()=>api(`/schedules/${p.id}`,'DELETE'),'Programme supprimé')}>Supprimer</button></div></article>)}</div>
-    {!settings.schedules.length&&<div className="empty panel"><h2>Votre premier départ serein</h2><p>Exemple : 80 % à 05:45 du lundi au vendredi. Les jours sont ceux de l’échéance.</p></div>}
-    {editing&&<section className="panel"><h2>{editing===true?'Nouveau programme':'Modifier le programme'}</h2><ChargeProgramEditor key={editing===true?'new':editing.id} initial={editing===true?undefined:editing} vehicles={settings.vehicles}
-      onSave={value=>run(async()=>{await api('/schedules'+(editing===true?'':'/'+value.id),editing===true?'POST':'PUT',value);setEditing(null)},'Programme enregistré')} onCancel={()=>setEditing(null)}/></section>}
-    <section className="panel"><div className="section-title"><h2>Prochaines échéances</h2><button onClick={()=>run(async()=>setPreview(await api('/schedules/preview')))}>Actualiser l’aperçu</button></div>
-      {preview.map(p=><div className="list-row" key={p.id}><strong>{date(p.deadline_at)} · {p.target_soc} %</strong><span className="hint">Réseau dès {date(p.network_start_at)}</span></div>)}
-      {!preview.length&&<p className="hint">L’aperçu est calculé par le serveur dans le fuseau {settings.timezone}.</p>}</section>
-    <section className="panel"><div className="section-title"><h2>Heures creuses</h2><span className="badge neutral">Horaires locaux · {settings.timezone}</span></div><p className="hint">Ces plages autorisent le ballon en mode HC/HP + solaire. Elles sont indépendantes des programmes voiture.</p>
-      {windows.map((w,i)=><fieldset key={i}><legend>Plage {i+1}</legend><div className="form-grid"><label>Début HC<input type="time" value={w.start} onChange={e=>setWindows(windows.map((v,n)=>n===i?{...v,start:e.target.value}:v))}/></label>
-        <label>Fin HC<input type="time" value={w.end} onChange={e=>setWindows(windows.map((v,n)=>n===i?{...v,end:e.target.value}:v))}/></label></div>
-        <div className="days">{days.map((day,n)=><label key={day} className={w.weekdays.includes(n)?'selected':''}><input type="checkbox" checked={w.weekdays.includes(n)} onChange={e=>setWindows(windows.map((v,k)=>k===i?{...v,weekdays:e.target.checked?[...v.weekdays,n]:v.weekdays.filter(d=>d!==n)}:v))}/>{day}</label>)}</div>
-        <p className="hint">{w.start>=w.end?'Fin le lendemain du jour coché.':'Début et fin le même jour.'}</p><button onClick={()=>setWindows(windows.filter((_,n)=>i!==n))}>Retirer cette plage</button></fieldset>)}
-      <div className="actions"><button onClick={()=>setWindows([...windows,{start:'22:00',end:'06:00',weekdays:[0,1,2,3,4,5,6]}])}>Ajouter une plage HC</button>
-        <button className="primary" onClick={()=>run(()=>save({...settings,off_peak:windows}),'Heures creuses enregistrées')}>Enregistrer les heures creuses</button></div></section>
-  </>
+
+const dayNames=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
+const cloudRows:[keyof Cloud,string,string][]=[['start_surplus_w','Surplus pour démarrer','W'],['start_delay_s','Délai avant démarrage','s'],['import_tolerance_w','Appoint réseau toléré','W'],['stop_delay_s','Délai avant arrêt','s'],['min_run_s','Durée minimale de fonctionnement','s'],['restart_delay_s','Délai avant redémarrage','s']]
+function mergeChanges<T extends object>(current:T,base:T,draft:T):T{
+  const result={...current};for(const key of Object.keys(draft) as (keyof T)[])if(JSON.stringify(draft[key])!==JSON.stringify(base[key]))result[key]=draft[key]
+  return result
+}
+export function Planning({settings,save,run}:{settings:Settings;save:(value:Settings)=>Promise<void>;run:Run}){
+  const [base,setBase]=useState(()=>structuredClone(settings)),[programs,setPrograms]=useState(()=>structuredClone(settings.schedules)),[windows,setWindows]=useState(()=>structuredClone(settings.off_peak)),[devices,setDevices]=useState(()=>structuredClone(settings.devices)),[error,setError]=useState(''),[dragged,setDragged]=useState<string|null>(null)
+  const ordered=[...devices].sort((a,b)=>a.priority-b.priority||a.id.localeCompare(b.id)),heaters=devices.filter(d=>d.kind==='water_heater')
+  function setProgram(id:string,patch:Partial<Program>){setPrograms(items=>items.map(p=>p.id===id?{...p,...patch}:p))}
+  function setDevice(id:string,patch:Partial<Device>){setDevices(items=>items.map(d=>d.id===id?{...d,...patch}:d))}
+  function reorder(from:string,to:string){const ids=ordered.map(d=>d.id),a=ids.indexOf(from),b=ids.indexOf(to);if(a<0||b<0||a===b)return;ids.splice(b,0,ids.splice(a,1)[0]);setDevices(items=>items.map(d=>({...d,priority:ids.indexOf(d.id)+1})))}
+  function days(value:number[],change:(days:number[])=>void,label:string){return <div className="plan-days" aria-label={label}>{dayNames.map((day,i)=><button type="button" key={day} aria-label={label+' · '+day} aria-pressed={value.includes(i)} onClick={()=>change(value.includes(i)?value.filter(n=>n!==i):[...value,i].sort())}>{day[0]}</button>)}</div>}
+  function cloudTable(rows:typeof cloudRows){return <div className="plan-table-scroll"><table className="plan-cloud"><thead><tr><th scope="col">Réglage</th>{ordered.map(d=><th key={d.id} scope="col">{d.name}</th>)}</tr></thead><tbody>{rows.map(([key,label,unit])=><tr key={key}><th scope="row">{label}</th>{ordered.map(d=><td key={d.id}><label className="plan-unit"><input type="number" min="0" max={unit==='s'?86400:undefined} step="any" required aria-label={label+' · '+d.name+' ('+unit+')'} value={d.cloud[key]} onChange={e=>setDevice(d.id,{cloud:{...d.cloud,[key]:Number(e.target.value)}})}/><span>{unit}</span></label></td>)}</tr>)}</tbody></table></div>}
+  async function submit(){
+    if(programs.some(p=>!p.weekdays.length)||windows.some(w=>!w.weekdays.length)){setError('Sélectionnez au moins un jour pour chaque programme et plage HC.');return}
+    const removed=programs.find(p=>{const old=base.schedules.find(b=>b.id===p.id);return old&&!settings.schedules.some(s=>s.id===p.id)&&JSON.stringify(old)!==JSON.stringify(p)})
+    if(removed){setError('Le programme « '+removed.name+' » a été supprimé dans une autre configuration. Rechargez le planning avant de le recréer.');return}
+    setError('')
+    const next:Settings={...settings,schedules:[...programs.filter(p=>!base.schedules.some(b=>b.id===p.id)||settings.schedules.some(s=>s.id===p.id)).map(p=>{const old=base.schedules.find(b=>b.id===p.id),current=settings.schedules.find(s=>s.id===p.id);return old&&current?mergeChanges(current,old,p):p}),...settings.schedules.filter(p=>!base.schedules.some(b=>b.id===p.id)&&!programs.some(d=>d.id===p.id))],
+      off_peak:JSON.stringify(windows)===JSON.stringify(base.off_peak)?settings.off_peak:windows,
+      devices:settings.devices.map(current=>{const original=base.devices.find(d=>d.id===current.id),draft=devices.find(d=>d.id===current.id);if(!original||!draft)return current
+        return {...current,mode:draft.mode===original.mode?current.mode:draft.mode,priority:draft.priority===original.priority?current.priority:draft.priority,cloud:mergeChanges(current.cloud,original.cloud,draft.cloud)}})}
+    await run(async()=>{await save(next);setBase(structuredClone(next));setPrograms(structuredClone(next.schedules));setWindows(structuredClone(next.off_peak));setDevices(structuredClone(next.devices))},'Planning enregistré')
+  }
+  return <form className="planning-workspace" onSubmit={e=>{e.preventDefault();void submit()}}>
+    <div className="section-title"><p className="hint">Créneaux réseau autorisés · le solaire peut anticiper.</p><button type="button" disabled={!settings.vehicles.length} onClick={()=>setPrograms([...programs,{id:createId(),name:'Recharge',vehicle_id:settings.vehicles[0]?.id||'',weekdays:[0,1,2,3,4],earliest_start:'22:00',deadline:'05:45',target_soc:80,solar_early:true,solar_horizon_hours:24,enabled:true}])}><Icon name="plus" size={17}/>Créer un programme</button></div>
+    {error&&<p className="alert error" role="alert">{error}</p>}
+    <div className="planning-cards"><div className="planning-car-list">
+      {programs.map(p=><section className="panel plan-card" key={p.id} aria-label={'Programme '+p.name}><div className="plan-card-heading"><Icon name="car" size={40}/><div><h2>{settings.vehicles.find(v=>v.id===p.vehicle_id)?.name||'Véhicule à choisir'}</h2><span className="badge blue">Planifié{p.solar_early?' + solaire':''}</span></div></div>
+        <label>Nom du programme<input required aria-label={'Nom du programme '+p.id} value={p.name} onChange={e=>setProgram(p.id,{name:e.target.value})}/></label>
+        <span className="plan-field-label">Objectif de charge</span><div className="plan-goal"><input type="number" min="1" max="100" required aria-label={'Objectif de charge '+p.name+' (%)'} value={p.target_soc} onChange={e=>setProgram(p.id,{target_soc:Number(e.target.value)})}/><span>% à</span><input type="time" required aria-label={'Heure de départ '+p.name} value={p.deadline} onChange={e=>setProgram(p.id,{deadline:e.target.value})}/></div>
+        {days(p.weekdays,weekdays=>setProgram(p.id,{weekdays}),'Échéance '+p.name)}
+        <label className="plan-start">Début réseau autorisé<input type="time" required value={p.earliest_start} onChange={e=>setProgram(p.id,{earliest_start:e.target.value})}/></label><p className="hint">{p.earliest_start>=p.deadline?'Début la veille de l’échéance.':'Début le jour de l’échéance.'}</p>
+        <label className="check"><input type="checkbox" checked={p.solar_early} onChange={e=>setProgram(p.id,{solar_early:e.target.checked})}/>Autoriser le solaire avant {p.earliest_start}</label>
+        <details><summary>Options du programme</summary><label>Véhicule<select value={p.vehicle_id} required onChange={e=>setProgram(p.id,{vehicle_id:e.target.value})}>{settings.vehicles.map(v=><option value={v.id} key={v.id}>{v.name}</option>)}</select></label><label>Anticipation solaire (heures)<input type="number" min="0" max="168" required value={p.solar_horizon_hours} onChange={e=>setProgram(p.id,{solar_horizon_hours:Number(e.target.value)})}/></label><label className="check"><input type="checkbox" checked={p.enabled} onChange={e=>setProgram(p.id,{enabled:e.target.checked})}/>Programme actif</label><button type="button" className="danger" onClick={()=>setPrograms(programs.filter(v=>v.id!==p.id))}>Supprimer le programme</button></details>
+        <p className="hint">Le réseau complète uniquement dans le créneau autorisé.</p></section>)}
+      {!programs.length&&<section className="panel plan-empty"><Icon name="car" size={42}/><h2>Planifier un départ</h2><p className="hint">{settings.vehicles.length?'Créez votre premier programme, par exemple 80 % à 05:45.':'Ajoutez un véhicule dans Réglages pour créer un programme.'}</p></section>}
+    </div><section className="panel plan-card plan-heater"><div className="plan-card-heading"><Icon name="tank" size={40}/><div><h2>{heaters.length===1?heaters[0].name:'Eau chaude'}</h2><span className="badge amber">Heures creuses et solaire</span></div></div>
+      <span className="plan-field-label">Plages d’heures creuses</span>{windows.map((w,i)=><div className="plan-window" key={i}><div className="plan-window-times"><input type="time" required aria-label={'Début HC '+(i+1)} value={w.start} onChange={e=>setWindows(windows.map((v,n)=>n===i?{...v,start:e.target.value}:v))}/><Icon name="arrow" size={17}/><input type="time" required aria-label={'Fin HC '+(i+1)} value={w.end} onChange={e=>setWindows(windows.map((v,n)=>n===i?{...v,end:e.target.value}:v))}/><button type="button" className="icon-button" aria-label={'Supprimer la plage HC '+(i+1)} onClick={()=>setWindows(windows.filter((_,n)=>n!==i))}><Icon name="close" size={17}/></button></div>
+        {days(w.weekdays,weekdays=>setWindows(windows.map((v,n)=>n===i?{...v,weekdays}:v)),'Jours HC '+(i+1))}<p className="hint">{w.start>=w.end?'Fin le lendemain du jour choisi.':'Début et fin le même jour.'}</p></div>)}
+      <button type="button" className="plan-add-window" onClick={()=>setWindows([...windows,{start:'22:00',end:'06:00',weekdays:[0,1,2,3,4,5,6]}])}><Icon name="plus" size={18}/>Ajouter une plage HC</button>
+      {heaters.map(d=><div className="plan-heater-mode" key={d.id}><label>Mode de chauffe · {d.name}<select value={d.mode} onChange={e=>setDevice(d.id,{mode:e.target.value as Device['mode']})}><option value="off">Arrêt</option><option value="solar">Solaire uniquement</option><option value="off_peak_solar">HC/HP + solaire</option>{d.mode==='manual'&&<option value="manual" disabled>Manuel temporaire en cours</option>}</select></label><p className="hint">{d.mode==='off_peak_solar'?'Chauffe réseau en heures creuses et solaire autorisé en heures pleines.':d.mode==='solar'?'Chauffe uniquement avec le surplus solaire.':'Le planning ne démarre pas cet appareil dans ce mode.'}</p></div>)}
+      {!heaters.length&&<p className="hint">Ajoutez un ballon dans Réglages. Les plages HC restent communes à l’installation.</p>}<p className="hint">Horaires locaux · {settings.timezone}</p>
+    </section></div>
+    {ordered.length>0&&<><section className="panel plan-priority"><div className="section-title"><h2>Priorité de démarrage</h2><span className="hint">Glisser ou utiliser les flèches</span></div><div className="plan-priority-list">{ordered.map((d,i)=><div className="plan-priority-item" key={d.id} draggable onDragStart={e=>{setDragged(d.id);e.dataTransfer.setData('text/plain',d.id)}} onDragEnd={()=>setDragged(null)} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(dragged)reorder(dragged,d.id);setDragged(null)}}><span aria-hidden="true">⠿</span><b>{i+1}</b><strong>{d.name}</strong><button type="button" className="icon-button" aria-label={'Monter la priorité '+d.name} disabled={i===0} onClick={()=>reorder(d.id,ordered[i-1].id)}><Icon name="up" size={16}/></button><button type="button" className="icon-button" aria-label={'Baisser la priorité '+d.name} disabled={i===ordered.length-1} onClick={()=>reorder(d.id,ordered[i+1].id)}><Icon name="down" size={16}/></button></div>)}</div><p className="hint">Si le premier ne peut pas démarrer, essayer le suivant. Les appareils peuvent fonctionner ensemble si le surplus suffit.</p></section>
+      <section className="panel"><h2>Passages de nuages</h2><p className="hint">Réglages indépendants par appareil</p>{cloudTable(cloudRows.slice(0,4))}<details><summary>Réglages avancés des temporisations</summary>{cloudTable(cloudRows.slice(4))}</details></section></>}
+    <div className="plan-save"><span className="hint">Les modifications s’appliquent après enregistrement.</span><button className="primary">Enregistrer le planning</button></div>
+  </form>
 }

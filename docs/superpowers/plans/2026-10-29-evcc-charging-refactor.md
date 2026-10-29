@@ -37,11 +37,11 @@
 
 **Interfaces:** `SocEstimator(capacity_kwh)`, `soc(fetched_soc: float|None, charged_energy_wh: float)->float`, serializable state for restart. `ChargingTracker.summary` keeps its public fields. Port the method and vectors from EVCC `core/soc/estimator{,_test}.go`.
 
-- [ ] Write original EVCC vector tests and tracker tests for repeated/changed/missing percentages independent of timestamps, lower API recalage, zero-percent seed and restart without double gains.
-- [ ] Run targeted pytest and inspect expected RED assertions.
-- [ ] Port the estimator and integrate it, with persisted state scoped to vehicle/plug session. Migrate existing references without using their dates or inventing unobserved energy. Preserve costs and total energy. Remove date-based SoC gates and the old fixed-efficiency input.
-- [ ] Run estimator/accounting/Peugeot tests; replace only assertions for deliberately superseded date-based/fixed-efficiency rules. Verify remaining failures rather than weakening unrelated meter checks.
-- [ ] Update MIT provenance and commit the allowlisted Task 1 files after green checks.
+- [x] Write original EVCC vector tests and tracker tests for repeated/changed/missing percentages independent of timestamps, lower API recalage, zero-percent seed and restart without double gains.
+- [x] Run targeted pytest and inspect expected RED assertions.
+- [x] Port the estimator and integrate it, with persisted state scoped to vehicle/plug session. Migrate existing references without using their dates or inventing unobserved energy. Preserve costs and total energy. Remove date-based SoC gates and the old fixed-efficiency input.
+- [x] Run estimator/accounting/Peugeot tests; replace only assertions for deliberately superseded date-based/fixed-efficiency rules. Verify remaining failures rather than weakening unrelated meter checks.
+- [x] Update MIT provenance and commit the allowlisted Task 1 files after green checks.
 
 ## Task 2: EVCC car current regulation and reconciliation
 
@@ -49,11 +49,11 @@
 
 **Interfaces:** Pure PV current/timer controller consuming actual/offered currents and site balance; phase limiter returns power/current for existing command transport. Existing heater decisions and schedule authorizations remain in charge of eligibility and shared allocation.
 
-- [ ] Write failing cases for the observed 20.3A/22.376A/19A incident with repeated ticks, EVCC 5.9A/6A minimum cases, phase mapping and signed export, PV timer start/stop and first-current grace.
-- [ ] Verify RED, port `effectiveCurrent`, `pvMaxCurrent` supported fixed-phase path and `ValidateCurrent`/power behavior. Introduce a 30s normal car regulation cadence with immediate explicit/boundary stops; accepted commands update offered state only after transport success.
-- [ ] Prefer usable OCPP power/current over delayed HA charger power. Remove strict two-second cross-source ordering and accepted-charger global confirmation gates; maintain independent source freshness and conservative pending allocations.
-- [ ] Reconcile charger suspension through fresh native suspended state and telemetry, including active transaction. Accepted cap waiting on the vehicle is not an unknown result solely because power is below the cap. Keep heater confirmation logic.
-- [ ] Run phase, budget, cloud, schedule, startup and runtime suites. Commit the allowlisted Task 2 files after green checks.
+- [x] Write failing cases for the observed 20.3A/22.376A/19A incident with repeated ticks, EVCC 5.9A/6A minimum cases, phase mapping and signed export, PV timer start/stop and first-current grace.
+- [x] Verify RED, port `effectiveCurrent`, `pvMaxCurrent` supported fixed-phase path and `ValidateCurrent`/power behavior. Introduce a 30s normal car regulation cadence with immediate explicit/boundary stops; accepted commands update offered state only after transport success.
+- [x] Prefer usable OCPP power/current over delayed HA charger power. Remove strict two-second cross-source ordering and accepted-charger global confirmation gates; maintain independent source freshness and conservative pending allocations.
+- [x] Reconcile charger suspension through fresh native suspended state and telemetry, including active transaction. Accepted cap waiting on the vehicle is not an unknown result solely because power is below the cap. Keep heater confirmation logic.
+- [x] Run phase, budget, cloud, schedule, startup and runtime suites. Commit the allowlisted Task 2 files after green checks.
 
 ## Task 3: EVCC OCPP profiles, meter parsing and restart authentication
 
@@ -61,10 +61,10 @@
 
 **Interfaces:** Profiles support 0A and tenths of an amp, TxDefault by default, Wallbox relative/current and firmware-5 variants selected from boot metadata/config override. Protected GET connection metadata reports only saved/connected/error flags, never a secret. Blank credential saves retain existing secrets.
 
-- [ ] Write failing tests for zero-profile suspend/resume preserving transaction, no duplicate RemoteStart, firmware profiles, ordering of periodic/boundary values, local receive freshness, active transaction recovery, and authenticated reconnect using a newly created application and the same data directory.
-- [ ] Verify RED, port appropriate EVCC profile and meter behaviors. OCPP profiles use EVCC persistent limits rather than a 90s expiration that can fall back to the hardware maximum. Retain logical arming/authorization; reconcile state before restarting control.
-- [ ] Bound dead connection reads, clean owned connections, log sanitized reason codes, preserve encrypted credentials and make saved access visible. Keep active-connection duplicate protection. Do not weaken password verification.
-- [ ] Add UI tests for recorded identity/saved-secret status/blank retention. Run protocol and API suites and commit after green checks.
+- [x] Write failing tests for zero-profile suspend/resume preserving transaction, no duplicate RemoteStart, firmware profiles, ordering of periodic/boundary values, local receive freshness, active transaction recovery, and authenticated reconnect using a newly created application and the same data directory.
+- [x] Verify RED, port appropriate EVCC profile and meter behaviors. OCPP profiles use EVCC persistent limits rather than a 90s expiration that can fall back to the hardware maximum. Retain logical arming/authorization; reconcile state before restarting control.
+- [x] Bound dead connection reads, clean owned connections, log sanitized reason codes, preserve encrypted credentials and make saved access visible. Keep active-connection duplicate protection. Do not weaken password verification.
+- [x] Add UI tests for recorded identity/saved-secret status/blank retention. Run protocol and API suites and commit after green checks.
 
 ## Task 4: Integration, version, documentation and whole-change review
 

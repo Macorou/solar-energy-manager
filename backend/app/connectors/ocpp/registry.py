@@ -1,6 +1,7 @@
 from dataclasses import replace
 from datetime import datetime,timedelta
 import zlib
+import asyncio
 from ocpp.v16 import call
 from app.settings import DeviceConfig
 from app.domain.devices import DeviceState,CapabilityReport
@@ -19,6 +20,7 @@ class OcppRegistry:
         self.rebooted=set()
         self.suspend_requested={}
         self.profile_migrations=store.get('ocpp_profile_migrations',{})
+        self.profile_values=store.get('ocpp_profile_values',{})
         self.active={}
         self.allowed_until={}
         self.pending_start=store.get('ocpp_pending_start',{})
@@ -127,34 +129,40 @@ class ChargerAdapter:
             return CapabilityReport(unsupported=('probe_failed',),verified_at=utcnow())
 
     async def execute(self,intent):
+        if intent.action=='suspend':
+            self.registry.allowed_until.pop(self.config.id,None)
+            if self.config.id in self.registry.pending_start:
+                self.registry.pending_start[self.config.id]['state']='cancel_requested'
+                self.registry.save_pending()
         station=self.registry.stations.get(self.config.charge_point_id)
         if not station:
             return CommandResult(intent.id,False,error='Borne déconnectée',checked_at=utcnow())
         transaction=self.registry.active.get((self.config.charge_point_id,self.config.connector_id))
         try:
-            if not hasattr(station,'sem_profile_values'):
+            if intent.action!='suspend' and not hasattr(station,'sem_profile_values'):
                 response=await station.call(call.GetConfiguration(key=PROFILE_KEYS))
                 station.sem_profile_values={row['key']:row.get('value','')
                     for row in getattr(response,'configuration_key',None) or []}
-            options=profile_options(self.config,self.registry.metadata.get(self.config.charge_point_id,{}),station.sem_profile_values)
+                self.registry.profile_values[self.config.charge_point_id]=station.sem_profile_values
+                self.registry.store.set('ocpp_profile_values',self.registry.profile_values)
+            options=profile_options(self.config,self.registry.metadata.get(self.config.charge_point_id,{}),
+                getattr(station,'sem_profile_values',self.registry.profile_values.get(self.config.charge_point_id,{})))
             if intent.action=='suspend':
-                self.registry.allowed_until.pop(self.config.id,None)
-                if self.config.id in self.registry.pending_start:
-                    self.registry.pending_start[self.config.id]['state']='cancel_requested'
-                    self.registry.save_pending()
                 previous=self.registry.suspend_requested.setdefault(self.config.id,utcnow())
                 state=await self.read_state()
                 ignored=bool(transaction and (utcnow()-previous).total_seconds()>=60
                     and state.observed_state=='Charging' and state.connected and state.observed_power
                     and state.observed_power.usable(utcnow(),30) and state.observed_power.value>20)
-                result=await station.call(call.SetChargingProfile(connector_id=self.config.connector_id,
-                    cs_charging_profiles=build_profile(self.config,0,None,None,options)))
-                cleared=await self.clear_legacy_profile(station) if result.status=='Accepted' else False
-                fallback=False
-                if transaction and (result.status!='Accepted' or ignored or not cleared):
-                    result=await station.call(call.RemoteStopTransaction(transaction_id=transaction['transaction_id']))
-                    fallback=True
-                accepted=result.status=='Accepted' and (cleared or fallback)
+                accepted=False
+                try:
+                    result=await asyncio.wait_for(station.call(call.SetChargingProfile(connector_id=self.config.connector_id,
+                        cs_charging_profiles=build_profile(self.config,0,None,None,options))),5)
+                    accepted=result.status=='Accepted' and await asyncio.wait_for(self.clear_legacy_profile(station),5)
+                except Exception:
+                    pass  # A failed optional/profile exchange must not suppress the stop fallback.
+                if transaction and (not accepted or ignored):
+                    result=await asyncio.wait_for(station.call(call.RemoteStopTransaction(transaction_id=transaction['transaction_id'])),10)
+                    accepted=result.status=='Accepted'
                 return CommandResult(intent.id,accepted,False,
                     error=None if accepted else 'Suspension refusée',checked_at=utcnow())
             if self.metering_required and not transaction and self.config.id not in self.registry.pending_start:

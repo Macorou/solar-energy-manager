@@ -217,7 +217,7 @@ class ChargingTracker:
         else:
             baseline=fetched if fetched is not None else reference['soc'] if reference else None
             session['soc']=baseline
-            session['soc_usable']=baseline is not None
+            session['soc_usable']=fetched is not None
         # Energy-source integrity is separate from EVCC's percentage calculation.
         # These checks use electrical telemetry only, never a Peugeot timestamp.
         gap=session.get('soc_gap_at')
@@ -233,7 +233,9 @@ class ChargingTracker:
                 'Index d’énergie de la borne absent' if session['last_at'] is None else
                 'Index d’énergie de la borne trop ancien')
         else:
-            session['soc_reason']=None if session['soc_usable'] else 'Batterie Peugeot indisponible'
+            session['soc_reason']=None if session['soc_usable'] else (
+                'Renseigner la capacité utile de la batterie pour estimer pendant une indisponibilité Peugeot'
+                if baseline is not None and not capacity else 'Batterie Peugeot indisponible')
         session['soc_estimated']=bool(session['soc_usable'] and
             (fetched is None or session['soc']!=fetched))
         session['anchor']=({'soc':baseline,'at':reference.get('at') if reference else None,

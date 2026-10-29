@@ -9,6 +9,7 @@ from app.engine.hysteresis import Timers
 from app.engine.heater_targets import HeaterTargets
 from app.engine.phase_limits import phase_power_limit,current_credit
 from app.engine.evcc_loadpoint import PvController
+from app.engine.charger_feedback import unapplied_overload
 from app.simulation.clock import Clock
 
 
@@ -40,6 +41,8 @@ class EnergyEngine:
         self.charger_start_credit = {}
         self.charger_pv_frame = {}
         self.charger_ack_at = {}
+        self.charger_commanded = {}
+        self.charger_limit_faults = set()
 
     def forget(self, device_id):
         self.requested.pop(device_id,None)
@@ -51,6 +54,7 @@ class EnergyEngine:
     def command_result(self, intent, accepted, at=None):
         if accepted:
             self.charger_offered[intent.device_id]=intent.limit_w or 0
+            self.charger_commanded[intent.device_id]=intent.limit_w or 0
             self.charger_ack_at[intent.device_id]=at or self.clock.now()
         else:
             self.forget(intent.device_id)
@@ -58,6 +62,9 @@ class EnergyEngine:
     def evaluate(self, snapshot, specs, policies, authorizations):
         now, mono = snapshot.at, self.clock.monotonic()
         for spec in specs:
+            if spec.kind=='charger' and self.timers.reached(spec.id+':cap_unapplied',
+                    unapplied_overload(snapshot,spec,self.charger_commanded.get(spec.id,0)),60,mono):
+                self.charger_limit_faults.add(spec.id)
             state=snapshot.device_states.get(spec.id)
             offered=state.offered_current if state else None
             sent=self.charger_ack_at.get(spec.id)
@@ -156,6 +163,8 @@ class EnergyEngine:
                 reason = 'Appareil non activé ou indisponible'
             elif policy.mode=='off':
                 eligible, reason = False, 'Arrêt demandé'
+            elif spec.id in self.charger_limit_faults:
+                eligible, reason = False, 'Limite de recharge non appliquée : vérifier la borne puis désactiver/réactiver le pilotage'
             elif (state.temperature>=target if spec.kind=='water_heater' and state.temperature is not None
                   and target is not None else state.target_reached):
                 eligible, reason = False, 'Objectif atteint'

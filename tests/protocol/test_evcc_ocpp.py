@@ -36,6 +36,7 @@ async def test_wallbox_firmware_profile_and_pause_resume_keep_transaction(tmp_pa
     reg.metadata['box']={'vendor':'Wallbox','firmware':firmware,'model':'Pulsar Plus'}
     calls=[]
     class Wire:
+        sem_profile_values={'ChargeProfileMaxStackLevel':'4','MaxChargingProfilesInstalled':'3'}
         async def call(self,message):
             calls.append(message)
             if type(message).__name__=='GetConfiguration':
@@ -167,3 +168,52 @@ def test_reconnect_boot_without_firmware_keeps_previously_detected_variant(tmp_p
     station.boot('Wallbox','Pulsar Plus',firmware_version='5.17.20')
     station.boot('Wallbox','Pulsar Plus')
     assert reg.metadata['box']['firmware']=='5.17.20'
+
+
+@pytest.mark.parametrize('failure',[None,'zero','cleanup'])
+async def test_stop_never_depends_on_capability_query_and_revokes_authorization(tmp_path,failure):
+    cfg=config();reg=OcppRegistry(SQLiteStore(tmp_path/'db'),lambda:[cfg],lambda _:None)
+    reg.active[('box',1)]={'transaction_id':42}
+    reg.allowed_until['ev']=utcnow()+timedelta(minutes=5)
+    reg.pending_start['ev']={'state':'accepted'}
+    calls=[]
+    class Wire:
+        async def call(self,message):
+            name=type(message).__name__;calls.append(name)
+            assert 'ev' not in reg.allowed_until
+            assert reg.pending_start['ev']['state']=='cancel_requested'
+            if name=='GetConfiguration':raise TimeoutError('configuration unavailable')
+            if name=='SetChargingProfile' and failure=='zero':raise TimeoutError('zero unconfirmed')
+            if name=='ClearChargingProfile' and failure=='cleanup':raise TimeoutError('cleanup unconfirmed')
+            return SimpleNamespace(status='Accepted')
+    reg.stations['box']=Wire()
+    result=await ChargerAdapter(reg,cfg).execute(CommandIntent('stop','ev','suspend'))
+    assert result.accepted
+    assert 'GetConfiguration' not in calls
+    assert ('RemoteStopTransaction' in calls)==(failure is not None)
+
+
+async def test_stop_after_restart_reuses_last_negotiated_profile_options_without_query(tmp_path):
+    cfg=config();store=SQLiteStore(tmp_path/'db');limits=[]
+    class Wire:
+        async def call(self,message):
+            if type(message).__name__=='GetConfiguration':
+                return SimpleNamespace(configuration_key=[{'key':'ChargeProfileMaxStackLevel','value':'4'},
+                    {'key':'MaxChargingProfilesInstalled','value':'3'}])
+            if type(message).__name__=='SetChargingProfile':limits.append(message.cs_charging_profiles)
+            return SimpleNamespace(status='Accepted')
+    reg=OcppRegistry(store,lambda:[cfg],lambda _:None);reg.stations['box']=Wire()
+    reg.active[('box',1)]={'transaction_id':42};reg.save_transactions()
+    assert (await ChargerAdapter(reg,cfg).execute(CommandIntent('cap','ev','set_power',3680))).accepted
+    restarted=OcppRegistry(store,lambda:[cfg],lambda _:None);restarted.stations['box']=Wire()
+    assert (await ChargerAdapter(restarted,cfg).execute(CommandIntent('stop','ev','suspend'))).accepted
+    assert limits[-1]['stack_level']==4
+    assert limits[-1]['charging_profile_id']==3
+
+
+async def test_offline_stop_cancels_a_pending_start_and_revokes_authorization(tmp_path):
+    cfg=config();reg=OcppRegistry(SQLiteStore(tmp_path/'db'),lambda:[cfg],lambda _:None)
+    reg.allowed_until['ev']=utcnow()+timedelta(minutes=5);reg.pending_start['ev']={'state':'accepted'}
+    assert not (await ChargerAdapter(reg,cfg).execute(CommandIntent('stop','ev','suspend'))).accepted
+    assert not reg.authorized(cfg)
+    assert reg.pending_start['ev']['state']=='cancel_requested'

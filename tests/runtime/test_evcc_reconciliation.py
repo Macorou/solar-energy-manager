@@ -1,5 +1,7 @@
+import asyncio
 from dataclasses import replace
 from datetime import timedelta
+import pytest
 
 from app.domain.devices import DeviceState
 from app.domain.measurements import Sample,utcnow
@@ -71,3 +73,58 @@ def test_fresh_native_suspended_state_confirms_zero_without_waiting_for_ha_power
     state=DeviceState('ev',power,'SuspendedEVSE',True,status_measured_at=now,transaction_active=True,start_pending=False)
     assert dispatcher.reconcile(SiteSnapshot(now,grid=Sample(500,'W','HA',now,now,checked_at=now),
         device_states={'ev':state}),{'ev':DeviceConfig(id='ev',name='EV',kind='charger')})==['ev']
+
+
+@pytest.mark.parametrize('applied',[False,True])
+async def test_observed_authorization_does_not_hide_unapplied_physical_limit(tmp_path,monkeypatch,applied):
+    from types import SimpleNamespace
+    from app.runtime.coordinator import Coordinator
+    from app.settings import SettingsDocument
+    from app.simulation.clock import SimulatedClock
+    from app.domain.commands import CommandResult
+    from app.api.devices import disarm
+    clock=SimulatedClock(utcnow());now=clock.now();cap=16.9*230;calls=[]
+    class Adapter:
+        async def execute(self,intent):calls.append(intent);return CommandResult(intent.id,True)
+    store=SQLiteStore(tmp_path/'db');adapter=Adapter()
+    cfg=SettingsDocument(site_limit_w=11000,phase_control_enabled=True,phase_margin_a=1,
+        devices=[DeviceConfig(id='ev',name='Wallbox',kind='charger',armed=True,mode='manual',
+            min_power_w=1380,max_power_w=6000,grid_phases=['L1'],max_current_a=20)])
+    store.save_settings(cfg.model_dump(mode='json'))
+    store.set('manual_controls',{'ev':{'until':(now+timedelta(hours=1)).isoformat(),'previous_mode':'solar'}})
+    store.set('runtime_commands',{'ev':{'id':'cap','device_id':'ev','action':'set_power','status':'accepted',
+        'power_w':cap,'sent_at':(now-timedelta(seconds=10)).isoformat(),
+        'expires_at':(now+timedelta(seconds=90)).isoformat(),
+        'confirm_by':(now+timedelta(seconds=300)).isoformat(),'profile_persistent':True}})
+    runtime=Coordinator(store,adapters={'ev':adapter});runtime.engine.clock=clock
+    def frame(actual=20.3,grid=22.376,status='Charging'):
+        stamp=clock.now();sample=lambda v,u='W':Sample(v,u,'OCPP',stamp,stamp,checked_at=stamp)
+        return SiteSnapshot(stamp,grid=sample(5130.961),site_limit_w=11000,phase_control_enabled=True,
+            phase_margin_a=1,phase_currents={'L1':sample(grid,'A')},phase_limits_a={'L1':20},
+            device_states={'ev':DeviceState('ev',sample(actual*230),status,True,
+                vehicle_connected=True,currents={'L1':sample(actual,'A')},
+                offered_current=sample(16.9,'A'),status_measured_at=stamp,
+                transaction_active=True,start_pending=False)})
+    await runtime.tick(frame())
+    assert runtime.dispatcher.records['ev']['status']=='observed'
+    clock.advance(30);await runtime.tick(frame(16.9,18.976) if applied else frame())
+    clock.advance(31);await runtime.tick(frame(16.9,18.976) if applied else frame())
+    await asyncio.gather(*runtime.command_tasks.values())
+    if applied:
+        assert not calls
+        assert not runtime.engine.charger_limit_faults
+        return
+    assert [c.action for c in calls]==['suspend']
+    assert store.get('charger_limit_faults')==['ev']
+    restarted=Coordinator(store,adapters={'ev':adapter});restarted.engine.clock=clock
+    clock.advance(2);await restarted.tick(frame(0,2,'SuspendedEVSE'))
+    await asyncio.gather(*restarted.command_tasks.values())
+    assert not any(c.action=='set_power' for c in calls)
+    # Only the existing explicit disarm workflow, after a fresh observed stop,
+    # clears the persisted fault; a restart or normal mode evaluation does not.
+    cfg.devices[0].mode='off';store.save_settings(cfg.model_dump(mode='json'))
+    monkeypatch.setattr('app.api.devices.utcnow',clock.now)
+    request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(store=store,coordinator=restarted)))
+    assert disarm('ev',request)['ok']
+    assert store.get('charger_limit_faults')==[]
+    assert not restarted.engine.charger_limit_faults

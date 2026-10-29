@@ -92,6 +92,10 @@ def disarm(device_id:str,request:Request):
     request.app.state.store.save_settings(config.model_dump(mode='json'))
     runtime.dispatcher.records.pop(device_id,None); runtime.dispatcher.save()
     runtime.reservations.pop(device_id,None); runtime.errors.pop(device_id,None)
+    runtime.engine.charger_limit_faults.discard(device_id)
+    runtime.engine.timers.since.pop(device_id+':cap_unapplied',None)
+    runtime.engine.charger_commanded.pop(device_id,None)
+    runtime.store.set('charger_limit_faults',sorted(runtime.engine.charger_limit_faults))
     runtime.engine.forget(device_id)
     return {'ok':True}
 

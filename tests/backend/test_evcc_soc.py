@@ -77,6 +77,21 @@ def test_missing_peugeot_timestamp_keeps_valid_soc():
     assert parse_telemetry({'energy':[{'type':'Electric','level':60}]}).soc==60
 
 
+@pytest.mark.parametrize('capacity',[None,50])
+def test_api_failure_requires_capacity_to_advance_cached_percentage(tmp_path,capacity):
+    from test_charging_accounting import setup_tracker,frame
+    from app.domain.measurements import utcnow,Quality
+    tracker,_,cfg=setup_tracker(tmp_path);cfg.vehicles[0].capacity_kwh=capacity;now=utcnow()
+    tracker.update(frame(now,10000,soc=60,stamp=now),cfg)
+    failed=frame(now+timedelta(seconds=30),10500,soc=60,stamp=now)
+    failed=replace(failed,vehicle_telemetry={'car':replace(failed.vehicle_telemetry['car'],quality=Quality.UNAVAILABLE)})
+    tracker.update(failed,cfg)
+    assert tracker.summary('ev')['soc']==pytest.approx(60 if capacity is None else 60.85)
+    assert tracker.summary('ev')['soc_usable'] is (capacity is not None)
+    if capacity is None:assert 'capacité' in tracker.summary('ev')['soc_reason']
+    else:assert tracker.summary('ev')['soc_reason'] is None
+
+
 def test_evcc_goal_releases_on_changed_percentage_without_date_hysteresis(tmp_path):
     from test_charging_accounting import setup_tracker,frame
     from app.domain.measurements import utcnow

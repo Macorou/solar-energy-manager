@@ -27,6 +27,7 @@ class Coordinator:
         self.store,self.app=store,app
         self.adapters=adapters or {}
         self.engine=EnergyEngine()
+        self.engine.charger_limit_faults=set(store.get('charger_limit_faults',[]))
         self.charging=ChargingTracker(store)
         network_state=store.get('runtime_network_state',{})
         self.engine.network_allowed=network_state.get('allowed',{})
@@ -37,6 +38,7 @@ class Coordinator:
             if kinds.get(key)=='charger' and record['status'] in ('accepted','observed'):
                 self.engine.requested[key]=record['power_w']
                 self.engine.charger_offered[key]=record['power_w']
+                self.engine.charger_commanded[key]=record['power_w']
         self.reservations={}
         for key,value in store.get('runtime_reservations',{}).items():
             self.reservations[key]=Reservation(key,value['power_w'],value['command_id'],
@@ -258,6 +260,9 @@ class Coordinator:
                 priority=d.priority,grid_phases=tuple(d.grid_phases),voltage=d.voltage,
                 min_current_a=d.min_current_a,max_current_a=d.max_current_a) for d in config.devices]
             batch=self.engine.evaluate(snapshot,specs,policies,authorizations)
+            self.store.set('charger_limit_faults',sorted(self.engine.charger_limit_faults))
+            for key in self.engine.charger_limit_faults:
+                self.errors[key]='Limite de recharge non appliquée : vérifier la borne puis désactiver/réactiver le pilotage'
             if blocked_reasons:
                 batch=replace(batch,reasons=batch.reasons|blocked_reasons,
                     commands=tuple(replace(command,reason=blocked_reasons[command.device_id])

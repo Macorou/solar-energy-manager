@@ -70,10 +70,10 @@
 
 **Files:** OpenAPI/types if changed, release/deployment docs, version references; regression tests where a cross-component issue requires them.
 
-- [ ] Run complete Python and frontend suites, schema generation and frontend build; run browser smoke and Docker checks where the available environment permits them.
-- [ ] Add a release note describing the actual migrated behavior, profile lifetime/offline behavior, retained data, firmware selection and hardware validation still required. Prepare the next image tag consistently, without retagging an old release.
-- [ ] Dispatch one fresh reviewer for this patch diff, plan, sources and ledger. Fix important findings in one RED/GREEN pass and rerun affected/full suites as required.
-- [ ] Preserve the local-only `docs/next-patch.md`; commit only implementation, tests, source provenance and release documents. Finish with exact verification evidence and publication/deployment state.
+- [x] Run complete Python and frontend suites, schema generation and frontend build; run browser smoke and Docker checks where the available environment permits them.
+- [x] Add a release note describing the actual migrated behavior, profile lifetime/offline behavior, retained data, firmware selection and hardware validation still required. Prepare the next image tag consistently, without retagging an old release.
+- [x] Dispatch one fresh reviewer for this patch diff, plan, sources and ledger. Fix important findings in one RED/GREEN pass and rerun affected/full suites as required.
+- [x] Preserve the local-only `docs/next-patch.md`; commit only implementation, tests, source provenance and release documents. Finish with exact verification evidence and publication/deployment state.
 
 ## Execution notes
 

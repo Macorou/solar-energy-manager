@@ -24,6 +24,13 @@ protocoles de borne) ne sont pas annoncées comme prises en charge.
   produire artificiellement une absence de confirmation.
 - La première mesure conserve une tolérance de cinq minutes. Cette tolérance
   ne retarde jamais la correction d’une surcharge effectivement mesurée.
+- Une limitation annoncée par la borne ne suffit pas à prouver son application
+  physique. Si le courant réel dépasse toujours la consigne et que le réseau
+  reste surchargé pendant 60 secondes de mesures utilisables, SEM suspend la
+  charge et conserve un défaut, y compris après redémarrage. Après vérification
+  de la borne, utiliser Pause, attendre l’arrêt mesuré, désactiver puis réactiver
+  le pilotage pour acquitter ce défaut. Une réduction normalement appliquée
+  ne provoque pas cet arrêt.
 
 ## Profils Wallbox et reconnexion
 
@@ -37,6 +44,12 @@ suspension est refusée ou reste ignorée après le délai de stabilisation,
 une demande d’arrêt de transaction sert de repli. Le profil EVCC remplace
 l’ancien profil appartenant à SEM ; aucun effacement général des profils
 installés dans la borne n’est effectué.
+
+Un arrêt retire l’autorisation locale et annule un départ en attente avant
+tout échange réseau, même hors connexion. Il réutilise les derniers paramètres
+de profil négociés, conservés après reboot, sans dépendre d’une nouvelle lecture
+des capacités. Les échecs du profil à 0 A et du nettoyage de l’ancien profil
+peuvent déclencher le repli d’arrêt dans le délai du transport.
 
 Les limites sont maintenant des profils persistants `TxDefaultProfile`.
 **Si SEM est arrêté, la dernière limite reste installée dans la borne, mais les
@@ -64,6 +77,11 @@ L’estimateur commence avec le rendement EVCC de 85 % puis apprend le gradient
 cette estimation. L’ancien champ de rendement fixe reste lisible dans les
 configurations existantes mais ne commande plus le calcul. La même estimation
 sert à l’affichage et à l’arrêt à l’objectif.
+
+Sans capacité configurée, le dernier pourcentage reste affiché. Si l’API devient
+indisponible, cette valeur seule n’autorise plus une recharge ciblée indéfinie :
+SEM demande la capacité utile pour pouvoir estimer. Avec une capacité configurée
+et un estimateur amorcé, la progression continue pendant la panne d’API.
 
 L’état de l’estimateur, les sessions, les kWh et les coûts sont persistés.
 Une ancienne référence dont l’index d’énergie est connu conserve cette base ;

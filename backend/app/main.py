@@ -50,7 +50,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         if coordinator and settings.start_runtime:
             await coordinator.stop()
 
-    app = FastAPI(title='Solar Energy Manager', version='0.1.16', lifespan=lifespan)
+    app = FastAPI(title='Solar Energy Manager', version='0.1.17', lifespan=lifespan)
     app.state.store = store
     app.state.secrets = secret_store
     app.state.runtime_settings = settings
@@ -73,11 +73,11 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
     @app.get('/api/v1/health/live')
     def health():
-        return {'status': 'ok', 'version': '0.1.16'}
+        return {'status': 'ok', 'version': '0.1.17'}
 
     @app.get('/api/v1/system/status', dependencies=[Depends(require_auth)])
     def status():
-        return {'version': '0.1.16', 'simulation': False,
+        return {'version': '0.1.17', 'simulation': False,
                 'runtime': 'running' if app.state.coordinator.running else 'not_started'}
 
     @app.get('/api/v1/settings', dependencies=[Depends(require_auth)])

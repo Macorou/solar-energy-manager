@@ -133,7 +133,7 @@ def test_current_credit_requires_grid_to_include_the_observed_charge(idle,stale_
     if not idle:engine.requested['ev']=2300
     batch=engine.evaluate(snapshot,[spec],{'ev':DevicePolicy('ev','manual',armed=True,
         manual_until=now+timedelta(hours=1))},{})
-    assert max([c.limit_w or 0 for c in batch.commands]+[0])<=(1380 if idle else 2300)
+    assert max([c.limit_w or 0 for c in batch.commands]+[0])<=(1380 if idle else 3680)
 
 
 @pytest.mark.parametrize('aggregate', [False,True])
@@ -226,14 +226,14 @@ def test_first_current_can_arrive_after_charging_status_without_a_premature_stop
             phase_currents={'L1':s(1.5 if status=='Preparing' else amps,'A')},
             phase_limits_a={'L1':20},phase_margin_a=1,phase_control_enabled=True)
     initial=engine.evaluate(frame('Preparing',1.5),[spec],{'ev':policy},{})
-    assert initial.commands[0].limit_w==3910
+    assert initial.commands[0].limit_w==4025
     clock.advance(7)
     waiting=engine.evaluate(frame('Charging',18.5),[spec],{'ev':policy},{})
     assert not waiting.commands
     assert 'premier courant' in waiting.reasons['ev']
     clock.advance(3)
     overload=engine.evaluate(frame('Charging',22),[spec],{'ev':policy},{})
-    assert overload.commands[0].limit_w==3220
+    assert overload.commands[0].limit_w==3335
     clock.advance(290)
     timeout=engine.evaluate(frame('Charging',15),[spec],{'ev':policy},{})
     assert timeout.commands[0].action=='suspend'
@@ -269,7 +269,7 @@ def test_lost_current_during_an_established_charge_gets_no_startup_wait():
     assert lost.reasons['ev']=='Courant réel de recharge indisponible'
 
 
-@pytest.mark.parametrize('elapsed,expected',[(7,2300),(299,2300),(300,0)])
+@pytest.mark.parametrize('elapsed,expected',[(7,2415),(299,2415),(300,0)])
 def test_preparing_after_start_cannot_raise_profile_or_extend_first_current_timeout(elapsed,expected):
     from app.simulation.clock import SimulatedClock
     clock=SimulatedClock();engine=EnergyEngine(clock)
@@ -281,7 +281,7 @@ def test_preparing_after_start_cannot_raise_profile_or_extend_first_current_time
             device_states={'ev':DeviceState('ev',s(0),'Preparing',True,start_pending=pending,transaction_active=False)},
             phase_currents={'L1':s(amps,'A')},phase_limits_a={'L1':20},phase_margin_a=1,phase_control_enabled=True)
     initial=engine.evaluate(frame(8.5),[spec],{'ev':policy},{})
-    assert initial.commands[0].limit_w==2300
+    assert initial.commands[0].limit_w==2415
     clock.advance(elapsed)
     result=engine.evaluate(frame(1,pending=True),[spec],{'ev':policy},{})
     assert engine.requested['ev']==expected

@@ -24,7 +24,7 @@ def test_smaller_second_device_can_start_and_both_can_run_when_covered():
     assert [(c.device_id,c.limit_w) for c in first.commands] == [('tank',600)]
     assert first.reservations[0].power_w == 600
     both = EnergyEngine(clock).evaluate(fixture_state(clock,{'ev':0,'tank':0},-5000),specs,policies,{})
-    assert {c.device_id:c.limit_w for c in both.commands} == {'ev':3700,'tank':600}
+    assert {c.device_id:c.limit_w for c in both.commands} == {'ev':1380,'tank':600}
 
 
 def test_pending_start_keeps_reservation_instead_of_reusing_power():

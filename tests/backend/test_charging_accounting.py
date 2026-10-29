@@ -215,7 +215,7 @@ async def test_planned_charge_recovers_the_live_zero_energy_gap_with_confirmed_s
     assert device['authorization']['allow_grid'] is True
     assert device['charging']['soc']==60
     assert device['command']['action']=='set_power'
-    assert device['command']['power_w']==3910
+    assert device['command']['power_w']==4025
 
 
 @pytest.mark.parametrize('quality',[Quality.FRESH,Quality.STALE,Quality.UNAVAILABLE])

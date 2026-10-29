@@ -72,7 +72,8 @@ class Dispatcher:
                 and power.checked_at and power.checked_at>sent and 0<=power.value<=20)
             charger_stop=bool(config and config.kind=='charger' and not desired and record['action']=='suspend')
             native_charger_stop=bool(charger_stop and state.connected and not state.fault
-                and state.transaction_active is False and state.start_pending is False
+                and (state.observed_state=='SuspendedEVSE' or state.transaction_active is False)
+                and state.start_pending is False
                 and state.observed_state in ('Available','Preparing','SuspendedEV','SuspendedEVSE','Finishing')
                 and state.status_measured_at and sent<state.status_measured_at<=snapshot.at
                 and (snapshot.at-state.status_measured_at).total_seconds()<=snapshot.sample_max_age_s
@@ -80,8 +81,11 @@ class Dispatcher:
                 and state.status_measured_at<=power.checked_at and power.checked_at>sent and 0<=power.value<=20)
             grid=snapshot.grid
             if not grid or not grid.usable(snapshot.at,snapshot.sample_max_age_s): continue
-            if (grid.availability_at<power.availability_at or grid.availability_at<power.measured_at
-                or (grid.availability_at-power.availability_at).total_seconds()>2): continue
+            checked=bool(grid.checked_at and power.checked_at)
+            if config and config.kind=='water_heater':
+                if (grid.availability_at<power.availability_at or grid.availability_at<power.measured_at
+                    or (grid.availability_at-power.availability_at).total_seconds()>2):continue
+            elif not checked and abs((grid.availability_at-power.availability_at).total_seconds())>2:continue
             if heater_stop:
                 # A fresh native OFF read plus checked idle HA power can confirm
                 # an unchanged zero; this never confirms the effect of a start.

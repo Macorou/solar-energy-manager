@@ -6,7 +6,9 @@ def measurements_coherent(snapshot: SiteSnapshot) -> bool:
     if not all(sample and sample.usable(snapshot.at,snapshot.sample_max_age_s) for sample in samples):
         return False
     stamps=[sample.availability_at for sample in samples]
-    return (max(stamps)-min(stamps)).total_seconds()<=2
+    # Independent successful source reads need not land in the same 2s window.
+    # Unchecked historical frames remain conservative about causal ordering.
+    return all(sample.checked_at is not None for sample in samples) or (max(stamps)-min(stamps)).total_seconds()<=2
 
 
 def power_coherent(snapshot: SiteSnapshot) -> bool:

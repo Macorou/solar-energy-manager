@@ -8,6 +8,7 @@ from app.engine.budget import solar_budget_w,power_coherent,measurements_coheren
 from app.engine.hysteresis import Timers
 from app.engine.heater_targets import HeaterTargets
 from app.engine.phase_limits import phase_power_limit,current_credit
+from app.engine.evcc_loadpoint import PvController
 from app.simulation.clock import Clock
 
 
@@ -33,10 +34,24 @@ class EnergyEngine:
         self.requested_targets = {}
         self.heater_targets = HeaterTargets()
         self.phase_current_seen = set()
+        self.charger_pv = {}
+        self.charger_last_control = {}
+        self.charger_offered = {}
+        self.charger_start_credit = {}
+        self.charger_pv_frame = {}
 
     def forget(self, device_id):
         self.requested.pop(device_id,None)
         self.requested_targets.pop(device_id,None)
+        self.charger_last_control.pop(device_id,None)
+        self.charger_pv.pop(device_id,None)
+        self.charger_pv_frame.pop(device_id,None)
+
+    def command_result(self, intent, accepted):
+        if accepted:
+            self.charger_offered[intent.device_id]=intent.limit_w or 0
+        else:
+            self.requested[intent.device_id]=self.charger_offered.get(intent.device_id,0)
 
     def evaluate(self, snapshot, specs, policies, authorizations):
         now, mono = snapshot.at, self.clock.monotonic()
@@ -92,6 +107,11 @@ class EnergyEngine:
             state = snapshot.device_states.get(spec.id)
             previous = self.requested.get(spec.id)
             running = active(spec)
+            if (spec.kind=='charger' and previous and previous>=spec.min_power_w
+                and state and state.observed_state.lower()=='charging'
+                and grid_valid and snapshot.site_limit_w is not None and snapshot.grid.value<=snapshot.site_limit_w
+                and site_available>=measured.get(spec.id,0)>0):
+                site_available=max(site_available,spec.min_power_w)
             if running:
                 self.running_since.setdefault(spec.id,mono)
             else:
@@ -130,7 +150,7 @@ class EnergyEngine:
                 telemetry = snapshot.vehicle_telemetry.get(policy.vehicle_id)
                 if not telemetry or not telemetry.usable(now,policy.soc_max_age_s):
                     eligible, reason = False, (telemetry.unavailable_reason if telemetry else None) or 'Batterie indisponible'
-                elif telemetry.soc >= (auth.target_soc if auth and policy.mode!='manual' else policy.target or 80):
+                elif (auth.target_soc if auth and policy.mode!='manual' else policy.target or 80)<100 and telemetry.soc >= (auth.target_soc if auth and policy.mode!='manual' else policy.target or 80):
                     eligible, reason = False, 'Objectif atteint'
             if eligible:
                 if policy.mode=='manual':
@@ -151,6 +171,34 @@ class EnergyEngine:
                 if network:
                     desired = min(spec.max_power_w,site_available)
                     self.timers.reached(spec.id+':stop',False,0,mono)
+                    if spec.kind=='charger':self.charger_pv_frame.pop(spec.id,None)
+                elif spec.kind=='charger':
+                    phases=len(spec.grid_phases) or 1
+                    unit=spec.voltage*phases
+                    actuals=[sample.value for sample in state.currents.values()
+                             if sample.usable(now,snapshot.sample_max_age_s)]
+                    charging=state.observed_state.lower()=='charging'
+                    actual=max(actuals) if actuals else measured.get(spec.id,0)/unit if charging else None
+                    offered=(self.charger_offered.get(spec.id,previous) if previous is not None
+                             else measured.get(spec.id,0)) or 0
+                    frame=self.charger_pv_frame.get(spec.id)
+                    if not frame or mono-frame[0]>=30:
+                        frame=(mono,offered)
+                        self.charger_pv_frame[spec.id]=frame
+                    offered=frame[1]
+                    pv=self.charger_pv.setdefault(spec.id,PvController())
+                    current=pv.current(now=mono,site_power_w=measured.get(spec.id,0)-solar_available,
+                        voltage=spec.voltage,phases=phases,charging=charging,enabled=running,
+                        actual_a=actual,offered_a=offered/unit,minimum_a=spec.min_power_w/unit,
+                        maximum_a=min(spec.max_current_a,spec.max_power_w/unit),
+                        enable_delay_s=policy.start_delay_s,disable_delay_s=policy.stop_delay_s,
+                        enable_threshold_w=-max(spec.min_power_w,policy.start_surplus_w) if policy.start_surplus_w else 0,
+                        disable_threshold_w=max(0,min(policy.import_tolerance_w,shared_tolerance-tolerance_spent)),
+                        hold_minimum=mono-self.running_since.get(spec.id,mono)<policy.min_run_s)
+                    desired=min(site_available,current*unit)
+                    reason=pv.reason
+                    if not running and mono-self.stopped_at.get(spec.id,-math.inf)<policy.restart_delay_s:
+                        desired=0
                 elif running:
                     tolerance = max(0,min(policy.import_tolerance_w,shared_tolerance-tolerance_spent))
                     deficient = solar_available+tolerance < spec.min_power_w
@@ -197,9 +245,15 @@ class EnergyEngine:
                 waiting_current=(spec.id not in self.phase_current_seen and previous is not None and previous>0
                     and mono-self.running_since.get(spec.id,-math.inf)<CHARGER_START_WAIT_S)
                 other={p:max(0,value-phase_reserves.get(spec.id,{}).get(p,0)) for p,value in phase_extra.items()}
-                desired,phase_reason=phase_power_limit(snapshot,spec,desired,other,previous or 0,waiting_current)
+                desired,phase_reason=phase_power_limit(snapshot,spec,desired,other,previous or 0,waiting_current,
+                    self.charger_start_credit.get(spec.id))
                 for p,value in other.items(): phase_extra[p]=max(phase_extra.get(p,0),value)
                 if phase_reason: reason=phase_reason
+            if desired and spec.kind=='charger':
+                unit=spec.voltage*(len(spec.grid_phases) or 1)
+                desired=math.floor(min(desired/unit,spec.max_current_a)*10+1e-9)/10*unit
+                if previous and desired>previous and mono-self.charger_last_control.get(spec.id,-math.inf)<30:
+                    desired=previous
             occupied = max(desired,committed.get(spec.id,0))
             if not network:
                 tolerance_spent += max(0,desired-max(0,solar_available))
@@ -208,7 +262,8 @@ class EnergyEngine:
             reasons[spec.id] = reason
             if not policy or not policy.armed:
                 continue
-            must_change = (desired>0 and (previous is None or abs(desired-previous)>=50)) \
+            step=spec.voltage*(len(spec.grid_phases) or 1)*.099 if spec.kind=='charger' else 50
+            must_change = (desired>0 and (previous is None or abs(desired-previous)>=step)) \
                 or (desired==0 and (previous is None and running or previous is not None and previous>0)) \
                 or (spec.id in self.network_stop_pending and spec.id not in self.network_stop_issued)
             target_changed=bool(desired and spec.kind=='water_heater' and target is not None
@@ -227,6 +282,10 @@ class EnergyEngine:
                 if action=='suspend' and spec.id in self.network_stop_pending:
                     self.network_stop_issued.add(spec.id)
                 self.requested[spec.id] = desired
+                if spec.kind=='charger':
+                    self.charger_last_control[spec.id]=mono
+                    if previous is None or previous==0:
+                        self.charger_start_credit[spec.id]=desired
                 if spec.kind=='water_heater': self.requested_targets[spec.id]=target if desired else None
                 if desired:
                     self.running_since.setdefault(spec.id,mono)

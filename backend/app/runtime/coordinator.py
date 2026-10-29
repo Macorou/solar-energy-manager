@@ -18,6 +18,7 @@ from app.api.water_heaters import adapter as ariston_adapter
 from .dispatcher import Dispatcher
 from .instance import InstanceLock
 from .charging import ChargingTracker
+from .charger_measurements import select_power
 from app.domain.vehicles import VehicleTelemetry
 
 
@@ -152,7 +153,8 @@ class Coordinator:
                 state=replace(state,target_reached=bool(state.temperature is not None and device.target is not None
                                                        and state.temperature>=device.target))
             power=self.ha.device_power(device.id) if self.ha else None
-            states[device.id]=replace(state,observed_power=power or state.observed_power)
+            states[device.id]=replace(state,observed_power=select_power(state,power,device,now,config.sample_max_age_s)
+                if device.kind=='charger' else power or state.observed_power)
         base=self.ha.snapshot() if self.ha else SiteSnapshot(now)
         return replace(base,at=now,device_states=states,vehicle_telemetry=dict(self.telemetry),
             phase_control_enabled=config.phase_control_enabled,phase_margin_a=config.phase_margin_a,
@@ -207,8 +209,8 @@ class Coordinator:
                     self.engine.network_stop_pending.discard(key)
                     self.engine.network_stop_issued.discard(key)
             snapshot=replace(snapshot,reservations=tuple(self.reservations.values()),
-                transition_blocked=any(r['status']!='observed'
-                for r in self.dispatcher.records.values()))
+                transition_blocked=any(r['status']!='observed' and configs.get(key)
+                    and configs[key].kind!='charger' for key,r in self.dispatcher.records.items()))
             policies=self.policies(config,snapshot.at)
             occurrences=[o for p in config.schedules for o in occurrences_for(p,snapshot.at,
                 snapshot.at+timedelta(days=8),config.timezone)]
@@ -334,6 +336,7 @@ class Coordinator:
                 if device.kind=='charger' and command.action=='set_power' and command.limit_w:
                     window=max(window,CHARGER_START_WAIT_S)
                 result=await self.dispatcher.dispatch(command,self.adapters[command.device_id],window)
+                if device.kind=='charger':self.engine.command_result(command,result.accepted)
                 source=self.adapters[command.device_id]
                 if device.kind=='water_heater' and result.accepted and hasattr(source,'read_state'):
                     task=asyncio.create_task(self.refresh_after_command(command.device_id,source))

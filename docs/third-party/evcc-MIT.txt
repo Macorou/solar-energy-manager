@@ -4,6 +4,9 @@ core/circuit/circuit.go (ValidateCurrent), adapted per physical phase.
 core/soc/estimator.go (SoC estimation) and estimator_test.go reference vectors,
 ported to backend/app/engine/evcc_soc.py and tests/backend/test_evcc_soc.py.
 Peugeot timestamps are deliberately not an input to the EVCC estimator.
+core/loadpoint.go (effectiveCurrent, fixed-phase pvMaxCurrent, setLimit minimum
+current behavior), adapted in backend/app/engine/evcc_loadpoint.py and engine.py.
+ValidateCurrent is now fed independent current measurements, with 0.1A profiles.
 
 MIT License
 

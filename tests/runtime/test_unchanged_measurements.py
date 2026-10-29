@@ -43,7 +43,8 @@ def test_unchanged_ha_power_does_not_block_manual_or_automatic_start(kind, mode)
     auth = {'device': ChargeAuthorization('car',True,True,80,now+timedelta(hours=1))}
     batch = EnergyEngine(clock).evaluate(snapshot, [spec], {'device': policy}, auth)
     assert power.measured_at == old  # Never rewrite the provider's date.
-    assert [(c.device_id,c.limit_w) for c in batch.commands] == [('device',spec.max_power_w)]
+    expected=spec.max_power_w if kind=='water_heater' else 1380 if mode=='solar' else 3680
+    assert [(c.device_id,c.limit_w) for c in batch.commands] == [('device',expected)]
 
 
 @pytest.mark.parametrize('mode', ['solar','planned'])
@@ -57,7 +58,7 @@ def test_recently_retrieved_old_soc_does_not_block_automatic_charge(mode):
     auth={'ev':ChargeAuthorization('car',True,True,80,now+timedelta(hours=1))}
     batch=EnergyEngine(clock).evaluate(snapshot,[spec],{'ev':policy},auth)
     assert not telemetry.fresh(now,1800)
-    assert batch.commands and batch.commands[0].limit_w == 3700
+    assert batch.commands and batch.commands[0].limit_w == (1380 if mode=='solar' else 3680)
     reached=replace(snapshot,vehicle_telemetry={'car':replace(telemetry,soc=80)})
     assert not EnergyEngine(clock).evaluate(reached,[spec],{'ev':policy},auth).commands
 

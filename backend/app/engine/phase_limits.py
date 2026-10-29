@@ -19,12 +19,11 @@ def current_credit(snapshot,spec,index):
     if idle and (not own or status_at and own.measured_at<=status_at):return 0,True
     grid=snapshot.phase_currents.get(spec.grid_phases[index])
     coherent=bool(own and own.usable(snapshot.at,snapshot.sample_max_age_s) and grid
-        and grid.usable(snapshot.at,snapshot.sample_max_age_s)
-        and abs((grid.availability_at-own.availability_at).total_seconds())<=2)
+        and grid.usable(snapshot.at,snapshot.sample_max_age_s))
     return (max(0,own.value) if coherent else 0),coherent
 
 
-def phase_power_limit(snapshot,spec,desired_w,extra,previous_w=0,waiting_current=False):
+def phase_power_limit(snapshot,spec,desired_w,extra,previous_w=0,waiting_current=False,waiting_baseline_w=None):
     if not snapshot.phase_control_enabled or spec.kind!='charger': return desired_w,None
     state=snapshot.device_states.get(spec.id)
     if not spec.grid_phases: return 0,'Configurer la phase réseau de la borne'
@@ -48,13 +47,20 @@ def phase_power_limit(snapshot,spec,desired_w,extra,previous_w=0,waiting_current
             measured=math.copysign(abs(measured),power.value) if power.value else measured
         limit=snapshot.phase_limits_a.get(phase,0)-snapshot.phase_margin_a
         if not coherent:
-            # Mixed frames can maintain or reduce an existing authorization, never increase it.
-            maintained=max(0,previous_w/(spec.voltage*count)-max(0,measured+extra.get(phase,0)-limit))
-            requested=min(requested,maintained)
-        else:
-            requested=min(requested,validate_current(old,requested,measured+extra.get(phase,0),
-                snapshot.phase_limits_a.get(phase,0),snapshot.phase_margin_a))
-    amps=math.floor(max(0,requested)+1e-9)
+            # During initial telemetry grace use a fixed startup credit, never
+            # the repeatedly reduced command. Actual current replaces it ASAP.
+            old=max(0,(waiting_baseline_w if waiting_baseline_w is not None else previous_w)/(spec.voltage*count))
+        requested=min(requested,validate_current(old,requested,measured+extra.get(phase,0),
+            snapshot.phase_limits_a.get(phase,0),snapshot.phase_margin_a))
+    if requested<spec.min_current_a and desired_w>=spec.min_current_a*spec.voltage*count:
+        # EVCC's nominal-minimum exception: 5.9A measured for a 6A offer on a
+        # full (not overloaded) circuit must not disable a running car.
+        if (state and state.observed_state.lower()=='charging'
+            and previous_w>=spec.min_current_a*spec.voltage*count
+            and all(snapshot.phase_currents[p].value+extra.get(p,0)<=
+                    snapshot.phase_limits_a.get(p,0)-snapshot.phase_margin_a for p in spec.grid_phases)):
+            requested=spec.min_current_a
+    amps=math.floor(max(0,requested)*10+1e-9)/10
     limited=amps*spec.voltage*count if amps>=spec.min_current_a else 0
     if not limited: return 0,'Limite de courant sur la phase réseau'
     # Reserve only additional current, measured current is already in the grid meter.

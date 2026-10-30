@@ -28,7 +28,7 @@ jobs:
       - run: npm --prefix frontend test
       - run: python scripts/export_openapi.py && npm --prefix frontend run types && git diff --exit-code -- backend/openapi.json frontend/src/api/schema.ts
       - run: npm --prefix frontend run build
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
         working-directory: frontend
       - run: npm run e2e
         working-directory: frontend

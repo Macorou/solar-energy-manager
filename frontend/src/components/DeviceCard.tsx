@@ -42,11 +42,13 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
     <div className="device-card-body">
       <div className="device-art"><DeviceIllustration kind={config.kind}/></div>
       <div className="device-controls">
+        <div className="device-level">
         <div className="big-number">{value==null?'—':Math.round(value)}<small>{car?'%':'°C'}</small></div>
         <div className="meter"><i style={{width:Math.max(0,Math.min(100,value??0))+'%'}}/></div>
         <p className="device-target">Objectif {target??'—'} {car?'%':'°C'}{deadline&&<> à {deadline}</>}{!car&&device.target_source&&<> · {device.target_source==='solar'?'solaire':'réseau'}</>}</p>
         {useEstimate&&session?.soc_estimated&&<span className="freshness">{session.soc_usable?'Batterie estimée':session.soc_reason||'Estimation à vérifier'}</span>}
         {!fresh&&<span className="freshness old">{car?(value!=null?'Donnée ancienne':'Batterie indisponible'):'Mesure indisponible ou ancienne'}</span>}
+        </div>
         <div className="mode-switch" aria-label="Mode de pilotage">
           <button className={automatic?'selected automatic':''} aria-pressed={automatic} disabled={!config.armed} onClick={()=>onAction(config.id,'resume')}><Icon name="leaf" size={14}/>Automatique</button>
           <button className={config.mode==='manual'?'selected':''} aria-pressed={config.mode==='manual'} disabled={!config.armed} onClick={()=>onAction(config.id,'manual')} title="Démarrage temporaire pendant 30 minutes"><Icon name="hand" size={14}/>Manuel</button>
@@ -71,9 +73,11 @@ export function UnconfiguredDeviceCard({kind,onConfigure}:{kind:'charger'|'water
     <div className="card-heading"><h2>{car?'Voiture électrique':'Ballon d’eau chaude'}</h2><span className="badge neutral">À configurer</span></div>
     <p className="device-name">{car?'Votre borne et votre véhicule':'Votre eau chaude sanitaire'}</p>
     <div className="device-card-body"><div className="device-art"><DeviceIllustration kind={kind}/></div><div className="device-controls">
+      <div className="device-level">
       <div className="big-number">—<small>{car?'%':'°C'}</small></div><div className="meter"/>
       <p className="device-target">{car?'Connectez votre voiture et sa borne.':'Connectez votre ballon d’eau chaude.'}</p>
       <p className="hint setup-copy">Les mesures et les commandes apparaîtront après la configuration.</p>
+      </div>
       <button className={'start-now '+(car?'charge':'heat')} onClick={onConfigure}><Icon name="plus" size={17}/>Configurer {car?'la voiture':'le ballon'}</button>
     </div></div>
     <div className="device-feedback"><span className="reason"><span className="status-dot"/>Pilotage désactivé pendant la configuration</span></div>

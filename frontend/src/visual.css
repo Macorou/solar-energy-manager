@@ -20,3 +20,38 @@
 @media(max-width:1100px){.planning-cards{grid-template-columns:1fr}}
 @media(max-width:800px){.sidebar nav{grid-template-columns:repeat(4,minmax(0,1fr))}.sidebar nav button{justify-content:center;flex-direction:column;text-align:center;gap:5px}.plan-priority-list{grid-template-columns:1fr}}
 @media(max-width:450px){.plan-card-heading{gap:12px}.plan-card-heading h2{font-size:19px}.plan-goal input{font-size:21px}.plan-goal input[type=number]{width:65px}.plan-goal input[type=time]{width:130px}.plan-days{gap:4px}.plan-days button{min-height:38px}.plan-window{padding:9px}.plan-window-times{gap:4px;grid-template-columns:minmax(0,1fr) 15px minmax(0,1fr) 26px}.plan-window-times .icon-button{width:26px;padding:2px}.plan-window-times input{font-size:14px;padding:4px 0}.plan-cloud th,.plan-cloud td{padding:8px 4px}.plan-cloud th:first-child{width:39%}.plan-unit input{font-size:16px;padding:5px 3px}.plan-unit>span{padding:0 2px;min-width:16px}.plan-save{align-items:stretch;flex-direction:column}.plan-start{grid-template-columns:minmax(0,1fr) 120px}}
+
+/* Constrain native time controls too: iOS otherwise keeps its intrinsic width. */
+.planning-workspace input[type=time]{min-width:0;min-inline-size:0;max-width:100%;max-inline-size:100%;box-sizing:border-box;appearance:none;-webkit-appearance:none}
+.planning-workspace input[type=time]::-webkit-date-and-time-value{min-width:0;text-align:left}
+.planning-workspace input[type=time]::-webkit-datetime-edit{padding:0}
+.plan-start input{width:100%}
+@media(max-width:600px){
+  .device-card .card-heading{flex-wrap:wrap;align-items:flex-start}
+  .device-card .card-heading h2{font-size:20px;flex:1;min-width:150px}
+  .device-card .card-heading .badge{max-width:100%;white-space:normal}
+  .device-card-body{grid-template-columns:minmax(80px,.85fr) minmax(0,1.15fr);gap:14px;align-items:center;min-height:0;padding:18px 0}
+  .device-art{height:auto;align-self:center;grid-column:1;grid-row:1;overflow:hidden}
+  .device-art .car-illustration{width:100%;max-width:190px;margin:0}
+  .device-art .tank-illustration{width:100%;max-width:110px;height:160px}
+  .device-controls{display:contents}
+  .device-level{grid-column:2;grid-row:1;min-width:0}
+  .device-level .big-number{font-size:40px}
+  .device-level .big-number small{font-size:25px;margin-left:5px}
+  .device-card .mode-switch,.device-card .device-reading,.device-card .start-now{grid-column:1/-1;width:100%;min-width:0}
+  .device-card .mode-switch{margin-top:0;min-height:48px}
+  .device-card .mode-switch button{min-height:44px;min-width:0;font-size:12px;padding:8px 4px;gap:5px}
+  .device-card .device-reading{margin-top:0;padding-top:13px;min-height:58px}
+  .device-card .device-reading span{font-size:11px}
+  .device-card .start-now{min-height:46px;margin-top:0;font-size:14px}
+  .device-card .device-target{font-size:12px;overflow-wrap:anywhere}
+  .device-card .freshness{font-size:10px}
+  .device-card .charge-totals strong{font-size:18px;overflow-wrap:anywhere}
+  .device-card .device-feedback{align-items:flex-start}
+  .device-card .device-feedback .reason{font-size:10px;overflow-wrap:anywhere}
+  .plan-start{grid-template-columns:minmax(0,1fr);gap:9px}
+  .plan-goal{display:grid;grid-template-columns:65px auto minmax(0,1fr);gap:9px}
+  .plan-goal input[type=number],.plan-goal input[type=time]{width:100%;min-width:0}
+  .planning-workspace input[type=time]{min-height:44px;font-size:16px}
+  .plan-window-times input[type=time]{padding:8px 4px}
+}

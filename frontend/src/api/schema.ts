@@ -642,6 +642,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/charging-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sessions */
+        get: operations["sessions_api_v1_charging_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/charging-sessions/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export */
+        get: operations["export_api_v1_charging_sessions_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/charging-sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detail */
+        get: operations["detail_api_v1_charging_sessions__session_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete */
+        delete: operations["delete_api_v1_charging_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        /** Edit */
+        patch: operations["edit_api_v1_charging_sessions__session_id__patch"];
+        trace?: never;
+    };
     "/api/v1/health/live": {
         parameters: {
             query?: never;
@@ -740,6 +793,28 @@ export interface components {
              */
             capabilities_verified: boolean;
         };
+        /** Breakdown */
+        Breakdown: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            totals: components["schemas"]["Totals"];
+        };
+        /** Bucket */
+        Bucket: {
+            /** Key */
+            key: string;
+            /** Energy */
+            energy: {
+                [key: string]: number;
+            };
+            /** Cost */
+            cost: {
+                [key: string]: number | null;
+            };
+            totals: components["schemas"]["Totals"];
+        };
         /** Callback */
         Callback: {
             /**
@@ -791,6 +866,62 @@ export interface components {
              * @default true
              */
             enabled: boolean;
+        };
+        /** ChargingSession */
+        ChargingSession: {
+            /** Id */
+            id: string;
+            /** Source */
+            source: string;
+            /** Device Id */
+            device_id: string;
+            /** Device Name */
+            device_name: string;
+            /** Vehicle Id */
+            vehicle_id: string;
+            /** Vehicle Name */
+            vehicle_name: string;
+            /** Started At */
+            started_at: string;
+            /** Ended At */
+            ended_at: string | null;
+            /** Active */
+            active: boolean;
+            /** Energy Kwh */
+            energy_kwh: number | null;
+            /** Energy Partial */
+            energy_partial: boolean;
+            /** Solar Kwh */
+            solar_kwh: number | null;
+            /** Grid Kwh */
+            grid_kwh: number | null;
+            /** Unknown Kwh */
+            unknown_kwh: number | null;
+            /** Solar Percent */
+            solar_percent: number | null;
+            /** Cost Eur */
+            cost_eur: number | null;
+            /** Cost Partial */
+            cost_partial: boolean;
+            /** Average Price Per Kwh */
+            average_price_per_kwh: number | null;
+            /** Charge Duration S */
+            charge_duration_s: number | null;
+            /** Duration Partial */
+            duration_partial: boolean;
+            /** Soc Start */
+            soc_start?: number | null;
+            /** Soc End */
+            soc_end?: number | null;
+            /**
+             * Soc End Estimated
+             * @default false
+             */
+            soc_end_estimated: boolean;
+            /** Updated At */
+            updated_at: string;
+            /** Editable */
+            editable: boolean;
         };
         /** CloudSettings */
         CloudSettings: {
@@ -1023,6 +1154,13 @@ export interface components {
             /** Weekdays */
             weekdays?: number[];
         };
+        /** Option */
+        Option: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** PeugeotConfig */
         PeugeotConfig: {
             /**
@@ -1100,6 +1238,56 @@ export interface components {
              */
             tank_priority: number;
         };
+        /** SessionDelete */
+        SessionDelete: {
+            /**
+             * Confirm
+             * @constant
+             */
+            confirm: true;
+        };
+        /** SessionEdit */
+        SessionEdit: {
+            /** Vehicle Id */
+            vehicle_id: string;
+            /**
+             * Confirm
+             * @constant
+             */
+            confirm: true;
+        };
+        /** SessionPage */
+        SessionPage: {
+            /** Items */
+            items: components["schemas"]["ChargingSession"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            totals: components["schemas"]["Totals"];
+            /** Buckets */
+            buckets: components["schemas"]["Bucket"][];
+            /** Groups */
+            groups: components["schemas"]["Breakdown"][];
+            /** By Vehicle */
+            by_vehicle: components["schemas"]["Breakdown"][];
+            /** By Charger */
+            by_charger: components["schemas"]["Breakdown"][];
+            /** Solar Years */
+            solar_years: components["schemas"]["SolarYear"][];
+            /** Vehicles */
+            vehicles: components["schemas"]["Option"][];
+            /** Chargers */
+            chargers: components["schemas"]["Option"][];
+            /** Available */
+            available: {
+                [key: string]: boolean;
+            };
+            /** Timezone */
+            timezone: string;
+        };
         /** SettingsDocument */
         SettingsDocument: {
             /**
@@ -1154,6 +1342,82 @@ export interface components {
             password: string;
             /** Token */
             token: string;
+        };
+        /** SolarYear */
+        SolarYear: {
+            /** Year */
+            year: number;
+            /** Months */
+            months: components["schemas"]["Totals"][];
+            totals: components["schemas"]["Totals"];
+        };
+        /** Totals */
+        Totals: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Energy Kwh
+             * @default 0
+             */
+            energy_kwh: number;
+            /**
+             * Energy Partial
+             * @default false
+             */
+            energy_partial: boolean;
+            /**
+             * Missing Energy Count
+             * @default 0
+             */
+            missing_energy_count: number;
+            /**
+             * Solar Kwh
+             * @default 0
+             */
+            solar_kwh: number;
+            /**
+             * Grid Kwh
+             * @default 0
+             */
+            grid_kwh: number;
+            /**
+             * Unknown Kwh
+             * @default 0
+             */
+            unknown_kwh: number;
+            /** Solar Percent */
+            solar_percent?: number | null;
+            /** Cost Eur */
+            cost_eur?: number | null;
+            /** Partial Cost Eur */
+            partial_cost_eur?: number | null;
+            /**
+             * Priced Energy Kwh
+             * @default 0
+             */
+            priced_energy_kwh: number;
+            /**
+             * Priced Count
+             * @default 0
+             */
+            priced_count: number;
+            /**
+             * Cost Missing Count
+             * @default 0
+             */
+            cost_missing_count: number;
+            /** Average Price Per Kwh */
+            average_price_per_kwh?: number | null;
+            /** Charge Duration S */
+            charge_duration_s?: number | null;
+            /**
+             * Duration Partial
+             * @default false
+             */
+            duration_partial: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -2505,6 +2769,190 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_api_v1_charging_sessions_get: {
+        parameters: {
+            query?: {
+                period?: "month" | "year" | "total";
+                year?: number | null;
+                month?: number | null;
+                vehicle_id?: string | null;
+                device_id?: string | null;
+                group?: "solar" | "charger" | "vehicle";
+                sort?: "date" | "charger" | "vehicle" | "energy" | "duration" | "solar" | "cost";
+                direction?: "asc" | "desc";
+                page?: number;
+                page_size?: number;
+                include_empty?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_api_v1_charging_sessions_export_get: {
+        parameters: {
+            query?: {
+                format?: "csv" | "xlsx";
+                period?: "month" | "year" | "total";
+                year?: number | null;
+                month?: number | null;
+                vehicle_id?: string | null;
+                device_id?: string | null;
+                group?: "solar" | "charger" | "vehicle";
+                sort?: "date" | "charger" | "vehicle" | "energy" | "duration" | "solar" | "cost";
+                direction?: "asc" | "desc";
+                page?: number;
+                page_size?: number;
+                include_empty?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detail_api_v1_charging_sessions__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChargingSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_v1_charging_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionDelete"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_api_v1_charging_sessions__session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChargingSession"];
                 };
             };
             /** @description Validation Error */

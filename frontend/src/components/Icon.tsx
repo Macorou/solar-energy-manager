@@ -10,6 +10,6 @@ export function Icon({name,size=22}:{name:string;size?:number}) {
     eye:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Zm14 0a4 4 0 1 0-8 0 4 4 0 0 0 8 0',
     moon:'M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z',close:'m6 6 12 12M6 18 18 6',plug:'M8 2v5m8-5v5M6 7h12v4a6 6 0 0 1-12 0ZM12 17v5',sliders:'M4 7h9m4 0h3M4 17h3m4 0h9M13 4v6M7 14v6',battery:'M3 7h16v12H3ZM22 11v4M7 10v6m4-6v6m4-6v6',copy:'M9 3h12v12H9ZM3 9h3v12h12v-3',
     tank:'M5 5a7 3 0 0 1 14 0v13a7 3 0 0 1-14 0ZM5 5a7 3 0 0 0 14 0M8 21v2m8-2v2M12 9v6m0 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3',up:'m6 15 6-6 6 6',down:'m6 9 6 6 6-6',
-    chart:'M5 20V10m7 10V4m7 16V7',ha:'m3 10 9-8 9 8v12H3Zm9-3v11m0-5-5-4m5 7 5-5M7 8v2m10 0v2'}
+    chart:'M5 20V10m7 10V4m7 16V7',ha:'m3 10 9-8 9 8v12H3Zm9-3v11m0-5-5-4m5 7 5-5M7 8v2m10 0v2',left:'m15 5-7 7 7 7',right:'m9 5 7 7-7 7',euro:'M19 5a8 8 0 1 0 0 14M3 10h12M3 14h10',download:'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',trash:'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7'}
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]||paths.bolt}/></svg>
 }

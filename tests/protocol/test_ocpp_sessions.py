@@ -45,3 +45,17 @@ def test_unknown_station_is_rejected(tmp_path):
         with TestClient(app).websocket_connect('/ocpp/unknown',subprotocols=['ocpp1.6']):
             pass
     assert error.value.code==1008
+
+
+def test_terminal_meter_after_available_preserves_unplugged_state(tmp_path):
+    app=ocpp_app(tmp_path)
+    with TestClient(app).websocket_connect('/ocpp/pulsar',subprotocols=['ocpp1.6']) as ws:
+        stamp=datetime.now(timezone.utc).isoformat()
+        tx=exchange(ws,'t','StartTransaction',{'connectorId':1,'idTag':'SEM','meterStart':1000,'timestamp':stamp})['transactionId']
+        exchange(ws,'a','StatusNotification',{'connectorId':1,'status':'Available','errorCode':'NoError'})
+        exchange(ws,'e','StopTransaction',{'meterStop':1500,'timestamp':stamp,'transactionId':tx})
+        state=app.state.ocpp.state('wallbox')
+        assert state.energy_wh==1500
+        assert state.energy_terminal is True
+        assert state.vehicle_connected is False
+        assert state.observed_state=='Available'

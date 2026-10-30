@@ -1,0 +1,95 @@
+import {test,expect,type Page} from '@playwright/test'
+import path from 'node:path'
+import fs from 'node:fs/promises'
+
+test.use({actionTimeout:10000})
+
+async function openSessions(page:Page){
+  const status=await (await page.request.get('/api/v1/setup/status')).json()
+  expect((await page.request.post(status.configured?'/api/v1/auth/login':'/api/v1/setup',{data:{token:'test-bootstrap-only',username:'admin',password:'a-secure-test-password'}})).ok()).toBeTruthy()
+  const config=await (await page.request.get('/api/v1/settings')).json()
+  config.vehicles=[...config.vehicles.filter((v:any)=>!v.id.startsWith('session-')),{id:'session-peugeot',name:'Peugeot e-208',vin:'',capacity_kwh:50,efficiency:.85},{id:'session-other',name:'Autre véhicule',vin:'',capacity_kwh:50,efficiency:.85}]
+  expect((await page.request.put('/api/v1/settings',{data:config})).ok()).toBeTruthy()
+  await page.goto('/')
+  await page.getByRole('button',{name:'Sessions de charge',exact:true}).click()
+  await expect(page.getByRole('heading',{name:'Énergie chargée',exact:true})).toBeVisible()
+}
+async function updated(page:Page,action:()=>Promise<unknown>){const response=page.waitForResponse(r=>r.url().includes('/api/v1/charging-sessions?')&&r.status()===200);await action();await response;await expect(page.locator('.sessions-loading')).toHaveCount(0)}
+
+test('sessions use persisted API history with periods, filters, detail, edits and exports',async({page},testInfo)=>{
+  await openSessions(page)
+  await expect(page.getByRole('button',{name:'Émissions de CO₂'})).toHaveCount(0)
+  await page.getByRole('button',{name:'Coût des recharges',exact:true}).click()
+  await expect(page.getByRole('heading',{name:'Coût des recharges',exact:true})).toBeVisible()
+  await expect(page.locator('.sessions-main-chart .sessions-legends')).toContainText('Prix moyen au kWh')
+  await page.getByRole('group',{name:'Statistique',exact:true}).getByRole('button',{name:'Énergie chargée',exact:true}).click()
+  await updated(page,()=>page.getByRole('button',{name:'Par véhicule',exact:true}).click())
+  await expect(page.locator('.sessions-main-chart .sessions-legends')).toContainText('Peugeot e-208')
+  await updated(page,()=>page.getByRole('button',{name:'Par point de charge',exact:true}).click())
+  await expect(page.locator('.sessions-main-chart .sessions-legends')).toContainText('Wallbox Pulsar Plus')
+  await updated(page,()=>page.getByRole('button',{name:'Année',exact:true}).click())
+  await expect(page.locator('.sessions-date-nav span')).toHaveText(String(new Date().getFullYear()))
+  await updated(page,()=>page.getByRole('button',{name:'Période précédente',exact:true}).click())
+  await expect(page.locator('.sessions-date-nav span')).toHaveText(String(new Date().getFullYear()-1))
+  await updated(page,()=>page.getByRole('button',{name:'Période suivante',exact:true}).click())
+  await updated(page,()=>page.getByRole('button',{name:'Total',exact:true}).click())
+  await expect(page.getByText('Tout l’historique', {exact:true})).toBeVisible()
+  await updated(page,()=>page.getByLabel('Véhicule',{exact:true}).selectOption('session-peugeot'))
+  await updated(page,()=>page.getByLabel('Point de charge',{exact:true}).selectOption('session-wallbox'))
+  await expect(page.locator('.sessions-table tbody')).toContainText('Peugeot e-208')
+  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Exporter en CSV'}).click();const csv=await download
+  expect(await fs.readFile((await csv.path())!,'utf8')).toContain('Peugeot e-208')
+  const excelPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Excel (.xlsx)'}).click();expect((await excelPromise).suggestedFilename()).toMatch(/\.xlsx$/)
+  const countBefore=await page.locator('.sessions-table tbody tr').count()
+  await page.locator('.session-open').first().click()
+  const dialog=page.getByRole('dialog',{name:'Détail de la session'})
+  await expect(dialog.getByText('Énergie chargée',{exact:true})).toBeVisible()
+  await dialog.getByLabel('Affecter à un véhicule').selectOption('session-other')
+  await dialog.getByRole('button',{name:'Modifier l’affectation'}).click()
+  await expect(dialog.getByText('Confirmer l’affectation de cette session au véhicule sélectionné ?')).toBeVisible()
+  await updated(page,()=>dialog.getByRole('button',{name:'Confirmer l’affectation',exact:true}).click())
+  await dialog.getByRole('button',{name:'Fermer',exact:true}).click()
+  await expect(page.locator('.sessions-table tbody tr')).toHaveCount(countBefore-1)
+  await updated(page,()=>page.getByLabel('Véhicule',{exact:true}).selectOption('all'))
+  await updated(page,()=>page.getByLabel('Point de charge',{exact:true}).selectOption('all'))
+  await page.locator('.session-open').first().click()
+  await dialog.getByRole('button',{name:'Supprimer la session',exact:true}).click()
+  await expect(dialog.getByRole('button',{name:'Confirmer la suppression'})).toBeVisible()
+  await updated(page,()=>dialog.getByRole('button',{name:'Confirmer la suppression'}).click())
+  await expect(dialog).toHaveCount(0)
+  await page.setViewportSize({width:1440,height:1000})
+  await page.evaluate(()=>window.scrollTo(0,0))
+  await page.mouse.move(0,0)
+  await page.screenshot({path:path.join(process.env.SEM_SCREENSHOT_DIR||'test-results',`sessions-desktop-dark-${testInfo.project.name}.png`),fullPage:true,animations:'disabled'})
+})
+
+test('sessions fit iPhone and desktop in both themes with touch tooltips and modal',async({page},testInfo)=>{
+  await openSessions(page)
+  for(const theme of ['dark','light']){
+    if(theme==='light')await page.getByRole('button',{name:'Passer au thème clair'}).click()
+    for(const width of [320,375,390,430,1440]){
+      await page.setViewportSize({width,height:900})
+      await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      expect(await page.locator('.sessions-page').evaluate(n=>n.scrollWidth<=n.clientWidth+1)).toBeTruthy()
+      expect(await page.locator('.sessions-period-header button,.sessions-toolbar button').evaluateAll(nodes=>nodes.every(n=>n.getBoundingClientRect().height>=44))).toBeTruthy()
+    }
+    await page.setViewportSize({width:390,height:844})
+    await page.getByRole('button',{name:'Coût des recharges',exact:true}).click()
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+    await page.getByRole('group',{name:'Statistique',exact:true}).getByRole('button',{name:'Énergie chargée',exact:true}).click()
+    await page.getByTestId('sessions-chart').locator('g[role=button]').nth(1).click({force:true})
+    await expect(page.locator('.sessions-tooltip')).toBeVisible()
+    await page.getByRole('button',{name:'Fermer l’infobulle'}).click()
+    await page.locator('.session-open').first().click()
+    const dialog=page.getByRole('dialog',{name:'Détail de la session'})
+    await expect(dialog).toBeVisible()
+    expect(await dialog.evaluate(n=>n.scrollWidth<=n.clientWidth+1)).toBeTruthy()
+    const bounds=await dialog.boundingBox();expect(bounds!.x).toBeGreaterThanOrEqual(0);expect(bounds!.x+bounds!.width).toBeLessThanOrEqual(390)
+    await page.screenshot({path:path.join(process.env.SEM_SCREENSHOT_DIR||'test-results',`sessions-detail-${theme}-${testInfo.project.name}.png`),animations:'disabled'})
+    await dialog.getByRole('button',{name:'Fermer',exact:true}).click()
+    await page.evaluate(()=>window.scrollTo(0,0))
+    await page.mouse.move(0,0)
+    await page.screenshot({path:path.join(process.env.SEM_SCREENSHOT_DIR||'test-results',`sessions-phone-${theme}-${testInfo.project.name}.png`),fullPage:true,animations:'disabled'})
+    await page.screenshot({path:path.join(process.env.SEM_SCREENSHOT_DIR||'test-results',`sessions-phone-top-${theme}-${testInfo.project.name}.png`),animations:'disabled'})
+  }
+})

@@ -6,7 +6,8 @@ import {Overview} from './components/Overview'
 import {Planning} from './pages/Planning'
 import {SettingsPage} from './pages/Settings'
 import {ThemeToggle} from './components/ThemeToggle'
-const navigation=[['overview','Vue d’ensemble','home'],['planning','Planning','calendar'],['history','Historique','chart'],['settings','Réglages','settings']]
+import {Sessions} from './pages/Sessions'
+const navigation=[['overview','Vue d’ensemble','home'],['planning','Planning','calendar'],['sessions','Sessions de charge','plug'],['history','Historique','chart'],['settings','Réglages','settings']]
 export function App() {
   const [clock,setClock]=useState(()=>new Date())
   useEffect(()=>{const timer=setInterval(()=>setClock(new Date()),30000);return()=>clearInterval(timer)},[])
@@ -54,6 +55,7 @@ export function App() {
           <button onClick={()=>run(async()=>setDemoResult(await api('/simulation','POST',{surplus_w:surplus})))}>Calculer la répartition simulée</button>{demoResult&&<div className="simulation-result">{Object.entries(demoResult.reasons).map(([id,reason])=><p key={id}><strong>{id==='demo-car'?'Voiture':'Ballon'} : {watts(demoResult.commands.find(c=>c.device_id===id)?.limit_w||0)}</strong> · {reason}</p>)}</div>}</section>}
         <Overview settings={settings} state={state} connections={connections} onAction={action} onNavigate={setPage}/></>}
       {page==='planning'&&<Planning settings={settings} save={save} run={run}/>}
+      {page==='sessions'&&<Sessions timezone={settings.timezone} vehicles={settings.vehicles}/>}
       {page==='settings'&&<SettingsPage settings={settings} state={state} save={save} run={run} connections={connections}/>}
       {page==='history'&&<section className="panel"><div className="section-title"><h2>Journal des décisions et commandes</h2><button onClick={()=>run(async()=>setEvents(await api('/events')))}>Actualiser</button></div>{events.length?events.map(e=><div className="event-row" key={e.id}><span className="hint">{date(e.at)}</span><div><strong>{eventName(e.kind)}</strong><p>{e.device_id&&<b>{settings.devices.find(d=>d.id===e.device_id)?.name||e.device_id} · </b>}{e.details.reason||e.details.action||''}</p></div></div>):<p className="hint">Aucun événement. Les commandes et leurs confirmations apparaîtront ici.</p>}</section>}
       </fieldset><footer>Solar Energy Manager <span>Décisions locales · connexions cloud indiquées par appareil</span></footer>

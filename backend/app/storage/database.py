@@ -19,7 +19,14 @@ class SQLiteStore:
                 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, expires REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT,
                     at TEXT NOT NULL, kind TEXT NOT NULL, device_id TEXT, details TEXT NOT NULL);
-                PRAGMA user_version=1;
+                CREATE TABLE IF NOT EXISTS charging_history(
+                    id TEXT PRIMARY KEY, started REAL NOT NULL, device_id TEXT NOT NULL,
+                    vehicle_id TEXT NOT NULL, active INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0,
+                    vehicle_override TEXT, data TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS charging_history_date ON charging_history(started DESC);
+                CREATE INDEX IF NOT EXISTS charging_history_device ON charging_history(device_id, started);
+                CREATE INDEX IF NOT EXISTS charging_history_vehicle ON charging_history(vehicle_id, started);
+                PRAGMA user_version=2;
             ''')
 
     @contextmanager

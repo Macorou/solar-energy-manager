@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from app.domain.measurements import Quality
 from app.engine.evcc_soc import SocEstimator
 from app.domain.commands import CHARGER_START_WAIT_S
+from app.storage.charging_sessions import SessionHistory
 
 
 def finite(value):
@@ -41,6 +42,8 @@ class ChargingTracker:
     def __init__(self,store):
         self.store=store
         self.sessions=store.get('charging_sessions',{})
+        self.history=SessionHistory(store)
+        self.history.migrate(self.sessions)
         self.peugeot_references=store.get('peugeot_soc_references',{})
         # Migrate references from older releases without reusing estimated gains.
         for session in self.sessions.values():
@@ -75,11 +78,29 @@ class ChargingTracker:
             session=self.sessions.get(device.id)
             attached=state.connected and state.vehicle_connected is True
             if attached and (not session or not session['active'] or tuple(session['vehicle'])!=identity):
+                previous=session if session and session['active'] else None
                 session={'id':str(uuid.uuid4()),'vehicle':list(identity),'active':True,'started_at':now,
                     'ended_at':None,'energy_wh':0.,'cost_eur':0.,'priced_wh':0.,'solar_wh':0.,'allocated_wh':0.,
                     'last_meter':None,'last_at':None,'points':[],'contexts':[],'anchor':None,
                     'meter_partial':False,'terminal_pending':False,'soc_gap_at':None,'soc':None,'soc_usable':False,
-                    'soc_estimated':False,'reached_target':None,'reached_at':None}
+                    'soc_estimated':False,'reached_target':None,'reached_at':None,
+                    'charge_duration_s':0.,'duration_partial':False}
+                if previous:
+                    # A configuration/SOC reference change is not an unplug.
+                    # Runtime SOC rebases as before; historical counters stay in
+                    # the original plug period, including its measured prefix.
+                    session['history_id']=previous.get('history_id',previous['id'])
+                    session['history_started_at']=previous.get('history_started_at',previous['started_at'])
+                    old_base=previous.get('history_base',{})
+                    session['history_base']={k:previous.get(k,0)+old_base.get(k,0) for k in
+                        ('energy_wh','cost_eur','priced_wh','solar_wh','allocated_wh')}
+                    session['history_base'].update(measured=previous.get('last_at') is not None or old_base.get('measured',False),
+                        meter_partial=previous.get('meter_partial',False) or previous.get('history_meter_partial',False) or old_base.get('meter_partial',False),
+                        charge_duration_s=None,duration_partial=True)
+                    for key in ('last_meter','last_at','meter_transaction_id','history_meter_partial'):
+                        if key in previous:session[key]=previous[key]
+                    session['contexts']=list(previous['contexts'])
+                    if previous.get('last_at') is not None:session['points']=[[previous['last_at'],0.]]
                 self.sessions[device.id]=session
             if not session: continue
             # Do not feed a completed session with a different vehicle's measurements.
@@ -87,6 +108,26 @@ class ChargingTracker:
             terminal=bool(not session['active'] and state.connected and state.vehicle_connected is False
                 and state.energy_terminal and now-session['ended_at']<=90)
             if session['active'] or terminal:
+                last_check=session.get('duration_last_at')
+                if session.get('charge_duration_s') is not None and last_check is not None:
+                    elapsed=max(0,now-last_check)
+                    valid_until=session.get('duration_valid_until',last_check)
+                    if session.get('duration_charging'):
+                        session['charge_duration_s']+=max(0,min(now,valid_until)-last_check)
+                    if elapsed>max(90,config.sample_max_age_s) or now>valid_until:
+                        session['duration_partial']=True
+                power=state.observed_power
+                session['duration_last_at']=now
+                power_valid=bool(state.connected and power and power.usable(snapshot.at,config.sample_max_age_s))
+                status_at=state.status_received_at or state.status_measured_at
+                status_valid=bool(state.connected and status_at and status_at.tzinfo
+                    and 0<=now-status_at.timestamp()<=config.sample_max_age_s
+                    and state.observed_state in ('Charging','Preparing','SuspendedEV','SuspendedEVSE','Finishing','Available'))
+                session['duration_charging']=bool(power.value>20 if power_valid else
+                    state.observed_state=='Charging' if status_valid else False)
+                session['duration_valid_until']=(power.availability_at.timestamp()+config.sample_max_age_s if power_valid
+                    else status_at.timestamp()+config.sample_max_age_s if status_valid else now)
+                if not power_valid and not status_valid:session['duration_partial']=True
                 session['checked_at']=now
                 contexts=session['contexts']; entry=[now,fraction,price,config.solar_price_per_kwh]
                 if (not contexts or now-contexts[-1][0]>=10 or price!=contexts[-1][2]
@@ -95,6 +136,10 @@ class ChargingTracker:
                 session['contexts']=contexts[-8192:]
                 raw,stamp=state.energy_wh,state.energy_measured_at
                 when=stamp.timestamp() if stamp and stamp.tzinfo else None
+                first_valid=finite(raw) and raw>=0 and when is not None and 0<=now-when<=max(90,config.sample_max_age_s)
+                if session['last_at'] is None and not first_valid and (
+                    state.observed_state=='Charging' or power_valid and power.value>20):
+                    session['history_meter_partial']=True
                 if finite(raw) and raw>=0 and when is not None and when<=now:
                     transaction=state.energy_transaction_id
                     if (transaction is not None and transaction!=session.get('meter_transaction_id')
@@ -116,6 +161,8 @@ class ChargingTracker:
                             and (start_at is None or start_at<=session['last_at']))
                         if applicable and not contradicted:
                             base,base_at=start_wh,start_at
+                            if start_at<=session.get('history_started_at',session['started_at'])+2:
+                                session['history_meter_partial']=False
                         elif continuous and not contradicted:
                             # Adopt metadata for a transaction already tracked by
                             # an older release without dropping its next interval.
@@ -162,13 +209,20 @@ class ChargingTracker:
                     session['soc_gap_at']=None
                     session['soc_gap_transaction_id']=None
                 self.soc(session,snapshot,config,device,state,vehicle)
-                if state.energy_terminal:session['terminal_pending']=False
+                if 'history_soc_start' not in session and session.get('soc_usable'):
+                    session['history_soc_start']=session.get('soc')
+                valid_terminal=bool(state.energy_terminal and when is not None and
+                    session['started_at']-2<=when<=now)
+                if valid_terminal:
+                    session['terminal_pending']=False
+                    session['history_terminal_confirmed']=True
                 if state.connected and state.vehicle_connected is False:
                     if session['active']:
                         session['active']=False;session['ended_at']=now
                         session['terminal_pending']=session['energy_wh']>0 and not state.energy_terminal
+                        session['history_terminal_confirmed']=valid_terminal
             # Disconnection of the controller never closes a plug session.
-        self.store.set('charging_sessions',self.sessions)
+        self.history.checkpoint(self.sessions,config)
 
     def allocate(self,session,delta,start,end,max_age):
         if delta<=0 or end<=start: return

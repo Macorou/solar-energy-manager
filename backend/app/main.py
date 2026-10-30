@@ -19,6 +19,7 @@ from app.settings import PeugeotConfig
 from app.api.water_heaters import router as water_heaters_router
 from app.api.devices import router as devices_router
 from app.api.simulation import router as simulation_router
+from app.api.sessions import router as sessions_router
 from app.runtime.coordinator import Coordinator
 
 
@@ -50,7 +51,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         if coordinator and settings.start_runtime:
             await coordinator.stop()
 
-    app = FastAPI(title='Solar Energy Manager', version='0.1.19', lifespan=lifespan)
+    app = FastAPI(title='Solar Energy Manager', version='0.1.20', lifespan=lifespan)
     app.state.store = store
     app.state.secrets = secret_store
     app.state.runtime_settings = settings
@@ -70,14 +71,15 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.include_router(water_heaters_router)
     app.include_router(devices_router)
     app.include_router(simulation_router)
+    app.include_router(sessions_router)
 
     @app.get('/api/v1/health/live')
     def health():
-        return {'status': 'ok', 'version': '0.1.19'}
+        return {'status': 'ok', 'version': '0.1.20'}
 
     @app.get('/api/v1/system/status', dependencies=[Depends(require_auth)])
     def status():
-        return {'version': '0.1.19', 'simulation': False,
+        return {'version': '0.1.20', 'simulation': False,
                 'runtime': 'running' if app.state.coordinator.running else 'not_started'}
 
     @app.get('/api/v1/settings', dependencies=[Depends(require_auth)])

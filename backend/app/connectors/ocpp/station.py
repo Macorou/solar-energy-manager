@@ -102,6 +102,21 @@ class Station(ChargePoint):
 
     @on(Action.stop_transaction)
     def stop_transaction(self,meter_stop,timestamp,transaction_id,**kwargs):
+        # Some stations announce Available before sending their final counter.
+        # That removes the active transaction for control purposes, but the
+        # matching, still unplugged meter identity can accept a terminal value.
+        # Never apply it to a new plug/transaction or regress Available to Finishing.
+        for config in self.registry.devices(self.id):
+            old=self.registry.states.get(config.id)
+            if (old and old.vehicle_connected is False and old.energy_transaction_id==transaction_id
+                and (self.id,config.connector_id) not in self.registry.active):
+                try:
+                    stamp=datetime.fromisoformat(timestamp.replace('Z','+00:00'))
+                    if (stamp.tzinfo and stamp<=utcnow() and math.isfinite(meter_stop) and meter_stop>=0
+                        and (not old.energy_measured_at or stamp>=old.energy_measured_at)):
+                        self.registry.states[config.id]=replace(old,energy_wh=float(meter_stop),
+                            energy_measured_at=stamp,energy_terminal=True)
+                except (ValueError,TypeError,AttributeError):pass
         for key,value in list(self.registry.active.items()):
             if key[0]==self.id and value['transaction_id']==transaction_id:
                 config=self.config(key[1])

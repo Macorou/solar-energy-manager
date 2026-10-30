@@ -20,6 +20,7 @@ Première version à mettre en service : application, interface et tests automat
 - Répartition du surplus solaire, priorités configurables et gestion réglable des passages de nuages.
 - Programmes récurrents de recharge et plages HC/HP saisies dans l’application.
 - Image Docker privée publiée sur GitHub Container Registry et fichier Compose pour une Stack Portainer.
+- [Sessions de charge](docs/features/charging-sessions.md) : historique persistant, périodes mois/année/total, graphiques énergie/coût, filtres et exports CSV/Excel.
 
 Après fonctionnement de la base : intégration de remontée vers Home Assistant, puis gestion EDF Tempo.
 
@@ -70,7 +71,7 @@ python scripts/export_openapi.py
 npm --prefix frontend run types
 ```
 
-Pour le parcours navigateur : installer Chromium avec `npx playwright install chromium` depuis `frontend`, puis `npm run e2e`. Le test lance une API temporaire sans connecteurs actifs. `SEM_PYTHON` peut préciser l’interpréteur, `SEM_BROWSER` un navigateur Chromium local et `SEM_SCREENSHOT_DIR` le dossier des captures. Le smoke test Docker s’exécute en CI avec `SEM_TEST_IMAGE=sem:test` après construction.
+Pour le parcours navigateur : installer Chromium et WebKit avec `npx playwright install chromium webkit` depuis `frontend`, puis `npm run e2e`. Le test lance une API temporaire sans connecteurs actifs. `SEM_PYTHON` peut préciser l’interpréteur, `SEM_BROWSER` un navigateur Chromium local et `SEM_SCREENSHOT_DIR` le dossier des captures. Le smoke test Docker s’exécute en CI avec `SEM_TEST_IMAGE=sem:test` après construction.
 
 Pour démarrer le service local après compilation, définir `SEM_DATA_DIR` vers un répertoire de travail dédié :
 

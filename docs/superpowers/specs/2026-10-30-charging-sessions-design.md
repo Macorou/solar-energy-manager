@@ -1,0 +1,22 @@
+# Sessions de charge
+
+## Intent and constraints
+Implement the supplied EVCC-like sessions specification in the existing React/TypeScript and FastAPI/SQLite application. Existing charging control, SOC estimation, credentials, settings, volumes and event journal remain compatible. The user explicitly requested direct implementation; no additional design approval gate is needed.
+
+## Architecture and alternatives
+Use SEM's existing ChargingTracker metered counters as the only producer. Add a normalized SQLite history table, atomically checkpointed with the existing runtime KV state, with indexed date/device/vehicle fields. A foreign EVCC history source would create a second source of truth and no EVCC connector exists. Storing all completed runtime JSON records would retain unnecessary SOC/meter buffers and make large-history queries expensive. These alternatives are rejected by the implementer.
+
+Migrate each legacy last-per-device session once, preserving its UUID and all available counters. Older overwritten sessions cannot be recovered. Checkpoint each active session and terminal corrections by UUID; connection loss/reboot never closes a session. A plug/unplug period remains one session across pauses and OCPP transactions. Vehicle identity changes may reset runtime SOC accounting but the historical plug identity remains stable and totals continue. Charge duration is measured from observed charging intervals, bounded by telemetry freshness; legacy duration is unknown, never invented. Plug duration is separately available.
+
+Keep empty plug periods internally; default queries omit completed, fully measured zero-energy periods, with an explicit include-empty filter. Missing-meter sessions are retained and flagged. Active sessions are visible. History editing/deletion applies only to completed local records, requires confirmation, uses tombstones to prevent late-terminal resurrection, and never changes external devices or control settings.
+
+## Data and calculations
+Server filters period (month/year/total), vehicle and charger; sorts and paginates rows separately from all-selection totals/chart aggregation. Date bounds and bucket conversion use configured IANA timezone, including DST. Each session is attributed wholly to its plug start date (EVCC convention), including across midnight. Solar/grid totals come from allocated metered energy only; unallocated energy is an explicit unknown series. Partial meter totals remain explicitly partial. Reliable cost totals and weighted average use fully priced, complete sessions only; partial costs remain visible separately. Never treat null as zero. CO2 is unavailable in the existing data model, so its selector is absent.
+
+Solar share uses the existing instantaneous household PV/import mix integrated over metered energy intervals. It is an estimate, not dedicated metering of the car's provenance. No domestic battery origin model exists; no battery energy is relabelled PV. Preserve measured allocated solar/grid quantities and their coverage, document the convention. A session percentage is shown only when its provenance covers all counted energy and metering is complete.
+
+## Interface
+Add Sessions de charge to navigation, retain Historique for command events. Dedicated responsive page using existing theme variables and SVG icon system. No new frontend stack or chart dependency: accessible SVG stacked histogram, hover/focus/touch tooltip, legends, stable identifier-based equipment colors. Month/year/total selector, date arrows, energy/cost controls, solar/charger/vehicle grouping. Supplemental breakdown and weighted solar charts, responsive compact overview, filters, sortable columns, page controls and detail modal. CSV and native XLSX exports use the exact current selection, authenticated same-origin endpoints, spreadsheet formula injection protection.
+
+## Verification
+Real temporary SQLite tests cover legacy migration, terminal updates, restart, pause/resume, next plug, zero/missing measurements, deletion persistence, edits, timezone/DST/period boundaries, weighted aggregates, unknown source, partial and negative prices, filters/sorts/pagination and both exports/auth. Frontend tests cover period navigation and chart transformations; browser checks cover user interactions, actual local API persistence, both themes, desktop and iPhone WebKit without horizontal overflow. No test commands real equipment.

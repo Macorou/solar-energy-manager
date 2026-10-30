@@ -27,6 +27,32 @@ test('approved flow and planning support live scenarios, persistence and phone l
     await page.setViewportSize({width:390,height:900});await page.screenshot({path:path.join(directory,`planning-${theme}-mobile.png`),fullPage:true})
     await page.getByRole('button',{name:'Vue d’ensemble',exact:true}).click()
   }
+  const charger=live.devices.find((d:any)=>d.config.kind==='charger')!,heater=live.devices.find((d:any)=>d.config.kind==='water_heater')!
+  live.grid=sample(4680);live.solar=sample(0)
+  charger.state.observed_power=null as any
+  heater.state.observed_power={...sample(2570),usable:false,quality:'stale'}
+  await expect(page.locator('.energy-track .energy-import')).toHaveText('4,68 kW')
+  await expect(page.locator(`[data-use="${charger.config.id}"]`)).toHaveAttribute('aria-label',charger.config.name+' : 3,7 kW')
+  await expect(page.locator(`[data-use="${heater.config.id}"]`)).toHaveAttribute('aria-label',heater.config.name+' : 2,57 kW')
+  await expect(page.getByRole('article',{name:charger.config.name}).locator('.device-reading strong')).toHaveText('3,7 kW')
+  await page.setViewportSize({width:1440,height:1000})
+  await page.screenshot({path:path.join(directory,'overview-retained-desktop.png'),fullPage:true,animations:'disabled'})
+  await page.setViewportSize({width:390,height:900})
+  await page.screenshot({path:path.join(directory,'overview-retained-mobile.png'),fullPage:true,animations:'disabled'})
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  live.grid=sample(4120);charger.state.observed_power=sample(2300);heater.state.observed_power=null as any
+  await expect(page.locator('.energy-track .energy-import')).toHaveText('4,12 kW')
+  await expect(page.locator(`[data-use="${charger.config.id}"]`)).toHaveAttribute('aria-label',charger.config.name+' : 2,3 kW')
+  await expect(page.locator(`[data-use="${heater.config.id}"]`)).toHaveAttribute('aria-label',heater.config.name+' : 2,57 kW')
+  live.grid=sample(1000);charger.state.observed_power=sample(0)
+  await expect(page.locator('.energy-track .energy-import')).toHaveText('1 kW')
+  await expect(page.locator(`[data-use="${charger.config.id}"]`)).toHaveCount(0)
+  await expect(page.locator(`[data-use="${heater.config.id}"]`)).toHaveCount(1)
+  await expect(page.getByRole('article',{name:charger.config.name}).locator('.device-reading strong')).toHaveText('0 W')
+  live.grid=sample(950);heater.state.observed_power=sample(0)
+  await expect(page.locator('.energy-track .energy-import')).toHaveText('950 W')
+  await expect(page.locator(`[data-use="${heater.config.id}"]`)).toHaveCount(0)
+  charger.state.observed_power=sample(3700);heater.state.observed_power=sample(2570)
   live.grid=sample(6920);live.solar=sample(0);await page.reload()
   await expect(page.locator('.energy-track .energy-import')).toHaveText('6,92 kW')
   expect(await page.locator('[data-use]').count()).toBe(3)

@@ -22,30 +22,29 @@ it('does not count exported solar twice',()=>{
 it('keeps the car and heater segments at night',()=>{
   expect(energyBalance(settings,live(6920,0))!.uses.map(s=>s.power)).toEqual([650,3700,2570,0])
 })
-it('does not fabricate source readings from unavailable or incoherent measurements',()=>{
+it('does not fabricate source readings from missing or invalid values',()=>{
   expect(energyBalance(settings,null)).toBeNull()
   expect(energyBalance(settings,{...live(),solar:null})).toBeNull()
-  expect(energyBalance(settings,{...live(),grid:{...sample(2120),usable:false}})).toBeNull()
+  expect(energyBalance(settings,{...live(),grid:sample(Number.NaN)})).toBeNull()
   expect(energyBalance(settings,{...live(),solar:sample(-1)})).toBeNull()
-  expect(energyBalance(settings,{...live(),solar:{...sample(4800),measured_at:'2026-10-29T11:58:00Z'}})).toBeNull()
 })
-it('keeps unknown device consumption unallocated and does not scale contradictory totals',()=>{
+it('keeps known appliances visible when another reading is missing or totals arrive separately',()=>{
   const state=live();state.devices[0].state.observed_power=null
   expect(energyBalance(settings,state)!.notice).toContain('non répartie')
-  expect(energyBalance(settings,state)!.uses[0].power).toBe(6920)
-  expect(energyBalance(settings,live(50,0))!.notice).toContain('cohérentes')
+  expect(energyBalance(settings,state)!.uses.map(p=>[p.key,p.power])).toEqual([['house',4350],['tank',2570],['export',0]])
+  expect(energyBalance(settings,live(50,0))!.uses.map(p=>[p.key,p.power])).toEqual([['house',0],['ev',3700],['tank',2570],['export',0]])
 })
-it('requires coherent source checks even with an independent house sensor',()=>{
+it('displays the last source readings even when their checks arrive separately',()=>{
   const state=live();state.house_configured=true;state.house=sample(6920)
   state.solar={...sample(4800),checked_at:'2026-10-29T11:59:40Z'}
-  expect(energyBalance(settings,state)).toBeNull()
+  expect(energyBalance(settings,state)!.house).toBe(6920)
+  expect(energyBalance(settings,state)!.uses.map(p=>p.power)).toEqual([650,3700,2570,0])
 })
-it('retains source totals but does not attribute outdated appliance power',()=>{
+it('retains the reported appliance power when its timestamp differs from the grid',()=>{
   const state=live();state.devices[0].state.observed_power={...sample(3700),checked_at:'2026-10-29T11:59:35Z'}
   const model=energyBalance(settings,state)!
   expect(model.segments.map(p=>p.power)).toEqual([4800,2120,0])
-  expect(model.notice).toContain('cohérentes')
-  expect(model.uses[0]).toMatchObject({key:'house',power:6920})
+  expect(model.uses.map(p=>[p.key,p.power])).toEqual([['house',650],['ev',3700],['tank',2570],['export',0]])
 })
 it('renders one bar with icon-only markers and stable appliance totals',()=>{
   render(<EnergyFlow settings={settings} state={live(6920,0)}/> )
@@ -53,4 +52,69 @@ it('renders one bar with icon-only markers and stable appliance totals',()=>{
   expect(document.querySelector('[data-use="ev"]')?.getAttribute('style')).toContain('3700')
   expect([...document.querySelectorAll('.energy-bracket')].every(n=>n.textContent==='')).toBe(true)
   expect(screen.getByRole('region',{name:'Flux d’énergie'})).toBeTruthy()
+})
+it('keeps each last power through missing readings and updates or removes only the reporting appliance',()=>{
+  const state=live(6920,0)
+  const {rerender}=render(<EnergyFlow settings={settings} state={state}/> )
+  const missing=live(6920,0);missing.devices[0].state.observed_power=null
+  missing.devices[1].state.observed_power={...sample(2570),usable:false,quality:'stale'}
+  rerender(<EnergyFlow settings={settings} state={missing}/> )
+  expect(document.querySelector('[data-use="ev"]')?.getAttribute('aria-label')).toBe('Wallbox : 3,7 kW')
+  expect(document.querySelector('[data-use="tank"]')?.getAttribute('aria-label')).toBe('Ballon : 2,57 kW')
+  const reduced=live(4680,0);reduced.devices[0].state.observed_power=sample(2300);reduced.devices[1].state.observed_power=null
+  rerender(<EnergyFlow settings={settings} state={reduced}/> )
+  expect(document.querySelector('[data-use="ev"]')?.getAttribute('aria-label')).toBe('Wallbox : 2,3 kW')
+  expect(document.querySelector('[data-use="tank"]')?.getAttribute('aria-label')).toBe('Ballon : 2,57 kW')
+  const stopped=live(1000,0);stopped.devices[0].state.observed_power=sample(0);stopped.devices[1].state.observed_power=null
+  rerender(<EnergyFlow settings={settings} state={stopped}/> )
+  expect(document.querySelector('[data-use="ev"]')).toBeNull()
+  expect(document.querySelector('[data-use="tank"]')).not.toBeNull()
+  stopped.devices[1].state.observed_power=sample(0)
+  rerender(<EnergyFlow settings={settings} state={{...stopped}}/> )
+  expect(document.querySelector('[data-use="tank"]')).toBeNull()
+  expect(state.devices[0].state.observed_power?.value).toBe(3700)
+  expect(missing.devices[0].state.observed_power).toBeNull()
+})
+it('retains the diagram during an interrupted refresh without reviving a previously reported zero',()=>{
+  const state=live(4680,0);state.devices[1].state.observed_power=sample(0)
+  const {rerender}=render(<EnergyFlow settings={settings} state={state}/> )
+  rerender(<EnergyFlow settings={settings} state={null}/> )
+  expect(document.querySelector('.energy-track .energy-import')?.textContent).toBe('4,68 kW')
+  expect(document.querySelector('[data-use="ev"]')).not.toBeNull()
+  expect(document.querySelector('[data-use="tank"]')).toBeNull()
+  const stopped=live(980,0);stopped.devices[0].state.observed_power=sample(0);stopped.devices[1].state.observed_power=sample(0)
+  rerender(<EnergyFlow settings={settings} state={stopped}/> )
+  rerender(<EnergyFlow settings={settings} state={null}/> )
+  expect(document.querySelector('[data-use="ev"]')).toBeNull()
+})
+it('does not reuse readings after a power source or device is removed from configuration',()=>{
+  const {rerender}=render(<EnergyFlow settings={settings} state={live(6920,0)}/> )
+  const removed={...settings,devices:settings.devices.filter(d=>d.id!=='ev')}
+  rerender(<EnergyFlow settings={removed} state={live(6920,0)}/> )
+  expect(document.querySelector('[data-use="ev"]')).toBeNull()
+  const changed={...removed,home_assistant:{grid_entity:'sensor.new_grid'}} as Settings
+  rerender(<EnergyFlow settings={changed} state={null}/> )
+  expect(document.querySelector('.energy-track')).toBeNull()
+})
+it('keeps an appliance while grid and solar reach zero before its own next reading',()=>{
+  const state=live(4680,0);state.devices[1].state.observed_power=sample(0)
+  const {rerender}=render(<EnergyFlow settings={settings} state={state}/> )
+  const waiting=live(0,0);waiting.devices[0].state.observed_power=null;waiting.devices[1].state.observed_power=null
+  rerender(<EnergyFlow settings={settings} state={waiting}/> )
+  expect(document.querySelector('[data-use="ev"]')?.getAttribute('aria-label')).toBe('Wallbox : 3,7 kW')
+  waiting.devices[0].state.observed_power=sample(0)
+  rerender(<EnergyFlow settings={settings} state={{...waiting}}/> )
+  expect(document.querySelector('[data-use="ev"]')).toBeNull()
+})
+it.each([[0,3700],[3700,0]])('keeps newer %s W when an older %s W fallback arrives', (latest,older)=>{
+  const state=live(4680,0);state.devices[1].state.observed_power=sample(0)
+  state.devices[0].state.observed_power={...sample(latest),checked_at:'2026-10-29T12:01:00Z'}
+  const {rerender}=render(<EnergyFlow settings={settings} state={state}/> )
+  const fallback=live(4680,0);fallback.devices[1].state.observed_power=sample(0)
+  fallback.devices[0].state.observed_power={...sample(older),usable:false,quality:'stale'}
+  rerender(<EnergyFlow settings={settings} state={fallback}/> )
+  expect(document.querySelector('[data-use="ev"]')?.getAttribute('aria-label')??null).toBe(latest===0?null:'Wallbox : 3,7 kW')
+  fallback.devices[0].state.observed_power={...sample(older),measured_at:'2026-10-28T12:00:00Z',checked_at:'2026-10-29T12:02:00Z'}
+  rerender(<EnergyFlow settings={settings} state={{...fallback}}/> )
+  expect(document.querySelector('[data-use="ev"]')?.getAttribute('aria-label')??null).toBe(older===0?null:'Wallbox : 3,7 kW')
 })

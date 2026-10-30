@@ -11,7 +11,7 @@ it('renders W below 1000 and kW from 1000 on the actual overview cards',()=>{
   const s=(value:number)=>({value,usable:true,quality:'fresh',measured_at:new Date().toISOString()})
   const state={devices:[],grid:s(400),solar:s(0),house_configured:true,house:s(1250),errors:{},vehicles:{}} as unknown as LiveState
   render(<Overview settings={settings} state={state} connections={{}} onAction={()=>{}} onNavigate={()=>{}}/>)
-  expect(screen.getByText('400 W')).toBeTruthy()
+  expect(document.querySelector('.energy-track .energy-import')?.textContent).toBe('400 W')
   expect(screen.getByText('1,25 kW')).toBeTruthy()
 })
 

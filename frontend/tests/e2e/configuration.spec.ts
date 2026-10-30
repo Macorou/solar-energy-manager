@@ -189,7 +189,7 @@ test('old known battery and unchanged idle power remain readable on desktop and 
   await expect(page.getByRole('region',{name:'Flux d’énergie'}).locator('.section-title')).toContainText('2,5 kW')
   live.house={...sample(2500),usable:false}
   await page.reload()
-  await expect(page.getByRole('region',{name:'Flux d’énergie'}).locator('.section-title').locator('strong')).toHaveText('—')
+  await expect(page.getByRole('region',{name:'Flux d’énergie'}).locator('.section-title').locator('strong')).toHaveText('2,5 kW')
 })
 
 test('charge accounting and phase measurements fit desktop and phone with fictional values',async({page})=>{

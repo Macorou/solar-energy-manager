@@ -11,15 +11,21 @@ it('shows the effective solar temperature rather than the network setting',()=>{
   expect(screen.getByText('Objectif 70 °C · solaire')).toBeTruthy()
   expect(screen.queryByText('Objectif 55 °C')).toBeNull()
 })
-it('labels protocol estimates explicitly and hides unusable power',()=>{
+it('retains reported power between updates without confirming a charge from cached power',()=>{
   const device={config:{id:'ev',name:'EV',kind:'charger',armed:false,priority:1,default_soc_target:80},
-    state:{observed_power:{value:0,quality:'estimated',measured_at:new Date().toISOString(),usable:true},
+    state:{observed_power:{value:3456,quality:'estimated',measured_at:new Date().toISOString(),usable:true},
       observed_state:'Preparing',connected:true,temperature:null,target_temperature:null,fault:null},
     reason:'Observation',reservation_w:0,command:null,authorization:null} as LiveDevice
   const {rerender}=render(<DeviceCard device={device} onAction={()=>{}}/> )
   expect(screen.getByText('Puissance estimée · état OCPP')).toBeTruthy()
   rerender(<DeviceCard device={{...device,state:{...device.state,observed_power:{...device.state.observed_power!,value:3456,usable:false}}}} onAction={()=>{}}/> )
-  expect(screen.queryByText('3,46 kW')).toBeNull()
+  expect(screen.getByText('3,46 kW')).toBeTruthy()
+  rerender(<DeviceCard device={{...device,state:{...device.state,observed_power:null}}} onAction={()=>{}}/> )
+  expect(screen.getByText('3,46 kW')).toBeTruthy()
+  expect(screen.getByText('Puissance estimée · état OCPP')).toBeTruthy()
+  expect(screen.queryByText('En charge')).toBeNull()
+  rerender(<DeviceCard device={{...device,state:{...device.state,observed_power:{...device.state.observed_power!,value:0}}}} onAction={()=>{}}/> )
+  expect(screen.getByText('0 W')).toBeTruthy()
 })
 
 it('keeps immediate start unavailable until activation and sends the existing temporary manual action',()=>{

@@ -22,8 +22,5 @@ export function ChargeSession({value}:{value:ChargingSummary}) {
       <div><span>Coût{value.cost_partial?' partiel':' de la recharge'}</span><strong>{value.cost_eur==null?'—':value.cost_eur.toLocaleString('fr-FR',{style:'currency',currency:'EUR'})}</strong></div>
       <div><span>Part solaire estimée</span><strong>{value.solar_percent==null?'—':number(value.solar_percent,1)+' %'}</strong></div>
     </div>
-    <p className="hint">{value.active?'Recharge en cours':'Dernière recharge'} · prix effectif actuel {value.effective_price_per_kwh==null?'—':number(value.effective_price_per_kwh,4)+' €/kWh'}
-      {value.average_price_per_kwh!=null&&<> · moyenne {number(value.average_price_per_kwh,4)} €/kWh</>}</p>
-    <p className="hint">Coût et part solaire estimés selon le mélange réseau/solaire du logement.</p>
   </section>
 }

@@ -3,6 +3,7 @@ import {watts} from '../api/client'
 import {Icon} from './Icon'
 import {DeviceIllustration} from './DeviceIllustration'
 import {ChargeSession,vehicleStatus} from './ChargeSession'
+import {reportedPower,useLastPowerReadings} from './powerDisplay'
 
 export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{device:LiveDevice;telemetry?:Telemetry;
   onAction:(id:string,action:string)=>void;timezone?:string}) {
@@ -18,8 +19,11 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
   const measured=telemetry?.measured_at?new Date(telemetry.measured_at):null
   const batteryDate=measured&&Number.isFinite(measured.getTime())?
     measured.toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short',timeZone:timezone}):null
-  const power=state.observed_power?.usable&&Number.isFinite(state.observed_power.value)?state.observed_power.value:null
-  const observedRunning=state.connected&&power!=null&&power>20&&['Charging','on'].includes(state.observed_state)
+  const scope=JSON.stringify([config.id,config.kind,config.charge_point_id,config.connector_id,config.gateway_id])
+  const displayed=useLastPowerReadings(scope,{power:reportedPower(state.observed_power)},{power:state.observed_power})
+  const power=displayed.values.power
+  const currentPower=state.observed_power?.usable?reportedPower(state.observed_power):null
+  const observedRunning=state.connected&&currentPower!=null&&currentPower>20&&['Charging','on'].includes(state.observed_state)
   const pending=command&&['sending','accepted'].includes(command.status)
   const badge=state.fault||command?.status==='unknown'?['red','À vérifier','info']:
     observedRunning?['blue',car?'En charge':'En chauffe','bolt']:
@@ -49,14 +53,14 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
           <button className={config.mode==='off'?'selected':''} aria-pressed={config.mode==='off'} disabled={!config.armed} onClick={()=>onAction(config.id,'pause')}><Icon name="pause" size={14}/>Pause</button>
         </div>
         <div className="device-reading"><Icon name={car?'bolt':'calendar'} size={26}/><div>
-          <strong>{watts(power)}</strong><span>{state.observed_power?.quality==='estimated'?'Puissance estimée · état OCPP':car?'Puissance de charge actuelle':'Puissance de chauffe actuelle'}</span>
+          <strong>{watts(power)}</strong><span>{displayed.estimated.power?'Puissance estimée · état OCPP':car?'Puissance de charge actuelle':'Puissance de chauffe actuelle'}</span>
         </div></div>
         <button className={'start-now '+(car?'charge':'heat')} disabled={!config.armed} title="Commande manuelle temporaire de 30 minutes" onClick={()=>onAction(config.id,'manual')}><Icon name="play" size={16}/>{car?'Charger maintenant':'Chauffer maintenant'}</button>
       </div>
     </div>
     {car&&session&&<ChargeSession value={session}/>}
     <div className="device-feedback"><span className="reason"><span className="status-dot"/>{device.reason}</span><span className="device-priority">Priorité {config.priority}</span></div>
-    {command&&<div className="command-status">Demande {watts(command.power_w)} · {({sending:'envoi en cours',accepted:'acceptée, en attente de mesure',observed:'effet observé',unknown:'résultat inconnu'} as Record<string,string>)[command.status]||command.status}</div>}
+    {command&&command.status!=='observed'&&<div className="command-status">Demande {watts(command.power_w)} · {({sending:'envoi en cours',accepted:'acceptée, en attente de mesure',unknown:'résultat inconnu'} as Record<string,string>)[command.status]||command.status}</div>}
     {car&&value!=null&&<span className="measure-date">{batteryDate?<>Batterie relevée le <time dateTime={telemetry!.measured_at!}>{batteryDate}</time></>:'Date de mesure indisponible'}</span>}
   </article>
 }

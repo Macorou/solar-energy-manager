@@ -10,7 +10,7 @@ logging.getLogger('ariston').setLevel(logging.CRITICAL)
 
 
 class AristonAdapter:
-    def __init__(self, config, username='', password='', device=None):
+    def __init__(self, config, username='', password='', device=None, journal=None):
         self.config, self.username, self.password = config, username, password
         self.device, self.library = device, None
         self.initialized = False
@@ -18,6 +18,13 @@ class AristonAdapter:
         self.state = DeviceState(config.id)
         self.lock = asyncio.Lock()
         self.last_command = None
+        self.journal = journal
+        if journal:
+            journal.redactor.register(password)
+            journal.redactor.register(username)
+
+    def log(self,level,message):
+        if self.journal:self.journal.write(level,'ariston:'+self.config.id,message)
 
     async def connect(self):
         async with self.lock:
@@ -49,8 +56,10 @@ class AristonAdapter:
                     target_reached=bool(temperature is not None and self.config.target is not None
                                         and temperature >= self.config.target),
                     measured_at=datetime.now(timezone.utc))
-            except Exception:
+                self.log('DEBUG',f'Lecture réussie : température={temperature} °C ; consigne={target} °C ; état={self.state.observed_state}')
+            except Exception as error:
                 self.state = DeviceState(self.config.id,fault='provider_unavailable')
+                self.log('ERROR',f'Lecture cloud indisponible ({type(error).__name__})')
         return self.state
 
     async def probe_capabilities(self):
@@ -90,9 +99,11 @@ class AristonAdapter:
                     await self.device.async_set_water_heater_temperature(target)
                 if action!='set_temperature': await self.device.async_set_power(action == 'start')
                 self.last_command = now
+                self.log('INFO','Commande native acceptée : '+action)
                 # Library mutates its local data optimistically; only the next read is observation.
                 return CommandResult(intent.id,True,False,checked_at=now)
-            except Exception:
+            except Exception as error:
+                self.log('ERROR',f'Commande native impossible ({type(error).__name__})')
                 return CommandResult(intent.id,False,error='native_command_failed',checked_at=now)
 
     def temperature_allowed(self,target):

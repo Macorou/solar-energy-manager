@@ -67,6 +67,7 @@ class Coordinator:
         self.reasons={}; self.authorizations={}; self.running=False; self.loop_task=None
         self.effective_targets={}; self.target_sources={}
         self.last_tick=None
+        self.last_diagnostic=None
         self.instance=InstanceLock(store.path.parent/'controller.lock')
 
     async def start(self):
@@ -88,7 +89,9 @@ class Coordinator:
         while self.running:
             try: await self.tick()
             except asyncio.CancelledError: raise
-            except Exception: self.errors['runtime']='Évaluation indisponible'
+            except Exception as error:
+                self.errors['runtime']='Évaluation indisponible'
+                self.store.journal.write('ERROR','runtime',f'Évaluation indisponible ({type(error).__name__})')
             await asyncio.sleep(2)
 
     def worker(self,key,signature,coroutine):
@@ -106,9 +109,10 @@ class Coordinator:
                 if self.adapters.get(device.id) is source: self.cache[device.id]=state
                 if source.device and not source.report: await source.probe_capabilities()
             except asyncio.CancelledError: raise
-            except Exception:
+            except Exception as error:
                 if self.adapters.get(device.id) is source:
                     self.cache[device.id]=DeviceState(device.id,fault='provider_unavailable')
+                self.store.journal.write('ERROR','ariston:'+device.id,f'Lecture impossible ({type(error).__name__})')
             await asyncio.sleep(SettingsDocument.model_validate(self.store.load_settings()).ariston.poll_interval_s)
 
     async def poll_vehicle(self,vehicle):
@@ -124,6 +128,7 @@ class Coordinator:
                 code=str(error)
                 self.errors['vehicle_'+vehicle.id]=code if code in ('not_configured','reconnect_required',
                     'rate_limited','vehicle_not_found','vin_required') else 'provider_unavailable'
+                self.store.journal.write('WARN','peugeot','Télémétrie indisponible : '+self.errors['vehicle_'+vehicle.id])
             await asyncio.sleep(SettingsDocument.model_validate(self.store.load_settings()).peugeot.poll_interval_s)
 
     async def acquire(self,config):
@@ -132,7 +137,7 @@ class Coordinator:
             signature=(config.home_assistant.model_dump_json(),token)
             if signature!=self.ha_signature:
                 if self.ha: await self.ha.close()
-                self.ha=HomeAssistantSource(config.home_assistant,token,max_age_s=config.sample_max_age_s)
+                self.ha=HomeAssistantSource(config.home_assistant,token,max_age_s=config.sample_max_age_s,journal=self.store.journal)
                 self.ha_signature=signature
                 if token and config.home_assistant.url:
                     self.worker('ha',signature,self.ha.subscribe(lambda _:None))
@@ -316,6 +321,17 @@ class Coordinator:
             self.store.set('runtime_reservations',{key:{'power_w':r.power_w,'command_id':r.command_id,
                 'expires_at':r.expires_at.isoformat()} for key,r in self.reservations.items()})
             self.last_tick=utcnow()
+            if not self.last_diagnostic or (snapshot.at-self.last_diagnostic).total_seconds()>=10:
+                def reading(sample):
+                    return f'{sample.value} {sample.unit}' if sample and sample.value is not None else 'indisponible'
+                self.store.journal.write('TRACE','site',f'Réseau={reading(snapshot.grid)} ; solaire={reading(snapshot.solar)}')
+                for phase,sample in snapshot.phase_currents.items():
+                    self.store.journal.write('TRACE','site',f'{phase} : courant={reading(sample)} ; limite={snapshot.phase_limits_a.get(phase)} A')
+                for device in config.devices:
+                    state=snapshot.device_states.get(device.id)
+                    if state:
+                        self.store.journal.write('TRACE','device:'+device.id,f'État={state.observed_state} ; puissance={reading(state.observed_power)} ; décision={self.reasons.get(device.id,"—")}')
+                self.last_diagnostic=snapshot.at
             return batch
 
     def record_schedules(self,snapshot,occurrences,config):

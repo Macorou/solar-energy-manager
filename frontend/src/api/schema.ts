@@ -695,6 +695,40 @@ export interface paths {
         patch: operations["edit_api_v1_charging_sessions__session_id__patch"];
         trace?: never;
     };
+    "/api/v1/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Logs */
+        get: operations["logs_api_v1_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/logs/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Logs */
+        get: operations["export_logs_api_v1_logs_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health/live": {
         parameters: {
             query?: never;
@@ -1136,6 +1170,43 @@ export interface components {
             config: components["schemas"]["HomeAssistantConfig"];
             /** Token */
             token?: string | null;
+        };
+        /** LogEntry */
+        LogEntry: {
+            /** Id */
+            id: number;
+            /** At */
+            at: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "FATAL" | "ERROR" | "WARN" | "INFO" | "DEBUG" | "TRACE";
+            /** Area */
+            area: string;
+            /** Message */
+            message: string;
+        };
+        /** LogPage */
+        LogPage: {
+            /** Entries */
+            entries: components["schemas"]["LogEntry"][];
+            /** Cursor */
+            cursor: number;
+            /** Has More */
+            has_more: boolean;
+            /** Has Older */
+            has_older: boolean;
+            /** Areas */
+            areas: string[];
+            /** Gap */
+            gap: boolean;
+            /** Retention Days */
+            retention_days: number;
+            /** Max Entries */
+            max_entries: number;
+            /** Dropped */
+            dropped: number;
         };
         /** ManualRequest */
         ManualRequest: {
@@ -2970,6 +3041,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChargingSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logs_api_v1_logs_get: {
+        parameters: {
+            query?: {
+                after?: number | null;
+                before?: number | null;
+                limit?: number;
+                level?: "FATAL" | "ERROR" | "WARN" | "INFO" | "DEBUG" | "TRACE";
+                area?: string[] | null;
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_logs_api_v1_logs_export_get: {
+        parameters: {
+            query?: {
+                level?: "FATAL" | "ERROR" | "WARN" | "INFO" | "DEBUG" | "TRACE";
+                area?: string[] | null;
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

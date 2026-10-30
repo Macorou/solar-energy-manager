@@ -11,7 +11,7 @@ test('approved flow and planning support live scenarios, persistence and phone l
   const live={simulation:false,at:stamp,running:true,grid:sample(2120),solar:sample(4800),house_configured:false,house:null,off_peak:false,errors:{},vehicles:{},devices:settings.devices.map((config:any)=>({config,state:{connected:true,vehicle_connected:true,observed_power:sample(config.kind==='charger'?3700:2570),observed_state:config.kind==='charger'?'Charging':'on',temperature:48,target_temperature:55,fault:null},reason:'Essai visuel',reservation_w:0,command:null,authorization:null}))}
   await page.route('**/api/v1/state',r=>r.fulfill({json:live}))
   await page.goto('/')
-  await expect(page.locator('.sidebar nav button')).toHaveCount(5)
+  await expect(page.locator('.sidebar nav button')).toHaveCount(6)
   await expect(page.getByRole('button',{name:'Sessions de charge',exact:true})).toBeVisible()
   await expect(page.locator('.energy-track')).toHaveCount(1)
   await expect(page.locator('[data-use]').filter({has:page.locator('svg')})).toHaveCount(3)

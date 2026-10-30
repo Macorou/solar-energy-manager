@@ -26,8 +26,13 @@ class SQLiteStore:
                 CREATE INDEX IF NOT EXISTS charging_history_date ON charging_history(started DESC);
                 CREATE INDEX IF NOT EXISTS charging_history_device ON charging_history(device_id, started);
                 CREATE INDEX IF NOT EXISTS charging_history_vehicle ON charging_history(vehicle_id, started);
-                PRAGMA user_version=2;
+                CREATE TABLE IF NOT EXISTS diagnostic_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    at TEXT NOT NULL, level TEXT NOT NULL, area TEXT NOT NULL, message TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS diagnostic_logs_at ON diagnostic_logs(at);
+                PRAGMA user_version=3;
             ''')
+        from app.diagnostics.journal import DiagnosticJournal
+        self.journal = DiagnosticJournal(self)
 
     @contextmanager
     def connection(self):
@@ -64,6 +69,9 @@ class SQLiteStore:
                 (event.get('at', utcnow().isoformat()), event['kind'], event.get('device_id'),
                  json.dumps(event.get('details', {}))))
             db.execute('DELETE FROM events WHERE id < (SELECT max(id)-10000 FROM events)')
+        level = 'ERROR' if event['kind'] == 'command_unknown' else 'INFO'
+        area = 'device:'+event['device_id'] if event.get('device_id') else 'decisions'
+        self.journal.write(level, area, event['kind']+' '+json.dumps(event.get('details', {}), ensure_ascii=False))
 
     def events(self, limit=200):
         with self.connection() as db:

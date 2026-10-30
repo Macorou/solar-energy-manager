@@ -36,11 +36,22 @@ def test_image_bootstrap_persistence_and_unprivileged_runtime():
             'password':'test-only-secure-password'}).encode(),headers={'Content-Type':'application/json'})
         with urllib.request.urlopen(request) as response:
             assert response.status==200
+            cookie=response.headers['Set-Cookie'].split(';',1)[0]
+        log_request=urllib.request.Request(base+'/api/v1/logs',headers={'Cookie':cookie})
+        with urllib.request.urlopen(log_request) as response:
+            initial_logs=json.load(response)
+        assert any(row['area']=='system' for row in initial_logs['entries'])
+        first_id=initial_logs['entries'][0]['id']
         docker('stop','--time','15',name)
         assert docker('inspect','--format','{{.State.ExitCode}}',name)=='0'
         docker('rm',name)
         base=launch()
         assert docker('exec',name,'cat','/data/secrets/master.key')==key
+        log_request=urllib.request.Request(base+'/api/v1/logs',headers={'Cookie':cookie})
+        with urllib.request.urlopen(log_request) as response:
+            reopened_logs=json.load(response)
+        assert any(row['id']==first_id for row in reopened_logs['entries'])
+        assert reopened_logs['cursor']>initial_logs['cursor']
         with urllib.request.urlopen(base+'/api/v1/setup/status') as response:
             assert json.load(response)['configured']
     finally:

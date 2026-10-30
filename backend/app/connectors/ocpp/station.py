@@ -1,6 +1,7 @@
 from dataclasses import replace
 from datetime import datetime
 import math
+import asyncio
 from ocpp.routing import on
 from ocpp.v16 import ChargePoint,call_result
 from ocpp.v16.enums import Action
@@ -13,6 +14,21 @@ class Station(ChargePoint):
     def __init__(self,station_id,connection,registry):
         super().__init__(station_id,connection,response_timeout=15)
         self.registry=registry
+
+    async def call(self,payload,suppress=True,unique_id=None,skip_schema_validation=False):
+        action=type(payload).__name__
+        try:
+            result=await super().call(payload,suppress=suppress,unique_id=unique_id,
+                                      skip_schema_validation=skip_schema_validation)
+            if result is None:
+                self.registry.store.journal.write('ERROR','ocpp:'+self.id,action+' : réponse OCPP en erreur')
+            return result
+        except asyncio.CancelledError:
+            self.registry.store.journal.write('WARN','ocpp:'+self.id,action+' : attente annulée')
+            raise
+        except Exception as error:
+            self.registry.store.journal.write('ERROR','ocpp:'+self.id,f'{action} : {type(error).__name__}')
+            raise
 
     def config(self,connector_id):
         return next((d for d in self.registry.devices(self.id) if d.connector_id==connector_id),None)

@@ -24,7 +24,7 @@ async def test_ha(body: HomeAssistantInput, request: Request):
     token = body.token.get_secret_value() if body.token else request.app.state.secrets.get('ha_token')
     if not token:
         raise HTTPException(422,'Accès Home Assistant requis')
-    source = HomeAssistantSource(body.config,token)
+    source = HomeAssistantSource(body.config,token,journal=request.app.state.store.journal)
     try:
         await source.connect()
         sample = source.snapshot().grid

@@ -6,4 +6,5 @@ import './theme.css'
 import './settings.css'
 import './visual.css'
 import './sessions.css'
+import './logs.css'
 createRoot(document.getElementById('root')!).render(<App/> )

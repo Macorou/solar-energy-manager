@@ -20,6 +20,7 @@ from app.api.water_heaters import router as water_heaters_router
 from app.api.devices import router as devices_router
 from app.api.simulation import router as simulation_router
 from app.api.sessions import router as sessions_router
+from app.api.logs import router as logs_router
 from app.runtime.coordinator import Coordinator
 
 
@@ -41,23 +42,26 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             output.write(secrets.token_urlsafe(32))
     if not store.load_settings():
         store.save_settings(SettingsDocument().model_dump(mode='json'))
+    store.journal.redactor.register(bootstrap.read_text())
 
     @asynccontextmanager
     async def lifespan(app):
+        store.journal.write('INFO', 'system', 'Démarrage Solar Energy Manager')
         coordinator = getattr(app.state, 'coordinator', None)
         if coordinator and settings.start_runtime:
             await coordinator.start()
         yield
         if coordinator and settings.start_runtime:
             await coordinator.stop()
+        store.journal.write('INFO', 'system', 'Arrêt Solar Energy Manager')
 
-    app = FastAPI(title='Solar Energy Manager', version='0.1.21', lifespan=lifespan)
+    app = FastAPI(title='Solar Energy Manager', version='0.1.22', lifespan=lifespan)
     app.state.store = store
     app.state.secrets = secret_store
     app.state.runtime_settings = settings
     app.state.login_attempts = {}
     app.state.ocpp=OcppRegistry(store,lambda:store.load_settings().get('devices',[]),secret_store.get)
-    app.state.peugeot=PeugeotAdapter(secret_store,PeugeotConfig.model_validate(store.load_settings()['peugeot']))
+    app.state.peugeot=PeugeotAdapter(secret_store,PeugeotConfig.model_validate(store.load_settings()['peugeot']),journal=store.journal)
     app.state.ariston_adapters={}
     app.state.coordinator=Coordinator(store,app)
     app.state.ocpp.on_transaction=app.state.coordinator.engine.forget
@@ -72,14 +76,28 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.include_router(devices_router)
     app.include_router(simulation_router)
     app.include_router(sessions_router)
+    app.include_router(logs_router)
+
+    @app.middleware('http')
+    async def request_diagnostics(request, call_next):
+        try:
+            response = await call_next(request)
+        except Exception as error:
+            store.journal.write('ERROR', 'http', f'{request.method} : erreur interne ({type(error).__name__})')
+            raise
+        if not request.url.path.startswith('/api/v1/logs') and response.status_code >= 400:
+            store.journal.write('WARN' if response.status_code < 500 else 'ERROR', 'http',
+                                f'{request.method} {request.url.path} : HTTP {response.status_code}')
+        response.headers['Cache-Control'] = 'no-store' if request.url.path.startswith('/api/') else response.headers.get('Cache-Control', 'no-cache')
+        return response
 
     @app.get('/api/v1/health/live')
     def health():
-        return {'status': 'ok', 'version': '0.1.21'}
+        return {'status': 'ok', 'version': '0.1.22'}
 
     @app.get('/api/v1/system/status', dependencies=[Depends(require_auth)])
     def status():
-        return {'version': '0.1.21', 'simulation': False,
+        return {'version': '0.1.22', 'simulation': False,
                 'runtime': 'running' if app.state.coordinator.running else 'not_started'}
 
     @app.get('/api/v1/settings', dependencies=[Depends(require_auth)])

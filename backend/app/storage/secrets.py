@@ -1,6 +1,6 @@
 from pathlib import Path
 import os
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 
 
 class SecretStore:
@@ -14,8 +14,13 @@ class SecretStore:
             with os.fdopen(fd, 'wb') as output:
                 output.write(Fernet.generate_key())
         self.cipher = Fernet(key_path.read_bytes())
+        with store.connection() as db:
+            for row in db.execute('SELECT value FROM secrets'):
+                try:store.journal.redactor.register(self.cipher.decrypt(row['value']).decode())
+                except (InvalidToken,UnicodeDecodeError):pass
 
     def set(self, name: str, value: str):
+        self.store.journal.redactor.register(value)
         with self.store.connection() as db:
             db.execute('INSERT OR REPLACE INTO secrets VALUES(?,?)',
                        (name, self.cipher.encrypt(value.encode())))

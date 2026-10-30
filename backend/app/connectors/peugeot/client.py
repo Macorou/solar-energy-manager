@@ -21,7 +21,7 @@ class ProviderError(Exception): pass
 
 
 class PeugeotAdapter:
-    def __init__(self, secrets, config=None, http=None):
+    def __init__(self, secrets, config=None, http=None, journal=None):
         self.secrets = secrets
         self.config = config or PeugeotConfig()
         self.http = http or httpx.AsyncClient(timeout=20)
@@ -34,6 +34,7 @@ class PeugeotAdapter:
         self.pending = None
         self.cache = {}
         self.vehicle_ids = {}
+        self.journal = journal
 
     @property
     def client_id(self): return self.config.client_id or CLIENT_ID
@@ -76,8 +77,11 @@ class PeugeotAdapter:
             if payload.get('refresh_token'): self.secrets.set('peugeot_refresh',payload['refresh_token'])
             self.expires = now+timedelta(seconds=max(60,int(payload.get('expires_in',3600))-60))
             self.error = None
+            if self.journal:self.journal.write('DEBUG','peugeot','Renouvellement de l’accès Peugeot réussi')
         except ProviderError: raise
-        except Exception: raise ProviderError('provider_unavailable') from None
+        except Exception as error:
+            if self.journal:self.journal.write('ERROR','peugeot',f'Authentification indisponible ({type(error).__name__})')
+            raise ProviderError('provider_unavailable') from None
 
     def _check(self, response):
         if response.is_success: return
@@ -85,6 +89,7 @@ class PeugeotAdapter:
         self.error = ('rate_limited' if status == 429 else
             'reconnect_required' if status in (400,401,403) else 'provider_unavailable')
         self.retry_at = datetime.now(timezone.utc)+timedelta(seconds=300 if status != 429 else 900)
+        if self.journal:self.journal.write('ERROR','peugeot',f'Communication Peugeot : HTTP {status} ({self.error})')
         raise ProviderError(self.error)
 
     async def refresh_access(self):
@@ -100,9 +105,12 @@ class PeugeotAdapter:
                 headers={'Authorization':'Bearer '+self.access,'Accept':'application/hal+json',
                          'X-Introspect-Realm':'clientsB2CPeugeot'})
             self._check(response)
+            if self.journal:self.journal.write('DEBUG','peugeot','Lecture '+('des véhicules' if path=='/user/vehicles' else 'de la télémétrie')+' réussie')
             return response.json()
         except ProviderError: raise
-        except Exception: raise ProviderError('provider_unavailable') from None
+        except Exception as error:
+            if self.journal:self.journal.write('ERROR','peugeot',f'Lecture indisponible ({type(error).__name__})')
+            raise ProviderError('provider_unavailable') from None
 
     async def read_telemetry(self, vin):
         async with self.lock:

@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import json
+import time
 from dataclasses import replace
 from urllib.parse import urlsplit, urlunsplit
 import httpx
@@ -12,7 +13,7 @@ from .mapping import normalize_power
 
 
 class HomeAssistantSource:
-    def __init__(self, config: HomeAssistantConfig, token: str, http=None, max_age_s=30):
+    def __init__(self, config: HomeAssistantConfig, token: str, http=None, max_age_s=30, journal=None):
         self.config, self.token = config, token
         self.http = http
         self.max_age_s = max_age_s
@@ -22,6 +23,9 @@ class HomeAssistantSource:
         self.running = False
         self.websocket = None
         self.error = None
+        self.journal = journal
+        self.logged_at = 0
+        if journal: journal.redactor.register(token)
 
     async def connect(self):
         parsed = urlsplit(self.config.url)
@@ -40,8 +44,14 @@ class HomeAssistantSource:
             for entity in required:
                 normalize_power(self.states[entity], self.received[entity])
             self.connected, self.error = True, None
-        except Exception:
+            if self.journal and time.monotonic()-self.logged_at>=10:
+                self.journal.write('DEBUG','ha',f'Lecture des états réussie : {len(self.states)} entités')
+                self.logged_at=time.monotonic()
+        except Exception as error:
             self.connected = False
+            if self.journal:
+                status=f'HTTP {error.response.status_code}' if isinstance(error,httpx.HTTPStatusError) else type(error).__name__
+                self.journal.write('ERROR','ha','Lecture des états impossible : '+status)
             raise
         finally:
             if self.http is None:
@@ -99,6 +109,7 @@ class HomeAssistantSource:
                     if authenticated.get('type') != 'auth_ok':
                         raise ValueError('Authentification Home Assistant refusée')
                     await self.connect()
+                    if self.journal:self.journal.write('INFO','ha','Abonnement aux mesures Home Assistant connecté')
                     await websocket.send(json.dumps({'id':1,'type':'subscribe_events','event_type':'state_changed'}))
                     delay = 2
                     interval=min(1,self.max_age_s/2)
@@ -131,8 +142,9 @@ class HomeAssistantSource:
                                 await result
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as error:
                 self.error = 'Connexion Home Assistant indisponible'
+                if self.journal:self.journal.write('ERROR','ha',f'Connexion WebSocket indisponible ({type(error).__name__}) ; nouvelle tentative dans {delay} s')
             finally:
                 self.connected = False
                 self.websocket = None

@@ -55,7 +55,7 @@ class Dispatcher:
             self.save()
             self.store.append_event({'kind':'command_'+record['status'],'device_id':intent.device_id,
                 'details':{'action':intent.action,'power_w':intent.limit_w,'reason':intent.reason,
-                           'target_temperature':intent.target_temperature}})
+                           'target_temperature':intent.target_temperature,'error':result.error}})
             return result
 
     def reconcile(self,snapshot,configs):

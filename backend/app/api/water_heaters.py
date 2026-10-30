@@ -17,7 +17,7 @@ def adapter(request, device):
     if (not current or current.config.gateway_id!=device.gateway_id
         or current.username!=config.ariston.username or current.password!=password):
         adapters[device.id]=AristonAdapter(device,config.ariston.username,
-            password)
+            password,journal=request.app.state.store.journal)
     else:
         # Operating modes and targets do not change the cloud session identity.
         current.config=device

@@ -63,7 +63,35 @@ def test_missing_provenance_partial_meter_and_prices_never_become_fictitious_zer
     assert total['partial_cost_eur']==1
     assert total['average_price_per_kwh'] is None
     assert data['available']['co2'] is False
-    assert data['buckets'][0]['cost']['cost'] is None
+    assert data['buckets'][0]['cost']['cost'] == 1
+    assert data['available']['cost'] is True
+    assert total['known_cost_eur'] == 1
+    assert total['cost_partial'] is True
+
+
+def test_known_partial_cost_is_visible_without_inventing_final_price(service):
+    app,client=service
+    insert(app,'partial','2026-10-29T16:12:00+00:00',13.76,0,1.9,
+        energy_partial=True,cost_partial=True,average_price_per_kwh=None)
+    data=client.get('/api/v1/charging-sessions?period=month&year=2026&month=10&group=vehicle').json()
+    assert data['available']['cost'] is True
+    assert data['totals']['known_cost_eur']==1.9
+    assert data['totals']['known_cost_count']==1
+    assert data['totals']['average_price_per_kwh'] is None
+    assert data['totals']['cost_eur'] is None
+    assert data['buckets'][28]['cost']['car']==1.9
+
+
+def test_free_partial_cost_is_known_but_missing_cost_stays_missing(service):
+    app,client=service
+    insert(app,'free','2026-10-01T10:00:00+00:00',cost=0,cost_partial=True)
+    insert(app,'absent','2026-10-02T10:00:00+00:00',cost=None)
+    data=client.get('/api/v1/charging-sessions?period=month&year=2026&month=10').json()
+    assert data['available']['cost'] is True
+    assert data['totals']['known_cost_eur']==0
+    assert data['buckets'][0]['cost']['cost']==0
+    assert data['buckets'][1]['cost']['cost'] is None
+    assert data['buckets'][2]['cost']['cost']==0 # empty day
 
 
 def test_local_period_boundaries_dst_midnight_and_total_years(service):

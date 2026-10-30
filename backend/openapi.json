@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Solar Energy Manager",
-    "version": "0.1.20"
+    "version": "0.1.21"
   },
   "paths": {
     "/api/v1/setup/status": {
@@ -2451,6 +2451,11 @@
             ],
             "title": "Soc Start"
           },
+          "soc_start_source": {
+            "type": "string",
+            "title": "Soc Start Source",
+            "default": "unavailable"
+          },
           "soc_end": {
             "anyOf": [
               {
@@ -3421,6 +3426,27 @@
               }
             ],
             "title": "Partial Cost Eur"
+          },
+          "known_cost_eur": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Known Cost Eur"
+          },
+          "known_cost_count": {
+            "type": "integer",
+            "title": "Known Cost Count",
+            "default": 0
+          },
+          "cost_partial": {
+            "type": "boolean",
+            "title": "Cost Partial",
+            "default": false
           },
           "priced_energy_kwh": {
             "type": "number",

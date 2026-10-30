@@ -24,6 +24,13 @@ def seed_sessions(store):
                 energy_kwh=energy,energy_partial=False,solar_kwh=solar,grid_kwh=energy-solar,unknown_kwh=0,
                 solar_percent=100*solar/energy,cost_eur=cost,cost_partial=False,
                 average_price_per_kwh=cost/energy,charge_duration_s=7200+index*20,duration_partial=False,
-                soc_start=40,soc_end=60,soc_end_estimated=True,updated_at=start.isoformat())
+                soc_start=40,soc_start_source='captured',soc_end=60,soc_end_estimated=True,updated_at=start.isoformat())
             if index==53:row.update(solar_kwh=None,grid_kwh=None,unknown_kwh=energy,solar_percent=None,cost_eur=None,cost_partial=True)
             SessionHistory._write(db,row)
+        # Regression fixture matching an upgraded, partially metered recharge.
+        row.update(id='e2e-partial-history',vehicle_id='session-migrated',vehicle_name='Peugeot (session migrée)',
+            device_id='session-wallbox',device_name='Wallbox Pulsar Plus',started_at=month.isoformat(),
+            ended_at=(month+timedelta(hours=3)).isoformat(),energy_kwh=13.76,energy_partial=True,
+            solar_kwh=0,grid_kwh=13.76,unknown_kwh=0,solar_percent=None,cost_eur=1.9,cost_partial=True,
+            average_price_per_kwh=None,soc_start=None,soc_start_source='unavailable',soc_end=64)
+        SessionHistory._write(db,row)

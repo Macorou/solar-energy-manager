@@ -10,6 +10,7 @@ from app.domain.measurements import Quality
 from app.engine.evcc_soc import SocEstimator
 from app.domain.commands import CHARGER_START_WAIT_S
 from app.storage.charging_sessions import SessionHistory
+from app.sessions.soc_capture import capture_start, recover_start
 
 
 def finite(value):
@@ -42,6 +43,7 @@ class ChargingTracker:
     def __init__(self,store):
         self.store=store
         self.sessions=store.get('charging_sessions',{})
+        for session in self.sessions.values():recover_start(session)
         self.history=SessionHistory(store)
         self.history.migrate(self.sessions)
         self.peugeot_references=store.get('peugeot_soc_references',{})
@@ -84,13 +86,16 @@ class ChargingTracker:
                     'last_meter':None,'last_at':None,'points':[],'contexts':[],'anchor':None,
                     'meter_partial':False,'terminal_pending':False,'soc_gap_at':None,'soc':None,'soc_usable':False,
                     'soc_estimated':False,'reached_target':None,'reached_at':None,
-                    'charge_duration_s':0.,'duration_partial':False}
+                    'charge_duration_s':0.,'duration_partial':False,
+                    'history_soc_start':None,'history_soc_start_source':'pending'}
                 if previous:
                     # A configuration/SOC reference change is not an unplug.
                     # Runtime SOC rebases as before; historical counters stay in
                     # the original plug period, including its measured prefix.
                     session['history_id']=previous.get('history_id',previous['id'])
                     session['history_started_at']=previous.get('history_started_at',previous['started_at'])
+                    session['history_soc_start']=previous.get('history_soc_start')
+                    session['history_soc_start_source']=previous.get('history_soc_start_source','unavailable')
                     old_base=previous.get('history_base',{})
                     session['history_base']={k:previous.get(k,0)+old_base.get(k,0) for k in
                         ('energy_wh','cost_eur','priced_wh','solar_wh','allocated_wh')}
@@ -209,8 +214,7 @@ class ChargingTracker:
                     session['soc_gap_at']=None
                     session['soc_gap_transaction_id']=None
                 self.soc(session,snapshot,config,device,state,vehicle)
-                if 'history_soc_start' not in session and session.get('soc_usable'):
-                    session['history_soc_start']=session.get('soc')
+                capture_start(session)
                 valid_terminal=bool(state.energy_terminal and when is not None and
                     session['started_at']-2<=when<=now)
                 if valid_terminal:

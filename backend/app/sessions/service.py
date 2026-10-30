@@ -18,12 +18,15 @@ def totals(rows):
     priced_energy = sum(r['energy_kwh'] or 0 for r in priced)
     cost = sum(r['cost_eur'] for r in priced) if priced else None
     partial_costs = [r['cost_eur'] for r in incomplete if r['cost_eur'] is not None]
+    known_costs = [r['cost_eur'] for r in rows if r['cost_eur'] is not None]
     durations = [r['charge_duration_s'] for r in rows if r['charge_duration_s'] is not None]
     return dict(count=len(rows), energy_kwh=energy, energy_partial=partial,
         missing_energy_count=sum(r['energy_kwh'] is None for r in rows),
         solar_kwh=solar, grid_kwh=grid, unknown_kwh=unknown,
         solar_percent=100*solar/energy if energy > 0 and not partial and unknown < 1e-8 else None,
         cost_eur=cost, partial_cost_eur=sum(partial_costs) if partial_costs else None,
+        known_cost_eur=sum(known_costs) if known_costs else None,
+        known_cost_count=len(known_costs), cost_partial=bool(incomplete),
         priced_energy_kwh=priced_energy, priced_count=len(priced), cost_missing_count=len(incomplete),
         average_price_per_kwh=cost/priced_energy if cost is not None and priced_energy > 0 else None,
         charge_duration_s=sum(durations) if durations else None,
@@ -103,11 +106,11 @@ class SessionService:
             entries = grouped.get(str(key), []); total = totals(entries)
             if q.group == 'solar':
                 energy = {'grid':total['grid_kwh'], 'solar':total['solar_kwh'], 'unknown':total['unknown_kwh']}
-                cost = {'cost':total['cost_eur'] if entries else 0}
+                cost = {'cost':total['known_cost_eur'] if entries else 0}
             else:
                 grouped_entries = self.grouped(entries, q.group)
                 energy = {g['id']:g['totals']['energy_kwh'] for g in grouped_entries}
-                cost = {g['id']:g['totals']['cost_eur'] for g in grouped_entries}
+                cost = {g['id']:g['totals']['known_cost_eur'] for g in grouped_entries}
             buckets.append(dict(key=str(key), energy=energy, cost=cost, totals=total))
         summary = totals(rows); vehicles, chargers = self.options()
         years = {}
@@ -121,5 +124,5 @@ class SessionService:
             totals=summary, buckets=buckets, groups=groups,
             by_vehicle=self.grouped(rows,'vehicle'), by_charger=self.grouped(rows,'charger'),
             solar_years=solar_years,
-            vehicles=vehicles, chargers=chargers, available={'cost':summary['priced_count']>0,'co2':False},
+            vehicles=vehicles, chargers=chargers, available={'cost':summary['known_cost_count']>0,'co2':False},
             timezone=str(self.zone))

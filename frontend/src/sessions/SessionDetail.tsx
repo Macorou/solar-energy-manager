@@ -26,11 +26,11 @@ export function SessionDetail({id,timezone,vehicles,onClose,onChanged}:{id:strin
     ['Point de charge',session.device_name],['Véhicule',session.vehicle_name],
     ['Énergie chargée',session.energy_kwh==null?'Mesure absente':energy(session.energy_kwh)+(session.energy_partial?' · partielle':'')],
     ['Solaire',session.solar_kwh==null?null:energy(session.solar_kwh)],['Réseau électrique',session.grid_kwh==null?null:energy(session.grid_kwh)],
-    ['Origine inconnue',session.unknown_kwh?energy(session.unknown_kwh):null],
+    ['Origine inconnue',session.unknown_kwh!=null&&session.unknown_kwh>1e-8?energy(session.unknown_kwh):null],
     ['Part solaire',session.solar_percent==null?null:percent(session.solar_percent)],
     ['Coût',session.cost_eur==null?null:money(session.cost_eur)+(session.cost_partial?' · partiel':'')],
     ['Prix moyen au kWh',session.average_price_per_kwh==null?null:`${number(session.average_price_per_kwh,4)} €/kWh`],
-    ['Batterie au début',session.soc_start==null?null:percent(session.soc_start)],
+    ['Batterie au début',session.soc_start==null?'Non enregistrée':percent(session.soc_start)],
     [session.active?'Batterie actuelle':'Batterie à la fin',session.soc_end==null?null:percent(session.soc_end)+(session.soc_end_estimated?' · estimée':'')],
   ]:[]
   return createPortal(<dialog ref={ref} className="settings-dialog session-detail" aria-labelledby={heading} onCancel={e=>{e.preventDefault();if(!pending)onClose()}}>

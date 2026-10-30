@@ -1,4 +1,4 @@
-import type {Period,Group,Metric,SessionPage,Bucket,Series} from './types'
+import type {Period,Group,Metric,SessionPage,Bucket,Series,Totals} from './types'
 export const number=(value:number|null|undefined,digits=1)=>value==null?'—':value.toLocaleString('fr-FR',{maximumFractionDigits:digits})
 export const energy=(value:number|null|undefined)=>value==null?'—':`${number(value,2)} kWh`
 export const money=(value:number|null|undefined)=>value==null?'—':value.toLocaleString('fr-FR',{style:'currency',currency:'EUR'})
@@ -24,7 +24,7 @@ export function equipmentColors(data:SessionPage,group:Group){
   return colors
 }
 export function seriesFor(data:SessionPage,group:Group,metric:Metric):Series[]{
-  if(group!=='solar'){const colors=equipmentColors(data,group);return data.groups.filter(g=>metric!=='cost'||g.totals.priced_count>0).map(g=>({id:g.id,name:g.name,color:colors[g.id]||colorFor(g.id)}))}
+  if(group!=='solar'){const colors=equipmentColors(data,group);return data.groups.filter(g=>metric!=='cost'||(g.totals.known_cost_count??g.totals.priced_count)>0).map(g=>({id:g.id,name:g.name,color:colors[g.id]||colorFor(g.id)}))}
   if(metric==='cost')return [{id:'cost',name:'Coût des recharges',color:'var(--blue)'}]
   const series=[{id:'grid',name:'Réseau électrique',color:'#939ba8'},{id:'solar',name:'Solaire',color:'#42c995'}]
   if(data.buckets.some(b=>(b.energy.unknown||0)>1e-8))series.push({id:'unknown',name:'Origine inconnue',color:'#b59bc9'})
@@ -36,3 +36,5 @@ export function bucketLabel(key:string,period:Period,year:number,month:number,sh
   if(period==='year')return new Date(Date.UTC(year,Number(key)-1,1)).toLocaleDateString('fr-FR',{month:short?'short':'long',timeZone:'UTC'})
   return short?key:new Date(Date.UTC(year,month-1,Number(key))).toLocaleDateString('fr-FR',{day:'numeric',month:'long',timeZone:'UTC'})
 }
+
+export const knownCost=(totals:Totals)=>totals.known_cost_eur??totals.cost_eur

@@ -911,6 +911,11 @@ export interface components {
             duration_partial: boolean;
             /** Soc Start */
             soc_start?: number | null;
+            /**
+             * Soc Start Source
+             * @default unavailable
+             */
+            soc_start_source: string;
             /** Soc End */
             soc_end?: number | null;
             /**
@@ -1394,6 +1399,18 @@ export interface components {
             cost_eur?: number | null;
             /** Partial Cost Eur */
             partial_cost_eur?: number | null;
+            /** Known Cost Eur */
+            known_cost_eur?: number | null;
+            /**
+             * Known Cost Count
+             * @default 0
+             */
+            known_cost_count: number;
+            /**
+             * Cost Partial
+             * @default false
+             */
+            cost_partial: boolean;
             /**
              * Priced Energy Kwh
              * @default 0

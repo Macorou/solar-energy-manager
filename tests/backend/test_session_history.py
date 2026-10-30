@@ -148,3 +148,108 @@ def test_later_transaction_cannot_clear_original_missing_prefix(tmp_path):
         energy_transaction_start_wh=11000,energy_transaction_started_at=now+timedelta(seconds=90))
     tracker.update(replace(final,device_states={'ev':state}),cfg)
     assert records(store)[0]['energy_partial'] is True
+
+
+def test_soc_start_is_frozen_across_api_updates_and_reboots(tmp_path):
+    tracker,store,cfg=setup_tracker(tmp_path)
+    from app.domain.measurements import utcnow
+    now=utcnow()
+    tracker.update(frame(now,10000,soc=60),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),12000,soc=64),cfg)
+    tracker=ChargingTracker(store)
+    tracker.update(frame(now+timedelta(seconds=60),12000,soc=64),cfg)
+    assert records(store)[0]['soc_start']==60
+    assert records(store)[0]['soc_end']==64
+    cfg.vehicles[0].vin='updated'
+    tracker.update(frame(now+timedelta(seconds=70),12000,soc=64),cfg)
+    assert records(store)[0]['soc_start']==60
+
+
+def test_020_wrong_start_is_repaired_from_original_zero_energy_reference(tmp_path):
+    import json
+    tracker,store,cfg=setup_tracker(tmp_path)
+    from app.domain.measurements import utcnow
+    now=utcnow()
+    tracker.update(frame(now,10000,soc=60),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),12000,soc=64),cfg)
+    legacy=store.get('charging_sessions')
+    legacy['ev'].pop('history_soc_start_source',None)
+    legacy['ev']['history_soc_start']=64
+    store.set('charging_sessions',legacy)
+    with store.connection() as db:
+        row=records(store)[0];row['soc_start']=64;row.pop('soc_start_source',None)
+        db.execute('UPDATE charging_history SET data=?,vehicle_override=?',(json.dumps(row),'other'))
+    ChargingTracker(store)
+    row=records(store)[0]
+    assert row['soc_start']==60
+    assert row['soc_end']==64
+    assert row['vehicle_id']=='other'
+
+
+def test_late_first_soc_is_not_retroactively_used_as_start(tmp_path):
+    tracker,store,cfg=setup_tracker(tmp_path)
+    from app.domain.measurements import utcnow
+    now=utcnow()
+    tracker.update(frame(now,10000,soc=None),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),12000,soc=64),cfg)
+    row=records(store)[0]
+    assert row['soc_start'] is None
+    assert row['soc_end']==64
+
+
+def test_legacy_soc_without_initial_proof_is_unknown_and_repair_preserves_tombstone(tmp_path):
+    import json
+    tracker,store,cfg=setup_tracker(tmp_path)
+    from app.domain.measurements import utcnow
+    now=utcnow()
+    tracker.update(frame(now,10000,soc=None),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),12000,soc=64),cfg)
+    legacy=store.get('charging_sessions')
+    legacy['ev'].pop('history_soc_start_source',None)
+    legacy['ev']['history_soc_start']=64
+    store.set('charging_sessions',legacy)
+    with store.connection() as db:
+        row=records(store)[0];row['soc_start']=64;row.pop('soc_start_source',None)
+        db.execute('UPDATE charging_history SET data=?',(json.dumps(row),))
+    ChargingTracker(store)
+    assert records(store)[0]['soc_start'] is None
+    with store.connection() as db:db.execute('UPDATE charging_history SET deleted=1')
+    ChargingTracker(store)
+    assert records(store)==[]
+
+
+def test_already_running_transaction_does_not_capture_current_soc_as_start(tmp_path):
+    tracker,store,cfg=setup_tracker(tmp_path)
+    from app.domain.measurements import utcnow
+    now=utcnow();first=frame(now,12000,soc=64)
+    state=replace(first.device_states['ev'],energy_transaction_id=42,
+        energy_transaction_start_wh=10000,energy_transaction_started_at=now-timedelta(minutes=20))
+    tracker.update(replace(first,device_states={'ev':state}),cfg)
+    row=records(store)[0]
+    assert row['energy_partial'] is True
+    assert row['soc_start'] is None
+    assert row['soc_start_source']=='unavailable'
+    assert row['soc_end']==64
+
+
+@pytest.mark.parametrize('partial_flag',['meter_partial','history_meter_partial'])
+def test_legacy_missing_prefix_cannot_prove_initial_soc(tmp_path,partial_flag):
+    import json
+    tracker,store,cfg=setup_tracker(tmp_path)
+    from app.domain.measurements import utcnow
+    now=utcnow()
+    tracker.update(frame(now,10000,soc=60),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),12000,soc=64),cfg)
+    legacy=store.get('charging_sessions')
+    legacy['ev'].pop('history_soc_start_source',None)
+    legacy['ev'][partial_flag]=True
+    legacy['ev']['history_soc_start']=64
+    store.set('charging_sessions',legacy)
+    with store.connection() as db:
+        row=records(store)[0];row['soc_start']=64;row.pop('soc_start_source',None)
+        db.execute('UPDATE charging_history SET data=?',(json.dumps(row),))
+    ChargingTracker(store)
+    row=records(store)[0]
+    assert row['soc_start'] is None
+    assert row['soc_start_source']=='unavailable'
+    assert row['soc_end']==64

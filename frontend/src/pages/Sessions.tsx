@@ -4,7 +4,7 @@ import {SessionChart} from '../sessions/SessionChart'
 import {SessionBreakdown} from '../sessions/SessionBreakdown'
 import {SessionTable} from '../sessions/SessionTable'
 import {SessionDetail} from '../sessions/SessionDetail'
-import {localPeriod,movePeriod,periodLabel,seriesFor,energy,money,percent,number} from '../sessions/model'
+import {localPeriod,movePeriod,periodLabel,seriesFor,energy,money,percent,number,knownCost} from '../sessions/model'
 import type {Period,Group,Metric,Sort,SessionPage,Option} from '../sessions/types'
 
 export function Sessions({timezone,vehicles}:{timezone:string;vehicles:Option[]}){
@@ -47,11 +47,11 @@ export function Sessions({timezone,vehicles}:{timezone:string;vehicles:Option[]}
     {error&&<div className="alert error" role="alert"><span>{error}</span><button type="button" onClick={()=>setRevision(n=>n+1)}>Réessayer</button></div>}
     {loading&&!data&&<section className="panel sessions-loading" role="status">Chargement des sessions…</section>}
     {data&&total&&<div aria-busy={loading}>
-      <section className="panel sessions-main-chart"><h2>{activeMetric==='energy'?'Énergie chargée':'Coût des recharges'}</h2><p className="sessions-chart-summary">{activeMetric==='energy'?<><strong>{energy(total.energy_kwh)}</strong> au total{total.energy_partial?' · mesures partielles':''}{total.solar_percent!=null&&<> · <strong>{percent(total.solar_percent)}</strong> solaire</>}</>:<><strong>{money(total.cost_eur)}</strong> au total{total.average_price_per_kwh!=null&&<> · Ø {number(total.average_price_per_kwh,4)} €/kWh</>}</>}</p>
+      <section className="panel sessions-main-chart"><h2>{activeMetric==='energy'?'Énergie chargée':'Coût des recharges'}</h2><p className="sessions-chart-summary">{activeMetric==='energy'?<><strong>{energy(total.energy_kwh)}</strong> au total{total.energy_partial?' · mesures partielles':''}{total.solar_percent!=null&&<> · <strong>{percent(total.solar_percent)}</strong> solaire</>}</>:<><strong>{money(knownCost(total))}</strong>{total.cost_partial?' connus · coût partiel':' au total'}{total.average_price_per_kwh!=null&&<> · Ø {number(total.average_price_per_kwh,4)} €/kWh</>}</>}</p>
         <SessionChart buckets={data.buckets} series={series} metric={activeMetric} period={period} year={date.year} month={date.month}/>
         {!data.total&&<p className="sessions-empty">Aucune recharge pour cette période.</p>}
         {(total.unknown_kwh>1e-8||total.missing_energy_count>0)&&<p className="sessions-data-note">{total.unknown_kwh>1e-8?`${energy(total.unknown_kwh)} sans répartition solaire/réseau. `:''}{total.missing_energy_count>0?`${total.missing_energy_count} session(s) sans mesure d’énergie.`:''}</p>}
-        {activeMetric==='cost'&&total.cost_missing_count>0&&<p className="sessions-data-note">Total calculé sur {total.priced_count} session(s) entièrement tarifée(s). {total.cost_missing_count} session(s) non tarifée(s) ou partielle(s){total.partial_cost_eur!=null?` : ${money(total.partial_cost_eur)} de coût partiel connu`:''}.</p>}
+        {activeMetric==='cost'&&total.cost_missing_count>0&&<p className="sessions-data-note">Montant connu sur {total.known_cost_count} session(s). {total.cost_missing_count} session(s) sans coût complet. Le prix moyen utilise uniquement les sessions entièrement mesurées et tarifées.</p>}
       </section>
       {data.total>0&&(group==='solar'?activeMetric==='energy'&&period!=='month':data.groups.length>1)&&<SessionBreakdown data={data} metric={activeMetric} period={period} year={date.year} month={date.month} group={group}/>}
       <SessionTable data={data} sort={sort} direction={direction} onSort={changeSort} onPage={setPage} onOpen={s=>setSelected(s.id)}/>

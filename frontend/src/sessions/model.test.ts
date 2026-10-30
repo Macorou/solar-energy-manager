@@ -27,6 +27,10 @@ describe('session chart series',()=>{
     const values={...data,groups:[{id:'unpriced',name:'Sans tarif',totals:{priced_count:0}},{id:'priced',name:'Tarifée',totals:{priced_count:1}}]} as unknown as SessionPage
     expect(seriesFor(values,'charger','cost').map(s=>s.id)).toEqual(['priced'])
   })
+  it('includes equipment with a known partial cost in financial series',()=>{
+    const values={...data,groups:[{id:'partial',name:'Peugeot',totals:{priced_count:0,known_cost_count:1,known_cost_eur:1.9}}]} as unknown as SessionPage
+    expect(seriesFor(values,'vehicle','cost').map(s=>s.id)).toEqual(['partial'])
+  })
   it('resolves palette collisions using all equipment so filters do not change colors',()=>{
     const sample={...data,vehicles:[{id:'session-peugeot',name:'Peugeot'},{id:'session-other',name:'Autre'}]} as unknown as SessionPage
     const colors=equipmentColors(sample,'vehicle')

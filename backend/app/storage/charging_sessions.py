@@ -47,6 +47,7 @@ def history_record(device_id, session, config):
         'average_price_per_kwh': cost / (energy / 1000) if complete_cost and energy > 0 else None,
         'charge_duration_s': duration, 'duration_partial': bool(session.get('duration_partial') or base.get('duration_partial') or duration is None),
         'soc_start': session.get('history_soc_start'), 'soc_end': session.get('soc'),
+        'soc_start_source': session.get('history_soc_start_source','unavailable'),
         'soc_end_estimated': bool(session.get('soc_estimated')),
         'updated_at': iso(session.get('checked_at', session['started_at'])),
     }
@@ -60,9 +61,20 @@ class SessionHistory:
         """Copy the last legacy runtime records, exactly once, without replacing edits."""
         config = config or SettingsDocument.model_validate(self.store.load_settings() or {})
         with self.store.connection() as db:
+            # 0.1.20 could capture the current SOC as a migrated session start.
+            # Repair historical rows lacking provenance, including older rows
+            # no longer present in the latest-per-device runtime KV. Keep their
+            # manual vehicle overrides and tombstones completely intact.
+            repaired={s.get('history_id',s['id']):s for s in sessions.values()}
+            for stored in db.execute("SELECT id,data FROM charging_history WHERE json_type(data,'$.soc_start_source') IS NULL").fetchall():
+                row=json.loads(stored['data']);runtime=repaired.get(stored['id'])
+                row['soc_start']=runtime.get('history_soc_start') if runtime else None
+                row['soc_start_source']=runtime.get('history_soc_start_source','unavailable') if runtime else 'unavailable'
+                db.execute('UPDATE charging_history SET data=? WHERE id=?',(json.dumps(row,allow_nan=False),stored['id']))
             for device_id, session in sessions.items():
                 row = history_record(device_id, session, config)
                 self._write(db, row, insert_only=True)
+            db.execute('INSERT OR REPLACE INTO kv VALUES(?,?)',('charging_sessions',json.dumps(sessions,allow_nan=False)))
 
     @staticmethod
     def _write(db, row, insert_only=False):

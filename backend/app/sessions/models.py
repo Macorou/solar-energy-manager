@@ -38,6 +38,7 @@ class ChargingSession(BaseModel):
     charge_duration_s: float | None
     duration_partial: bool
     soc_start: float | None = None
+    soc_start_source: str = 'unavailable'
     soc_end: float | None = None
     soc_end_estimated: bool = False
     updated_at: str
@@ -55,6 +56,9 @@ class Totals(BaseModel):
     solar_percent: float | None = None
     cost_eur: float | None = None
     partial_cost_eur: float | None = None
+    known_cost_eur: float | None = None
+    known_cost_count: int = 0
+    cost_partial: bool = False
     priced_energy_kwh: float = 0
     priced_count: int = 0
     cost_missing_count: int = 0

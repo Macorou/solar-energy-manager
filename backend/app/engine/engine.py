@@ -142,8 +142,10 @@ class EnergyEngine:
             desired, reason = 0.0, 'En attente'
             eligible = bool(policy and policy.armed and state and state.connected and not state.fault)
             auth = authorizations.get(spec.id)
+            manual_active = bool(policy and policy.mode=='manual' and (spec.kind=='charger'
+                or policy.manual_until and now<policy.manual_until))
             network = bool(policy and (
-                policy.mode=='manual' and policy.manual_until and now<policy.manual_until
+                manual_active
                 or policy.mode=='off_peak_solar' and policy.off_peak
                 or policy.mode=='planned' and auth and auth.allow_grid))
             network_closed = (self.network_allowed.get(spec.id,False) and not network
@@ -178,7 +180,7 @@ class EnergyEngine:
                     eligible, reason = False, 'Objectif atteint'
             if eligible:
                 if policy.mode=='manual':
-                    eligible = bool(policy.manual_until and now<policy.manual_until)
+                    eligible = manual_active
                     network, reason = eligible, 'Commande manuelle' if eligible else 'Commande manuelle terminée'
                 elif policy.mode=='planned':
                     eligible = bool(auth and (auth.allow_grid or auth.allow_solar))

@@ -39,7 +39,7 @@ export function App() {
         <label>Identifiant<input name="username" required autoComplete="username" defaultValue="admin"/></label><label>Mot de passe<input name="password" type="password" minLength={configured?1:12} required autoComplete={configured?'current-password':'new-password'}/></label>
         <button className="primary" disabled={busy}>{configured?'Se connecter':'Créer mon compte'}</button></form>}<p className="hint">Application auto-hébergée · vos réglages restent sur votre serveur.</p></main></div>
   const title=page==='overview'?'Pilotage énergie':page==='planning'?'Planning et solaire':page==='settings'?'Réglages':navigation.find(n=>n[0]===page)?.[1]
-  function action(id:string,action:string){run(()=>api(`/devices/${id}/${action}`,'POST',action==='manual'?{duration_minutes:30}:undefined),'Demande enregistrée ; le résultat sera confirmé par les mesures.')}
+  function action(id:string,action:string){run(()=>api(`/devices/${id}/${action}`,'POST',action==='manual'?{}:undefined),'Demande enregistrée ; le résultat sera confirmé par les mesures.')}
   return <div className="app-shell"><aside className="sidebar"><div className="brand"><Icon name="sun" size={31}/><span>solar<span>energy manager</span></span></div><div className="sidebar-label">VOTRE ÉNERGIE</div>
     <nav>{navigation.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setError('');setMessage('')}}><Icon name={icon}/><span>{label}</span></button>)}</nav>
     <div className="sidebar-bottom"><span className="status-dot"/><span>Pilotage local · auto-hébergé</span><button onClick={()=>run(async()=>{await api('/auth/logout','POST');setAuth(false)})}>Déconnexion</button></div></aside>

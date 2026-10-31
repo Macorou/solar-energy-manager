@@ -17,7 +17,7 @@ def lookup(request,device_id):
 
 
 class ManualRequest(BaseModel):
-    duration_minutes:int=Field(30,ge=1,le=720)
+    duration_minutes:int=Field(30,ge=1,le=720,description='Durée du mode manuel du ballon. Ignorée pour la voiture : le mode manuel reste actif jusqu’à une intervention utilisateur.')
 
 
 @router.post('/devices/{device_id}/meter-read')
@@ -38,13 +38,14 @@ def manual(device_id:str,body:ManualRequest,request:Request):
     if not device.armed: raise HTTPException(409,'Activer et vérifier cet appareil avant une commande')
     values=request.app.state.store.get('manual_controls',{})
     previous=values.get(device_id,{}).get('previous_mode',device.mode)
-    values[device_id]={'until':(utcnow()+timedelta(minutes=body.duration_minutes)).isoformat(),
+    values[device_id]={'until':None if device.kind=='charger' else (utcnow()+timedelta(minutes=body.duration_minutes)).isoformat(),
                        'previous_mode':previous if previous!='manual' else 'off'}
     request.app.state.store.set('manual_controls',values)
     device.mode='manual'
     request.app.state.store.save_settings(config.model_dump(mode='json'))
     request.app.state.store.append_event({'kind':'manual','device_id':device_id,
-        'details':{'duration_minutes':body.duration_minutes,'origin':'web'}})
+        'details':{'duration_minutes':None if device.kind=='charger' else body.duration_minutes,
+                   'persistent':device.kind=='charger','origin':'web'}})
     return {'ok':True,'until':values[device_id]['until']}
 
 
@@ -52,8 +53,12 @@ def manual(device_id:str,body:ManualRequest,request:Request):
 def pause(device_id:str,request:Request):
     config,device=lookup(request,device_id)
     modes=request.app.state.store.get('paused_modes',{})
-    if device.mode not in ('off','manual'): modes[device_id]=device.mode
+    manuals=request.app.state.store.get('manual_controls',{})
+    previous=manuals.get(device_id,{}).get('previous_mode') if device.mode=='manual' else device.mode
+    if previous in ('solar','planned','off_peak_solar'): modes[device_id]=previous
     request.app.state.store.set('paused_modes',modes)
+    manuals.pop(device_id,None)
+    request.app.state.store.set('manual_controls',manuals)
     device.mode='off'
     request.app.state.store.save_settings(config.model_dump(mode='json'))
     request.app.state.coordinator.engine.forget(device_id)

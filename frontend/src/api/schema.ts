@@ -1212,6 +1212,7 @@ export interface components {
         ManualRequest: {
             /**
              * Duration Minutes
+             * @description Durée du mode manuel du ballon. Ignorée pour la voiture : le mode manuel reste actif jusqu’à une intervention utilisateur.
              * @default 30
              */
             duration_minutes: number;

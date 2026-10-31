@@ -6,7 +6,7 @@ import {Icon} from '../components/Icon'
 import {api} from '../api/client'
 import {createId} from '../api/id'
 export type Run=(operation:()=>Promise<unknown>,message?:string)=>Promise<void>
-const modes={off:'Arrêt',solar:'Solaire',planned:'Planifié',off_peak_solar:'HC/HP + solaire',manual:'Manuel temporaire'}
+const modes={off:'Arrêt',solar:'Solaire',planned:'Planifié',off_peak_solar:'HC/HP + solaire',manual:'Manuel'}
 export function Devices({settings,save,run,kind}:{settings:Settings;save:(value:Settings)=>Promise<void>;run:Run;kind:Device['kind']}) {
   const [editing,setEditing]=useState<Device|null>(null)
   const [vehicle,setVehicle]=useState<Vehicle|null>(null)

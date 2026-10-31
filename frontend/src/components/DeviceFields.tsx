@@ -1,6 +1,6 @@
 import type {Device,Vehicle} from '../api/types'
 import {CloudSettingsForm} from './Editors'
-export const deviceModes={off:'Arrêt',solar:'Solaire',planned:'Planifié',off_peak_solar:'HC/HP + solaire',manual:'Manuel temporaire'}
+export const deviceModes={off:'Arrêt',solar:'Solaire',planned:'Planifié',off_peak_solar:'HC/HP + solaire',manual:'Manuel'}
 export function DeviceFields({editing,setEditing,vehicles}:{editing:Device;setEditing:(value:Device)=>void;vehicles:Vehicle[]}){const kind=editing.kind,modes=deviceModes;return <>
         <div className="form-grid"><label>Nom<input required value={editing.name} onChange={e=>setEditing({...editing,name:e.target.value})}/></label>
           <label>Mode<select value={editing.mode} onChange={e=>setEditing({...editing,mode:e.target.value as Device['mode']})}>{Object.entries(modes).filter(([m])=>m!=='manual'&&(kind==='charger'?m!=='off_peak_solar':m!=='planned')).map(([key,name])=><option key={key} value={key}>{name}</option>)}</select></label>

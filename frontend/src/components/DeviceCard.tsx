@@ -51,18 +51,17 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
         </div>
         <div className="mode-switch" aria-label="Mode de pilotage">
           <button className={automatic?'selected automatic':''} aria-pressed={automatic} disabled={!config.armed} onClick={()=>onAction(config.id,'resume')}><Icon name="leaf" size={14}/>Automatique</button>
-          <button className={config.mode==='manual'?'selected':''} aria-pressed={config.mode==='manual'} disabled={!config.armed} onClick={()=>onAction(config.id,'manual')} title="Démarrage temporaire pendant 30 minutes"><Icon name="hand" size={14}/>Manuel</button>
+          <button className={config.mode==='manual'?'selected':''} aria-pressed={config.mode==='manual'} disabled={!config.armed} onClick={()=>onAction(config.id,'manual')} title={car?'Manuel jusqu’à votre changement de mode':'Démarrage temporaire pendant 30 minutes'}><Icon name="hand" size={14}/>Manuel</button>
           <button className={config.mode==='off'?'selected':''} aria-pressed={config.mode==='off'} disabled={!config.armed} onClick={()=>onAction(config.id,'pause')}><Icon name="pause" size={14}/>Pause</button>
         </div>
         <div className="device-reading"><Icon name={car?'bolt':'calendar'} size={26}/><div>
           <strong>{watts(power)}</strong><span>{displayed.estimated.power?'Puissance estimée · état OCPP':car?'Puissance de charge actuelle':'Puissance de chauffe actuelle'}</span>
         </div></div>
-        <button className={'start-now '+(car?'charge':'heat')} disabled={!config.armed} title="Commande manuelle temporaire de 30 minutes" onClick={()=>onAction(config.id,'manual')}><Icon name="play" size={16}/>{car?'Charger maintenant':'Chauffer maintenant'}</button>
+        <button className={'start-now '+(car?'charge':'heat')} disabled={!config.armed} title={car?'Recharge manuelle jusqu’à votre changement de mode':'Commande manuelle temporaire de 30 minutes'} onClick={()=>onAction(config.id,'manual')}><Icon name="play" size={16}/>{car?'Charger maintenant':'Chauffer maintenant'}</button>
       </div>
     </div>
     {car&&session&&<ChargeSession value={session}/>}
     <div className="device-feedback"><span className="reason"><span className="status-dot"/>{device.reason}</span><span className="device-priority">Priorité {config.priority}</span></div>
-    {command&&command.status!=='observed'&&<div className="command-status">Demande {watts(command.power_w)} · {({sending:'envoi en cours',accepted:'acceptée, en attente de mesure',unknown:'résultat inconnu'} as Record<string,string>)[command.status]||command.status}</div>}
     {car&&value!=null&&<span className="measure-date">{batteryDate?<>Batterie relevée le <time dateTime={telemetry!.measured_at!}>{batteryDate}</time></>:'Date de mesure indisponible'}</span>}
   </article>
 }

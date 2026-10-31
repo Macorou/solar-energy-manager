@@ -187,8 +187,13 @@ class Coordinator:
         changed=False
         for device in config.devices:
             entry=manuals.get(device.id)
-            until=datetime.fromisoformat(entry['until']) if entry else None
-            if device.mode=='manual' and (not until or until<=now):
+            until=datetime.fromisoformat(entry['until']) if entry and entry.get('until') else None
+            if device.kind=='charger' and device.mode=='manual':
+                # Migrate old timed car overrides without changing the selected mode.
+                if entry and entry.get('until') is not None:
+                    entry['until']=None; changed=True
+                until=None
+            elif device.mode=='manual' and (not until or until<=now):
                 device.mode=entry.get('previous_mode','off') if entry else 'off'
                 manuals.pop(device.id,None); changed=True
             cloud=device.cloud.model_dump()

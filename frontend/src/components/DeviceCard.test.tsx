@@ -28,7 +28,7 @@ it('retains reported power between updates without confirming a charge from cach
   expect(screen.getByText('0 W')).toBeTruthy()
 })
 
-it('keeps immediate start unavailable until activation and sends the existing temporary manual action',()=>{
+it('keeps immediate start unavailable until activation and sends the manual action',()=>{
   const action=vi.fn()
   const device={config:{id:'pulsar',name:'Wallbox',kind:'charger',armed:false,mode:'solar',priority:1,default_soc_target:80},
     state:{observed_power:null,observed_state:'unknown',connected:false,temperature:null},

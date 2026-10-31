@@ -21,4 +21,5 @@ class LogPage(BaseModel):
     gap: bool
     retention_days: int
     max_entries: int
+    max_verbose_entries: int
     dropped: int

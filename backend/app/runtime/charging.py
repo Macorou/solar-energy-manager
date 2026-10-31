@@ -3,6 +3,7 @@
 Meter deltas are measured. Their allocation between contexts is time-weighted,
 assuming uniform delivery inside each meter interval; it is never a billing meter.
 """
+import json
 import math
 import uuid
 from datetime import datetime, timezone
@@ -11,6 +12,14 @@ from app.engine.evcc_soc import SocEstimator
 from app.domain.commands import CHARGER_START_WAIT_S
 from app.storage.charging_sessions import SessionHistory
 from app.sessions.soc_capture import capture_start, recover_start
+
+
+CHECKPOINT_INTERVAL_S=60
+# Clock bookkeeping refreshed every tick. Alone, it is persisted at most once per
+# CHECKPOINT_INTERVAL_S; a restart then reports the gap as a partial duration.
+VOLATILE_FIELDS=('checked_at','duration_last_at','duration_valid_until','duration_charging','charge_duration_s')
+# Meter points are not read back by the current code; keep only a recent tail.
+MAX_POINTS=360
 
 
 def finite(value):
@@ -54,6 +63,7 @@ class ChargingTracker:
                     and '|'.join(session['vehicle']) not in self.peugeot_references):
                 self.remember_peugeot(*session['vehicle'],anchor['soc'],anchor['at'])
         self.effective_price=None
+        self.persisted=None;self.persisted_at=None
 
     def remember_peugeot(self,vehicle_id,vin,soc,stamp):
         if not vehicle_id or not finite(soc) or not 0<=soc<=100: return
@@ -182,7 +192,7 @@ class ChargingTracker:
                         session['last_meter']=base;session['last_at']=base_at
                         session['meter_transaction_id']=transaction
                         session['points'].append([base_at,session['energy_wh']])
-                        session['points']=session['points'][-4096:]
+                        session['points']=session['points'][-MAX_POINTS:]
                     if session['last_at'] is None:
                         if now-when<=max(90,config.sample_max_age_s):
                             session['last_meter']=raw;session['last_at']=when
@@ -201,7 +211,13 @@ class ChargingTracker:
                             session['energy_wh']+=delta
                         session['last_meter']=raw;session['last_at']=when
                         session['points'].append([when,session['energy_wh']])
-                        session['points']=session['points'][-4096:]
+                        session['points']=session['points'][-MAX_POINTS:]
+                if session['last_at'] is not None:
+                    # Allocation of the next delta starts at last_at: it only reads the
+                    # context in force at that time and later ones.
+                    kept=session['contexts']
+                    first=next((i for i in range(len(kept)-1,-1,-1) if kept[i][0]<=session['last_at']),0)
+                    session['contexts']=kept[first:]
                 power=state.observed_power
                 if (session.get('soc_gap_at') is not None and session['energy_wh']==0
                     and session.get('soc_gap_transaction_id') is None
@@ -226,7 +242,18 @@ class ChargingTracker:
                         session['terminal_pending']=session['energy_wh']>0 and not state.energy_terminal
                         session['history_terminal_confirmed']=valid_terminal
             # Disconnection of the controller never closes a plug session.
+        self.checkpoint(now,config)
+
+    def checkpoint(self,now,config):
+        """Persist accounting changes at once, clock-only changes at a bounded rate."""
+        complete=json.dumps(self.sessions,allow_nan=False,sort_keys=True)
+        fingerprint=json.dumps({key:{k:v for k,v in session.items() if k not in VOLATILE_FIELDS}
+            for key,session in self.sessions.items()},allow_nan=False,sort_keys=True)
+        if self.persisted is not None and (complete==self.persisted[1] or fingerprint==self.persisted[0]
+                and 0<=now-self.persisted_at<CHECKPOINT_INTERVAL_S):
+            return
         self.history.checkpoint(self.sessions,config)
+        self.persisted,self.persisted_at=(fingerprint,complete),now
 
     def allocate(self,session,delta,start,end,max_age):
         if delta<=0 or end<=start: return

@@ -29,6 +29,7 @@ class SQLiteStore:
                 CREATE TABLE IF NOT EXISTS diagnostic_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,
                     at TEXT NOT NULL, level TEXT NOT NULL, area TEXT NOT NULL, message TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS diagnostic_logs_at ON diagnostic_logs(at);
+                CREATE INDEX IF NOT EXISTS diagnostic_logs_level ON diagnostic_logs(level, id);
                 PRAGMA user_version=3;
             ''')
         from app.diagnostics.journal import DiagnosticJournal
@@ -54,8 +55,12 @@ class SQLiteStore:
         return json.loads(row['value']) if row else default
 
     def set(self, key, value):
+        text = json.dumps(value)
         with self.connection() as db:
-            db.execute('INSERT OR REPLACE INTO kv VALUES(?,?)', (key, json.dumps(value)))
+            # Runtime state is saved every tick; an identical value must not cost a disk commit.
+            row = db.execute('SELECT value FROM kv WHERE key=?', (key,)).fetchone()
+            if not row or row['value'] != text:
+                db.execute('INSERT OR REPLACE INTO kv VALUES(?,?)', (key, text))
 
     def load_settings(self):
         return self.get('settings', {})

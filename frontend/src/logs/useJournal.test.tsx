@@ -4,7 +4,7 @@ import {useJournal} from './useJournal'
 
 afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.useRealTimers()})
 const row=(id:number)=>({id,at:'2026-10-30T20:00:00Z',level:'INFO',area:'ha',message:String(id)})
-const data=(ids:number[],extra={})=>({entries:ids.map(row),cursor:ids.at(-1)??0,has_more:false,has_older:false,areas:['ha'],gap:false,retention_days:7,max_entries:10000,dropped:0,...extra})
+const data=(ids:number[],extra={})=>({entries:ids.map(row),cursor:ids.at(-1)??0,has_more:false,has_older:false,areas:['ha'],gap:false,retention_days:7,max_entries:10000,max_verbose_entries:60000,dropped:0,...extra})
 const response=(value:unknown)=>({ok:true,json:async()=>value} as Response)
 
 it('freezes an in-flight poll when paused, then resumes without dropping that response range',async()=>{

@@ -1,4 +1,5 @@
 import asyncio
+import re
 from dataclasses import asdict,replace
 from datetime import datetime,timedelta,timezone
 from app.settings import SettingsDocument
@@ -67,7 +68,7 @@ class Coordinator:
         self.reasons={}; self.authorizations={}; self.running=False; self.loop_task=None
         self.effective_targets={}; self.target_sources={}
         self.last_tick=None
-        self.last_diagnostic=None
+        self.last_diagnostic=None;self.last_diagnostic_reasons={}
         self.instance=InstanceLock(store.path.parent/'controller.lock')
 
     async def start(self):
@@ -326,7 +327,11 @@ class Coordinator:
             self.store.set('runtime_reservations',{key:{'power_w':r.power_w,'command_id':r.command_id,
                 'expires_at':r.expires_at.isoformat()} for key,r in self.reservations.items()})
             self.last_tick=utcnow()
-            if not self.last_diagnostic or (snapshot.at-self.last_diagnostic).total_seconds()>=10:
+            # Periodic detail every 30 s, and at once when a device decision changes
+            # (countdown seconds inside a reason are not a change).
+            decisions={key:re.sub(r'\d+','#',value) for key,value in self.reasons.items()}
+            if (not self.last_diagnostic or decisions!=self.last_diagnostic_reasons
+                    or (snapshot.at-self.last_diagnostic).total_seconds()>=30):
                 def reading(sample):
                     return f'{sample.value} {sample.unit}' if sample and sample.value is not None else 'indisponible'
                 self.store.journal.write('TRACE','site',f'Réseau={reading(snapshot.grid)} ; solaire={reading(snapshot.solar)}')
@@ -337,6 +342,7 @@ class Coordinator:
                     if state:
                         self.store.journal.write('TRACE','device:'+device.id,f'État={state.observed_state} ; puissance={reading(state.observed_power)} ; décision={self.reasons.get(device.id,"—")}')
                 self.last_diagnostic=snapshot.at
+                self.last_diagnostic_reasons=decisions
             return batch
 
     def record_schedules(self,snapshot,occurrences,config):

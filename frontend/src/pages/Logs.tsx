@@ -47,6 +47,6 @@ export function Logs({timezone}:{timezone:string}){
       </div>
       {(!following||data&&data.entries.length>=2000)&&<button type="button" className="journal-latest" onClick={()=>{follow.current=true;setFollowing(true);reset();setRunning(true)}}><Icon name="down" size={16}/>Revenir aux dernières lignes</button>}
     </section>
-    <p className="journal-footnote">Conservation : 7 jours, jusqu’à 10 000 lignes. Le téléchargement respecte les filtres et inclut toutes les lignes conservées. La pause concerne uniquement l’affichage. Les secrets et les contenus d’authentification sont masqués.</p>
+    <p className="journal-footnote">Conservation : 7 jours, jusqu’à 10 000 lignes INFO, WARN, ERROR et FATAL, et 60 000 lignes DEBUG et TRACE (environ une journée de détail). Le téléchargement respecte les filtres et inclut toutes les lignes conservées. La pause concerne uniquement l’affichage. Les secrets et les contenus d’authentification sont masqués.</p>
   </div>
 }

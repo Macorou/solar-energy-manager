@@ -3,6 +3,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from app.api.auth import require_auth
+from app.diagnostics.journal import MAX_ENTRIES, MAX_VERBOSE_ENTRIES, PURGE_EVERY
 from app.diagnostics.models import LogLevel, LogPage
 
 router = APIRouter(prefix='/api/v1/logs', dependencies=[Depends(require_auth)])
@@ -32,7 +33,8 @@ def logs(request: Request, options=Depends(filters), after: Annotated[int | None
 
 @router.get('/export')
 def export_logs(request: Request, options=Depends(filters)):
-    data = read(request, options, limit=10000)
+    # Every retained line, with the batch purge slack of both budgets.
+    data = read(request, options, limit=MAX_ENTRIES+MAX_VERBOSE_ENTRIES+2*PURGE_EVERY)
     lines = ['Solar Energy Manager · Journaux · UTC · filtres appliqués']
     lines += [f'[{r["area"]}] {r["level"]} {r["at"]} {r["message"]}' for r in data['entries']]
     return Response('\n'.join(lines)+'\n', media_type='text/plain; charset=utf-8',

@@ -44,7 +44,8 @@ class HomeAssistantSource:
             for entity in required:
                 normalize_power(self.states[entity], self.received[entity])
             self.connected, self.error = True, None
-            if self.journal and time.monotonic()-self.logged_at>=10:
+            # States are re-read every second; one success line a minute is enough.
+            if self.journal and time.monotonic()-self.logged_at>=60:
                 self.journal.write('DEBUG','ha',f'Lecture des états réussie : {len(self.states)} entités')
                 self.logged_at=time.monotonic()
         except Exception as error:

@@ -84,6 +84,8 @@ def test_retention_survives_reopen_and_does_not_modify_events(tmp_path):
                    (old, 'INFO', 'old', 'expired'))
         db.executemany('INSERT INTO diagnostic_logs(at,level,area,message) VALUES(?,?,?,?)',
             [(datetime.now(timezone.utc).isoformat(), 'INFO', 'test', str(i)) for i in range(10005)])
+    # Purges run in batches; the first write of a reopened store always purges.
+    store = SQLiteStore(tmp_path/'app.db')
     store.journal.write('INFO', 'system', 'reopened')
     store.backup(tmp_path/'backup.db')
     reopened = SQLiteStore(tmp_path/'backup.db')

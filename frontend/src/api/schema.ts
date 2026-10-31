@@ -1205,6 +1205,8 @@ export interface components {
             retention_days: number;
             /** Max Entries */
             max_entries: number;
+            /** Max Verbose Entries */
+            max_verbose_entries: number;
             /** Dropped */
             dropped: number;
         };

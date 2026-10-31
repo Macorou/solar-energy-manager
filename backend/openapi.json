@@ -3153,6 +3153,10 @@
             "type": "integer",
             "title": "Max Entries"
           },
+          "max_verbose_entries": {
+            "type": "integer",
+            "title": "Max Verbose Entries"
+          },
           "dropped": {
             "type": "integer",
             "title": "Dropped"
@@ -3168,6 +3172,7 @@
           "gap",
           "retention_days",
           "max_entries",
+          "max_verbose_entries",
           "dropped"
         ],
         "title": "LogPage"

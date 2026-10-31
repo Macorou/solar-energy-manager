@@ -3,8 +3,13 @@ import sqlite3
 from .redaction import Redactor
 
 LEVELS = ('FATAL', 'ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE')
+VERBOSE_LEVELS = ('DEBUG', 'TRACE')
+IMPORTANT_LEVELS = tuple(level for level in LEVELS if level not in VERBOSE_LEVELS)
+# Separate budgets: periodic traces must not push errors out of the retention window.
 MAX_ENTRIES = 10000
+MAX_VERBOSE_ENTRIES = 60000
 RETENTION_DAYS = 7
+PURGE_EVERY = 200
 
 
 class DiagnosticJournal:
@@ -12,6 +17,7 @@ class DiagnosticJournal:
         self.store = store
         self.redactor = Redactor()
         self.dropped = 0
+        self.writes = 0
 
     def write(self, level, area, message):
         """Best effort: never hold up commands on a diagnostic DB lock/failure."""
@@ -26,13 +32,26 @@ class DiagnosticJournal:
             with sqlite3.connect(self.store.path, timeout=.05) as db:
                 db.execute('INSERT INTO diagnostic_logs(at,level,area,message) VALUES(?,?,?,?)',
                     (now.isoformat(), level, self.redactor.clean(area, 80), self.redactor.clean(message)))
-                db.execute('DELETE FROM diagnostic_logs WHERE at < ? OR id <= '
-                           '(SELECT COALESCE(max(id),0)-? FROM diagnostic_logs)',
-                           ((now-timedelta(days=RETENTION_DAYS)).isoformat(), MAX_ENTRIES))
+                # Purge on the first write after start, then in batches: each limit
+                # may be exceeded by at most PURGE_EVERY lines between two purges.
+                if self.writes % PURGE_EVERY == 0:
+                    self.purge(db, now)
+                self.writes += 1
         except Exception:
             self.dropped += 1
         finally:
             self.store.lock.release()
+
+    @staticmethod
+    def purge(db, now):
+        db.execute('DELETE FROM diagnostic_logs WHERE at < ?', ((now-timedelta(days=RETENTION_DAYS)).isoformat(),))
+        for levels, limit in ((IMPORTANT_LEVELS, MAX_ENTRIES), (VERBOSE_LEVELS, MAX_VERBOSE_ENTRIES)):
+            marks = ','.join('?' for _ in levels)
+            oldest_kept = db.execute(f'SELECT id FROM diagnostic_logs WHERE level IN ({marks}) '
+                                     'ORDER BY id DESC LIMIT 1 OFFSET ?', (*levels, limit-1)).fetchone()
+            if oldest_kept:
+                db.execute(f'DELETE FROM diagnostic_logs WHERE level IN ({marks}) AND id < ?',
+                           (*levels, oldest_kept[0]))
 
     def query(self, level='DEBUG', areas=(), search='', after=None, before=None, limit=500):
         cutoff = (datetime.now(timezone.utc)-timedelta(days=RETENTION_DAYS)).isoformat()
@@ -74,4 +93,5 @@ class DiagnosticJournal:
         return {'entries': entries, 'cursor': cursor, 'has_more': extra if after is not None else False,
                 'has_older': has_older, 'areas': available,
                 'gap': bool(after and bounds[0] and after < bounds[0]-1),
-                'retention_days': RETENTION_DAYS, 'max_entries': MAX_ENTRIES, 'dropped': self.dropped}
+                'retention_days': RETENTION_DAYS, 'max_entries': MAX_ENTRIES,
+                'max_verbose_entries': MAX_VERBOSE_ENTRIES, 'dropped': self.dropped}

@@ -9,7 +9,11 @@ from app.settings import HomeAssistantConfig
 
 
 @pytest.mark.asyncio
-async def test_ha_success_and_failure_are_visible_without_tokens(tmp_path):
+async def test_ha_success_and_failure_are_visible_without_tokens(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from app.connectors.home_assistant import client
+    # A host booted a few seconds ago (CI runner, restarted server) must still log the first read.
+    monkeypatch.setattr(client, 'time', SimpleNamespace(monotonic=lambda: 5.0))
     journal = SQLiteStore(tmp_path/'app.db').journal
     def transport(request):
         return httpx.Response(200, json=[{'entity_id':'sensor.grid', 'state':'834',

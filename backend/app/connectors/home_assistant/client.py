@@ -24,7 +24,7 @@ class HomeAssistantSource:
         self.websocket = None
         self.error = None
         self.journal = journal
-        self.logged_at = 0
+        self.logged_at = None
         if journal: journal.redactor.register(token)
 
     async def connect(self):
@@ -45,7 +45,8 @@ class HomeAssistantSource:
                 normalize_power(self.states[entity], self.received[entity])
             self.connected, self.error = True, None
             # States are re-read every second; one success line a minute is enough.
-            if self.journal and time.monotonic()-self.logged_at>=60:
+            # The monotonic clock starts near 0 on a freshly booted host: log the first read.
+            if self.journal and (self.logged_at is None or time.monotonic()-self.logged_at>=60):
                 self.journal.write('DEBUG','ha',f'Lecture des états réussie : {len(self.states)} entités')
                 self.logged_at=time.monotonic()
         except Exception as error:

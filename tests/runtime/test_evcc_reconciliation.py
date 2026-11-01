@@ -116,12 +116,14 @@ async def test_observed_authorization_does_not_hide_unapplied_physical_limit(tmp
         return
     assert [c.action for c in calls]==['suspend']
     assert store.get('charger_limit_faults')==['ev']
+    assert store.get('charger_limit_retry')['ev']['attempt']==1
+    assert 'charger_limit_fault' in [e['kind'] for e in store.events()]
+    # A restart keeps the pause: no new start before the automatic retry time.
     restarted=Coordinator(store,adapters={'ev':adapter});restarted.engine.clock=clock
     clock.advance(2);await restarted.tick(frame(0,2,'SuspendedEVSE'))
     await asyncio.gather(*restarted.command_tasks.values())
     assert not any(c.action=='set_power' for c in calls)
-    # Only the existing explicit disarm workflow, after a fresh observed stop,
-    # clears the persisted fault; a restart or normal mode evaluation does not.
+    # The explicit disarm workflow, after a fresh observed stop, still clears it at once.
     cfg.devices[0].mode='off';store.save_settings(cfg.model_dump(mode='json'))
     monkeypatch.setattr('app.api.devices.utcnow',clock.now)
     request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(store=store,coordinator=restarted)))

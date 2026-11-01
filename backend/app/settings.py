@@ -158,6 +158,9 @@ class SettingsDocument(Model):
     phase_margin_a: float = Field(1,ge=0,le=100)
     solar_price_per_kwh: float = Field(0,ge=0,le=100)
     sample_max_age_s: int = Field(30, ge=5, le=3600)
+    grid_fallback_current_a: float = Field(0, ge=0, le=80, description=
+        'Courant de recharge pendant un créneau réseau quand la mesure réseau ou de phase manque '
+        '(0 = arrêt). Sans mesure, SEM ne protège plus le disjoncteur.')
     devices: list[DeviceConfig] = Field(default_factory=list)
     vehicles: list[VehicleConfig] = Field(default_factory=list)
     schedules: list[ChargeProgram] = Field(default_factory=list)

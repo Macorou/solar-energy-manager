@@ -7,7 +7,7 @@ import {SourceEditor} from './SourceEditor'
 import {api} from '../api/client'
 vi.mock('../api/client',()=>({api:vi.fn().mockResolvedValue({ok:true})}))
 afterEach(()=>{cleanup();vi.clearAllMocks()})
-const initial:Settings={devices:[],vehicles:[],schedules:[],off_peak:[],peugeot:{username:'',country:'fr',client_id:'',poll_interval_s:900,max_age_s:1800},home_assistant:{url:'http://ha.test',grid_entity:'sensor.grid',solar_entity:'sensor.solar',house_entity:'',price_entity:'',phases:{},device_power_entities:{},invert_grid:false},ariston:{username:'old',poll_interval_s:120,max_age_s:600},site_limit_w:12000,export_margin_w:100,phase_control_enabled:false,phase_margin_a:1,solar_price_per_kwh:0,sample_max_age_s:30,timezone:'Europe/Paris'}
+const initial:Settings={devices:[],vehicles:[],schedules:[],off_peak:[],peugeot:{username:'',country:'fr',client_id:'',poll_interval_s:900,max_age_s:1800},home_assistant:{url:'http://ha.test',grid_entity:'sensor.grid',solar_entity:'sensor.solar',house_entity:'',price_entity:'',phases:{},device_power_entities:{},invert_grid:false},ariston:{username:'old',poll_interval_s:120,max_age_s:600},site_limit_w:12000,export_margin_w:100,phase_control_enabled:false,phase_margin_a:1,solar_price_per_kwh:0,sample_max_age_s:30,grid_fallback_current_a:0,timezone:'Europe/Paris'}
 const run=async(op:()=>Promise<unknown>)=>{await op()}
 it('merges only edited device fields and keeps newer targets, cloud settings, arming and power mapping',async()=>{
   const d={...newDevice(initial,'water_heater'),id:'tank',target:55},settings={...initial,devices:[d],home_assistant:{...initial.home_assistant,device_power_entities:{tank:'sensor.old'}}},save=vi.fn().mockResolvedValue(undefined),props={initial:d,settings,save,run,onSaved:vi.fn()}

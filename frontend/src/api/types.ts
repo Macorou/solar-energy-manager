@@ -16,7 +16,7 @@ export interface LiveDevice {config:Device;state:{observed_power:Sample|null;obs
   currents?:Record<string,Sample>;energy_wh?:number|null;offered_current?:Sample|null;measured_at?:string|null};reason:string;
   reservation_w:number;command:{status:string;power_w:number;reason:string}|null;
   authorization:{target_soc:number;expires_at:string|null}|null;
-  effective_target?:number|null;target_source?:'grid'|'solar';charging?:ChargingSummary|null}
+  effective_target?:number|null;target_source?:'grid'|'solar';charging?:ChargingSummary|null;plan_warning?:string|null}
 export interface LiveState {simulation:false;at:string|null;running:boolean;grid:Sample|null;solar:Sample|null;
   house?:Sample|null;house_configured?:boolean;
   phase_control_enabled?:boolean;phases?:Record<string,{current:Sample|null;voltage:Sample|null;power:Sample|null;limit_a:number}>;

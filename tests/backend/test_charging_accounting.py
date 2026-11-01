@@ -218,7 +218,7 @@ async def test_planned_charge_recovers_the_live_zero_energy_gap_with_confirmed_s
     assert device['command']['power_w']==4025
 
 
-@pytest.mark.parametrize('quality',[Quality.FRESH,Quality.STALE,Quality.UNAVAILABLE])
+@pytest.mark.parametrize('quality',[Quality.FRESH,Quality.STALE])
 def test_last_peugeot_soc_is_the_automatic_reference_even_before_meter_history(tmp_path,quality):
     tracker,_,cfg=setup_tracker(tmp_path);now=utcnow();old=now-timedelta(days=2)
     for seconds,energy in [(0,10000),(30,12000)]:
@@ -231,6 +231,22 @@ def test_last_peugeot_soc_is_the_automatic_reference_even_before_meter_history(t
     assert tracker.summary('ev')['soc_reference_missing'] is False
     assert tracker.summary('ev')['soc_reference_source']=='vehicle'
     assert tracker.target_reached('ev',80)
+
+
+def test_a_percentage_kept_through_a_peugeot_error_never_seeds_the_session(tmp_path):
+    tracker,_,cfg=setup_tracker(tmp_path);now=utcnow()
+    for seconds,energy in [(0,10000),(30,12000)]:
+        snapshot=frame(now+timedelta(seconds=seconds),energy,soc=85)
+        snapshot=replace(snapshot,vehicle_telemetry={'car':replace(snapshot.vehicle_telemetry['car'],
+            quality=Quality.UNAVAILABLE)})
+        tracker.update(snapshot,cfg)
+    out=tracker.summary('ev')
+    assert out['soc'] is None and out['soc_usable'] is False and out['soc_known'] is False
+    assert out['soc_reason']=='Batterie Peugeot indisponible'
+    assert not tracker.target_reached('ev',80)
+    tracker.update(frame(now+timedelta(seconds=60),12000,soc=40),cfg)
+    tracker.update(frame(now+timedelta(seconds=90),14000,soc=40),cfg)
+    assert tracker.summary('ev')['soc']==pytest.approx(45)
 
 
 def test_changed_peugeot_soc_replaces_estimate_without_readding_previous_energy(tmp_path):
@@ -326,7 +342,7 @@ def test_persisted_uncovered_peugeot_reference_survives_repeat_reboot_and_replug
     assert tracker.summary('ev')['soc_usable'] is True
 
 
-def test_last_peugeot_reference_survives_restart_and_replug_without_cloud(tmp_path):
+def test_restart_and_replug_without_cloud_waits_for_peugeot(tmp_path):
     tracker,store,cfg=setup_tracker(tmp_path);now=utcnow();old=now-timedelta(days=2)
     tracker.update(frame(now,10000,stamp=old),cfg)
     tracker.update(frame(now+timedelta(seconds=30),12000,stamp=old),cfg)
@@ -336,13 +352,14 @@ def test_last_peugeot_reference_survives_restart_and_replug_without_cloud(tmp_pa
     from app.runtime.charging import ChargingTracker
     tracker=ChargingTracker(store)
     tracker.update(replace(frame(now+timedelta(seconds=90),12000),vehicle_telemetry={}),cfg)
-    assert tracker.summary('ev')['soc']==75
-    assert tracker.summary('ev')['soc_usable'] is True
-    tracker.update(replace(frame(now+timedelta(seconds=120),14000),vehicle_telemetry={}),cfg)
-    assert tracker.summary('ev')['soc']==80
+    assert tracker.summary('ev')['soc'] is None
+    assert tracker.summary('ev')['soc_usable'] is False
+    assert store.get('peugeot_soc_references')['car|']['soc']==75
+    tracker.update(frame(now+timedelta(seconds=120),14000,soc=50),cfg)
+    assert tracker.summary('ev')['soc']==50
 
 
-def test_latest_peugeot_received_while_unplugged_is_used_after_restart(tmp_path):
+def test_latest_peugeot_received_while_unplugged_is_remembered_but_not_reused_without_cloud(tmp_path):
     tracker,store,cfg=setup_tracker(tmp_path);now=utcnow()
     tracker.update(frame(now,10000,stamp=now-timedelta(days=2)),cfg)
     tracker.update(frame(now+timedelta(seconds=30),10000,plugged=False),cfg)
@@ -350,9 +367,8 @@ def test_latest_peugeot_received_while_unplugged_is_used_after_restart(tmp_path)
     from app.runtime.charging import ChargingTracker
     tracker=ChargingTracker(store)
     tracker.update(replace(frame(now+timedelta(seconds=90),10000),vehicle_telemetry={}),cfg)
-    assert tracker.summary('ev')['soc']==70
-    tracker.update(replace(frame(now+timedelta(seconds=120),12000),vehicle_telemetry={}),cfg)
-    assert tracker.summary('ev')['soc']==75
+    assert store.get('peugeot_soc_references')['car|']['soc']==70
+    assert tracker.summary('ev')['soc'] is None
 
 
 def test_persisted_peugeot_reference_is_never_reused_for_a_different_vin(tmp_path):
@@ -478,3 +494,20 @@ def test_impossible_counter_jump_does_not_create_energy_or_infinite_cost(tmp_pat
     assert tracker.summary('ev')['energy_kwh']==0
     assert tracker.summary('ev')['energy_partial'] is True
     assert tracker.summary('ev')['soc_usable'] is False
+
+
+@pytest.mark.asyncio
+async def test_engine_never_sees_a_peugeot_percentage_kept_through_an_api_error(tmp_path):
+    from app.runtime.coordinator import Coordinator
+    _,store,cfg=setup_tracker(tmp_path);now=utcnow()
+    store.save_settings(cfg.model_dump(mode='json'))
+    runtime=Coordinator(store)
+    error=lambda snapshot:replace(snapshot,vehicle_telemetry={'car':replace(snapshot.vehicle_telemetry['car'],
+        quality=Quality.UNAVAILABLE)})
+    await runtime.tick(error(frame(now,10000,soc=90,plugged=False)))
+    assert runtime.snapshot.vehicle_telemetry['car'].soc is None
+    # An estimate started from a good reading survives a later Peugeot error.
+    await runtime.tick(frame(now+timedelta(seconds=30),10000,soc=60))
+    await runtime.tick(error(frame(now+timedelta(seconds=60),12000,soc=60)))
+    car=runtime.snapshot.vehicle_telemetry['car']
+    assert car.quality==Quality.ESTIMATED and car.soc==pytest.approx(65)

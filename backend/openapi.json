@@ -3571,6 +3571,14 @@
             "title": "Sample Max Age S",
             "default": 30
           },
+          "grid_fallback_current_a": {
+            "type": "number",
+            "maximum": 80.0,
+            "minimum": 0.0,
+            "title": "Grid Fallback Current A",
+            "description": "Courant de recharge pendant un créneau réseau quand la mesure réseau ou de phase manque (0 = arrêt). Sans mesure, SEM ne protège plus le disjoncteur.",
+            "default": 0
+          },
           "devices": {
             "items": {
               "$ref": "#/components/schemas/DeviceConfig"

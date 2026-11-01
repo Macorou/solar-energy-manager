@@ -150,11 +150,21 @@ def test_unapplied_cap_with_persistent_physical_overload_suspends_and_latches(ki
     result=engine.evaluate(frame(),[spec],{'ev':policy},{})
     assert result.commands[0].action=='suspend'
     assert 'non appliquée' in result.reasons['ev']
-    # An acknowledged zero or a mode re-evaluation must not automatically restart it.
+    # An acknowledged zero or a mode re-evaluation must not restart it before the pause...
     engine.command_result(result.commands[0],True,clock.now());engine.forget('ev')
-    clear=replace(frame(),grid=Sample(500,'W','OCPP',clock.now(),clock.now(),checked_at=clock.now()),
-        phase_currents={'L1':Sample(2,'A','OCPP',clock.now(),clock.now(),checked_at=clock.now())})
-    assert not any(c.action=='set_power' for c in engine.evaluate(clear,[spec],{'ev':policy},{}).commands)
+    def clear():
+        now=clock.now();sample=lambda v,u='W':Sample(v,u,'OCPP',now,now,checked_at=now)
+        return SiteSnapshot(now,grid=sample(500),site_limit_w=11000 if kind=='phase' else 4350,
+            phase_control_enabled=kind=='phase',phase_margin_a=1,
+            phase_currents={'L1':sample(2,'A')},phase_limits_a={'L1':20},
+            device_states={'ev':DeviceState('ev',sample(0),'SuspendedEVSE',True,vehicle_connected=True)})
+    assert not any(c.action=='set_power' for c in engine.evaluate(clear(),[spec],{'ev':policy},{}).commands)
+    clock.advance(298)
+    waiting=engine.evaluate(clear(),[spec],{'ev':policy},{})
+    assert not waiting.commands and waiting.reasons['ev'].endswith('nouvelle tentative dans 1 min')
+    # ...but a night charge is not left blocked: it is retried after 5 minutes.
+    clock.advance(2)
+    assert [c.action for c in engine.evaluate(clear(),[spec],{'ev':policy},{}).commands]==['set_power']
 
 
 def test_reduction_watchdog_resets_after_the_physical_current_follows_the_cap():

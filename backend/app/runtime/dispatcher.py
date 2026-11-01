@@ -58,6 +58,18 @@ class Dispatcher:
                            'target_temperature':intent.target_temperature,'error':result.error}})
             return result
 
+    @staticmethod
+    def station_confirms_offer(snapshot,state,power,config,desired,sent):
+        offered=state.offered_current
+        limit=desired/(config.voltage*config.phases)
+        verified=bool(offered and offered.usable(snapshot.at,snapshot.sample_max_age_s)
+            and offered.availability_at>sent and config.min_current_a<=offered.value<=limit+.23)
+        waiting=bool(state.observed_state=='SuspendedEV' and state.status_measured_at
+            and sent<state.status_measured_at<=snapshot.at and state.connected and not state.fault)
+        drawing=bool(power.source.startswith('OCPP') and power.measured_at>sent
+            and 20<power.value<=desired+max(100,desired*.1))
+        return verified or waiting or drawing
+
     def reconcile(self,snapshot,configs):
         observed=[]
         for key,record in self.records.items():
@@ -94,7 +106,15 @@ class Dispatcher:
                     'details':{'power_w':power.value,'action':record['action']}})
                 continue
             grid=snapshot.grid
-            if not grid or not grid.usable(snapshot.at,snapshot.sample_max_age_s): continue
+            if not grid or not grid.usable(snapshot.at,snapshot.sample_max_age_s):
+                # Without the site meter (fallback current), the station's own evidence
+                # still confirms an offer: reported offer, declining car or OCPP power.
+                if (config and config.kind=='charger' and desired and record['action']=='set_power'
+                        and self.station_confirms_offer(snapshot,state,power,config,desired,sent)):
+                    record['status']='observed';observed.append(key)
+                    self.store.append_event({'kind':'command_observed','device_id':key,
+                        'details':{'action':record['action'],'effect':'station_evidence'}})
+                continue
             checked=bool(grid.checked_at and power.checked_at)
             if config and config.kind=='water_heater':
                 if (grid.availability_at<power.availability_at or grid.availability_at<power.measured_at

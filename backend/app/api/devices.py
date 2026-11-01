@@ -98,6 +98,7 @@ def disarm(device_id:str,request:Request):
     runtime.dispatcher.records.pop(device_id,None); runtime.dispatcher.save()
     runtime.reservations.pop(device_id,None); runtime.errors.pop(device_id,None)
     runtime.engine.charger_limit_faults.discard(device_id)
+    runtime.engine.charger_fault_retry.pop(device_id,None)
     runtime.engine.timers.since.pop(device_id+':cap_unapplied',None)
     runtime.engine.charger_commanded.pop(device_id,None)
     runtime.store.set('charger_limit_faults',sorted(runtime.engine.charger_limit_faults))

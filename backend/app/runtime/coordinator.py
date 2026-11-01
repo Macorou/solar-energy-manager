@@ -1,12 +1,14 @@
 import asyncio
 import re
+import uuid
 from dataclasses import asdict,replace
 from datetime import datetime,timedelta,timezone
+from zoneinfo import ZoneInfo
 from app.settings import SettingsDocument
 from app.domain.devices import DeviceSpec,DeviceState,Reservation
 from app.domain.measurements import Quality,utcnow
 from app.domain.site import SiteSnapshot
-from app.domain.commands import CommandIntent,CHARGER_START_WAIT_S
+from app.domain.commands import CommandIntent,CHARGER_START_WAIT_S,RESERVATION_S
 from app.engine.engine import EnergyEngine
 from app.engine.policies import DevicePolicy
 from app.engine.budget import solar_budget_w
@@ -23,6 +25,37 @@ from .charger_measurements import select_power
 from app.domain.vehicles import VehicleTelemetry
 
 
+CHARGE_EFFICIENCY=.85  # EVCC's initial grid-to-battery efficiency
+
+
+def plan_warnings(snapshot,config,occurrences):
+    """Warn, never act, when a planned target needs more grid time than its window gives."""
+    def duration(seconds):
+        return f'{int(seconds//3600)} h {int(seconds%3600//60):02d}'
+    warnings={}
+    zone=ZoneInfo(config.timezone)
+    vehicles={v.id:v for v in config.vehicles}
+    for device in config.devices:
+        vehicle=vehicles.get(device.vehicle_id)
+        if device.kind!='charger' or device.mode!='planned' or not vehicle or not vehicle.capacity_kwh:
+            continue
+        upcoming=[o for o in occurrences if o.vehicle_id==vehicle.id and o.deadline_at>snapshot.at]
+        telemetry=snapshot.vehicle_telemetry.get(vehicle.id)
+        if not upcoming or not telemetry or not telemetry.usable(snapshot.at,config.peugeot.max_age_s):
+            continue
+        occurrence=min(upcoming,key=lambda o:o.deadline_at)
+        power=min(device.max_power_w,device.max_current_a*device.voltage*device.phases)
+        if telemetry.soc>=occurrence.target_soc or power<=0:
+            continue
+        needed=(occurrence.target_soc-telemetry.soc)/100*vehicle.capacity_kwh*1000/CHARGE_EFFICIENCY/power*3600
+        available=max(0,(occurrence.deadline_at-max(snapshot.at,occurrence.network_start_at)).total_seconds())
+        if needed>available:
+            warnings[device.id]=(f'Objectif {occurrence.target_soc:g} % probablement non atteint à '
+                f'{occurrence.deadline_at.astimezone(zone):%H:%M} : environ {duration(needed)} de charge réseau '
+                f'nécessaires, {duration(available)} disponibles dans le créneau')
+    return warnings
+
+
 def command_reason(record):
     value=record.get('error') or record.get('reason') or 'Arrêt demandé'
     prefixes=('Arrêt en cours : ','Vérification requise : ')
@@ -37,6 +70,8 @@ class Coordinator:
         self.adapters=adapters or {}
         self.engine=EnergyEngine()
         self.engine.charger_limit_faults=set(store.get('charger_limit_faults',[]))
+        self.engine.charger_fault_retry={key:{'until':datetime.fromisoformat(value['until']),'attempt':value['attempt']}
+            for key,value in store.get('charger_limit_retry',{}).items()}
         self.charging=ChargingTracker(store)
         network_state=store.get('runtime_network_state',{})
         self.engine.network_allowed=network_state.get('allowed',{})
@@ -55,7 +90,7 @@ class Coordinator:
         for key,record in self.dispatcher.records.items():
             if record['status']!='observed' and record['power_w']:
                 self.reservations[key]=Reservation(key,record['power_w'],record['id'],
-                    datetime.fromisoformat(record['sent_at'])+timedelta(seconds=90))
+                    datetime.fromisoformat(record['sent_at'])+timedelta(seconds=RESERVATION_S))
         self.lock=asyncio.Lock()
         self.command_tasks={}; self.workers={}; self.cache={}; self.telemetry={}; self.errors={}
         self.queued_intents={};self.refresh_tasks=set()
@@ -66,7 +101,7 @@ class Coordinator:
         self.ha=None; self.ha_signature=None; self.worker_signatures={}
         self.snapshot=SiteSnapshot(utcnow())
         self.reasons={}; self.authorizations={}; self.running=False; self.loop_task=None
-        self.effective_targets={}; self.target_sources={}
+        self.effective_targets={}; self.target_sources={}; self.plan_warnings={}
         self.last_tick=None
         self.last_diagnostic=None;self.last_diagnostic_reasons={}
         self.instance=InstanceLock(store.path.parent/'controller.lock')
@@ -180,7 +215,8 @@ class Coordinator:
         return replace(base,at=now,device_states=states,vehicle_telemetry=dict(self.telemetry),
             phase_control_enabled=config.phase_control_enabled,phase_margin_a=config.phase_margin_a,
             site_limit_w=config.site_limit_w,export_margin_w=config.export_margin_w,
-            sample_max_age_s=config.sample_max_age_s,reservations=tuple(self.reservations.values()))
+            sample_max_age_s=config.sample_max_age_s,reservations=tuple(self.reservations.values()),
+            grid_fallback_current_a=config.grid_fallback_current_a)
 
     def policies(self,config,now):
         manuals=self.store.get('manual_controls',{})
@@ -216,12 +252,15 @@ class Coordinator:
             config=SettingsDocument.model_validate(self.store.load_settings())
             snapshot=snapshot or await self.acquire(config)
             self.charging.update(snapshot,config)
-            effective=dict(snapshot.vehicle_telemetry)
+            # A Peugeot percentage kept through an API error is ignored: the car may have
+            # been driven since. Only this session's estimate may still end a charge.
+            effective={key:value if value.quality!=Quality.UNAVAILABLE else replace(value,soc=None)
+                       for key,value in snapshot.vehicle_telemetry.items()}
             for d in config.devices:
                 summary=self.charging.summary(d.id) if d.kind=='charger' else None
                 if summary and summary['active'] and d.vehicle_id:
                     raw=effective.get(d.vehicle_id,VehicleTelemetry())
-                    effective[d.vehicle_id]=replace(raw,soc=summary['soc'],
+                    effective[d.vehicle_id]=replace(raw,soc=summary['soc'] if summary['soc_known'] else None,
                         measured_at=snapshot.at,received_at=snapshot.at,
                         quality=Quality.ESTIMATED if summary['soc_usable'] else Quality.UNAVAILABLE,
                         unavailable_reason=summary.get('soc_reason'))
@@ -234,6 +273,7 @@ class Coordinator:
                     if key in self.engine.network_stop_pending: self.engine.heater_targets.reset(key)
                     self.engine.network_stop_pending.discard(key)
                     self.engine.network_stop_issued.discard(key)
+            self.release_charger_reservations(snapshot,configs)
             snapshot=replace(snapshot,reservations=tuple(self.reservations.values()),
                 transition_blocked=any(r['status']!='observed' and configs.get(key)
                     and configs[key].kind!='charger' for key,r in self.dispatcher.records.items()))
@@ -243,6 +283,7 @@ class Coordinator:
             self.record_schedules(snapshot,occurrences,config)
             authorizations={d.id:select_authorization(d.vehicle_id,snapshot.at,occurrences,d.default_soc_target)
                             for d in config.devices if d.kind=='charger'}
+            self.plan_warnings=plan_warnings(snapshot,config,occurrences)
             states=dict(snapshot.device_states)
             for d in config.devices:
                 if d.kind=='charger' and d.id in states:
@@ -264,7 +305,13 @@ class Coordinator:
                         blocked_reasons[key]='Arrêt en cours : '+command_reason(record)
                         if configs[key].kind=='water_heater' and configs[key].mode=='manual':
                             waiting_manual_stops.add(key)
-                    if record['action']=='suspend' and key in configs and configs[key].kind=='charger':
+                    # A stop, or an offer to a car that stays in SuspendedEV (no draw to measure,
+                    # possibly no Current.Offered), is confirmed by a status re-read after sending.
+                    state=snapshot.device_states.get(key)
+                    declined_offer=bool(record['action']=='set_power' and record['status']!='sending'
+                        and state and state.observed_state=='SuspendedEV')
+                    if ((record['action']=='suspend' or declined_offer)
+                            and key in configs and configs[key].kind=='charger'):
                         source=self.adapters.get(key)
                         last=self.stop_status_requests.get(key)
                         if (hasattr(source,'request_status') and (not last or last[0]!=record['id']
@@ -280,10 +327,20 @@ class Coordinator:
             specs=[DeviceSpec(d.id,d.kind,min_power_w=d.min_power_w,max_power_w=d.max_power_w,
                 priority=d.priority,grid_phases=tuple(d.grid_phases),voltage=d.voltage,
                 min_current_a=d.min_current_a,max_current_a=d.max_current_a) for d in config.devices]
+            faults_before=set(self.engine.charger_limit_faults)
             batch=self.engine.evaluate(snapshot,specs,policies,authorizations)
             self.store.set('charger_limit_faults',sorted(self.engine.charger_limit_faults))
+            self.store.set('charger_limit_retry',{key:{'until':value['until'].isoformat(),'attempt':value['attempt']}
+                for key,value in self.engine.charger_fault_retry.items()})
+            for key in self.engine.charger_limit_faults-faults_before:
+                retry=self.engine.charger_fault_retry[key]
+                self.store.append_event({'kind':'charger_limit_fault','device_id':key,
+                    'details':{'retry_at':retry['until'].isoformat(),'attempt':retry['attempt']}})
             for key in self.engine.charger_limit_faults:
-                self.errors[key]='Limite de recharge non appliquée : vérifier la borne puis désactiver/réactiver le pilotage'
+                self.errors[key]='Limite de recharge non appliquée : coupure puis nouvelle tentative automatique'
+            for key in faults_before-self.engine.charger_limit_faults:
+                if self.errors.get(key,'').startswith('Limite de recharge non appliquée'):
+                    self.errors.pop(key)
             if blocked_reasons:
                 batch=replace(batch,reasons=batch.reasons|blocked_reasons,
                     commands=tuple(replace(command,reason=blocked_reasons[command.device_id])
@@ -302,7 +359,12 @@ class Coordinator:
             self.authorizations=authorizations
             for reservation in batch.reservations:
                 old=self.reservations.get(reservation.device_id)
-                self.reservations[reservation.device_id]=replace(reservation,power_w=max(reservation.power_w,old.power_w if old else 0))
+                if configs[reservation.device_id].kind=='charger':
+                    # The latest offer replaces the previous one at the station; its
+                    # reservation already covers the measured draw at sending time.
+                    self.reservations[reservation.device_id]=reservation
+                else:
+                    self.reservations[reservation.device_id]=replace(reservation,power_w=max(reservation.power_w,old.power_w if old else 0))
             for intent in batch.commands:
                 if not self.enqueue(intent,configs[intent.device_id]) and intent.action=='suspend':
                     self.engine.network_stop_issued.discard(intent.device_id)
@@ -316,7 +378,6 @@ class Coordinator:
                     and record['power_w']>0 and self.engine.requested.get(device.id,0)>0
                     and not record.get('profile_persistent',False)
                     and not any(c.device_id==device.id for c in batch.commands)):
-                    import uuid
                     self.enqueue(CommandIntent(str(uuid.uuid4()),device.id,'set_power',record['power_w'],
                         snapshot.at+timedelta(seconds=90),'Migration du profil EVCC'),device)
                 source=self.adapters.get(device.id)
@@ -344,6 +405,23 @@ class Coordinator:
                 self.last_diagnostic=snapshot.at
                 self.last_diagnostic_reasons=decisions
             return batch
+
+    def release_charger_reservations(self,snapshot,configs):
+        """End an expired charger reservation once a fresh native state measures the real draw.
+
+        An unconfirmed offer (no Current.Offered, car declining in SuspendedEV) must not hold
+        surplus forever. A station still starting (Preparing, SuspendedEVSE) keeps it; heaters
+        keep theirs until their slower cloud confirmation.
+        """
+        for key,reservation in list(self.reservations.items()):
+            config=configs.get(key)
+            state=snapshot.device_states.get(key)
+            power=state.observed_power if state else None
+            if (config and config.kind=='charger' and snapshot.at>=reservation.expires_at
+                    and state and state.connected and state.observed_state in ('Charging','SuspendedEV','Finishing','Available')
+                    and power and power.usable(snapshot.at,snapshot.sample_max_age_s)
+                    and power.measured_at>reservation.expires_at-timedelta(seconds=RESERVATION_S)):
+                self.reservations.pop(key)
 
     def record_schedules(self,snapshot,occurrences,config):
         tracked=self.store.get('schedule_results',{})
@@ -441,6 +519,7 @@ class Coordinator:
                 'reason':self.reasons.get(d.id,'En attente de mesures'),
                 'effective_target':self.effective_targets.get(d.id,d.target),
                 'target_source':self.target_sources.get(d.id,'grid'),
+                'plan_warning':self.plan_warnings.get(d.id),
                 'charging':self.charging.summary(d.id) if d.kind=='charger' else None,
                 'command':self.dispatcher.records.get(d.id),
                 'reservation_w':self.reservations[d.id].power_w if d.id in self.reservations else 0,

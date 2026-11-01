@@ -3,6 +3,10 @@ from datetime import datetime, timezone
 from enum import StrEnum
 import math
 
+# A device reading late by at most this much beyond its freshness limit lets a running
+# device keep its current power (never more); a longer delay stops it as before.
+MEASUREMENT_GRACE_S = 60
+
 
 class Quality(StrEnum):
     FRESH = 'fresh'
@@ -33,6 +37,15 @@ class Sample:
                 and self.quality in (Quality.FRESH, Quality.ESTIMATED)
                 and self.availability_at is not None
                 and 0 <= (now - self.availability_at).total_seconds() <= max_age_s)
+
+
+def late(sample: Sample | None, now: datetime, max_age_s: float) -> bool:
+    """Valid but only delayed: within the grace period after its freshness limit."""
+    return bool(sample and sample.value is not None and math.isfinite(sample.value)
+                and sample.quality in (Quality.FRESH, Quality.ESTIMATED)
+                and sample.measured_at is not None and sample.measured_at <= now
+                and sample.availability_at is not None
+                and 0 <= (now - sample.availability_at).total_seconds() <= max_age_s + MEASUREMENT_GRACE_S)
 
 
 def utcnow() -> datetime:

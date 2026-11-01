@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 CHARGER_START_WAIT_S = 300
+# Power set aside for a command until its effect is measurable.
+RESERVATION_S = 90
 
 
 @dataclass(frozen=True)

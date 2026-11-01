@@ -1401,6 +1401,12 @@ export interface components {
              * @default 30
              */
             sample_max_age_s: number;
+            /**
+             * Grid Fallback Current A
+             * @description Courant de recharge pendant un créneau réseau quand la mesure réseau ou de phase manque (0 = arrêt). Sans mesure, SEM ne protège plus le disjoncteur.
+             * @default 0
+             */
+            grid_fallback_current_a: number;
             /** Devices */
             devices?: components["schemas"]["DeviceConfig"][];
             /** Vehicles */

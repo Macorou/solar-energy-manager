@@ -11,6 +11,14 @@ it('shows the effective solar temperature rather than the network setting',()=>{
   expect(screen.getByText('Objectif 70 °C · solaire')).toBeTruthy()
   expect(screen.queryByText('Objectif 55 °C')).toBeNull()
 })
+it('shows the warning when the planned grid window is too short',()=>{
+  const device={config:{id:'ev',name:'EV',kind:'charger',armed:true,priority:1,default_soc_target:80,mode:'planned'},
+    state:{observed_power:null,observed_state:'Preparing',connected:true,temperature:null,target_temperature:null,fault:null},
+    reason:'Solaire avant le créneau réseau',reservation_w:0,command:null,authorization:{target_soc:80,expires_at:null},
+    plan_warning:'Objectif 80 % probablement non atteint à 05:45'} as LiveDevice
+  render(<DeviceCard device={device} onAction={()=>{}}/>)
+  expect(screen.getByText('Objectif 80 % probablement non atteint à 05:45')).toBeTruthy()
+})
 it('retains reported power between updates without confirming a charge from cached power',()=>{
   const device={config:{id:'ev',name:'EV',kind:'charger',armed:false,priority:1,default_soc_target:80},
     state:{observed_power:{value:3456,quality:'estimated',measured_at:new Date().toISOString(),usable:true},

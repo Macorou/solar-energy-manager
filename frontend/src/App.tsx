@@ -63,4 +63,4 @@ export function App() {
       </fieldset><footer>Solar Energy Manager <span>Décisions locales · connexions cloud indiquées par appareil</span></footer>
     </main></div>
 }
-function eventName(kind:string){return ({command_accepted:'Commande acceptée',command_unknown:'Résultat inconnu',command_observed:'Effet observé',manual:'Commande manuelle',armed:'Pilotage activé',schedule_incomplete:'Échéance non atteinte ou non vérifiable',schedule_complete:'Objectif atteint à l’échéance'} as Record<string,string>)[kind]||kind}
+function eventName(kind:string){return ({command_accepted:'Commande acceptée',command_unknown:'Résultat inconnu',command_observed:'Effet observé',manual:'Commande manuelle',armed:'Pilotage activé',schedule_incomplete:'Échéance non atteinte ou non vérifiable',schedule_complete:'Objectif atteint à l’échéance',charger_limit_fault:'Limite de recharge non appliquée : coupure puis nouvelle tentative'} as Record<string,string>)[kind]||kind}

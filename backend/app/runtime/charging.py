@@ -279,8 +279,8 @@ class ChargingTracker:
         reference=self.peugeot_references.get(device.vehicle_id+'|'+vehicle.vin) if vehicle else None
         fetched=(raw.soc if raw and finite(raw.soc) and 0<=raw.soc<=100
                  and raw.quality not in (Quality.ESTIMATED,Quality.UNAVAILABLE) else None)
-        # Last known Peugeot values can seed a new session after a cloud outage.
-        # No Peugeot measurement time participates in the estimator decisions.
+        # A percentage kept from before a Peugeot error never seeds a session: the car may
+        # have been driven since. No Peugeot measurement time participates in the estimator.
         capacity=vehicle.capacity_kwh if vehicle else None
         estimator=SocEstimator.restore(capacity,session.get('evcc_soc')) if capacity else None
         legacy=session.get('anchor')
@@ -289,8 +289,6 @@ class ChargingTracker:
             and 0<=legacy['soc']<=100 and finite(legacy.get('energy'))
             and 0<=legacy['energy']<=session['energy_wh']):
             estimator.soc(legacy['soc'],legacy['energy'])
-        if estimator and not estimator.sampled and fetched is None and reference:
-            fetched=reference['soc']
         if estimator:
             if estimator.sampled and fetched is not None and fetched!=estimator.prev_soc:
                 session['evcc_gap_cleared']=session.get('soc_gap_at')
@@ -303,6 +301,8 @@ class ChargingTracker:
             baseline=fetched if fetched is not None else reference['soc'] if reference else None
             session['soc']=baseline
             session['soc_usable']=fetched is not None
+        # This session's own percentage, still the best guess when the energy checks below fail.
+        session['soc_known']=session['soc_usable']
         # Energy-source integrity is separate from EVCC's percentage calculation.
         # These checks use electrical telemetry only, never a Peugeot timestamp.
         gap=session.get('soc_gap_at')
@@ -345,7 +345,7 @@ class ChargingTracker:
             'average_price_per_kwh':session['cost_eur']/(energy/1000) if not partial and energy>0 and session['priced_wh']+1e-6>=energy else None,
             'effective_price_per_kwh':self.effective_price,
             'soc':session['soc'],'soc_estimated':session['soc_estimated'],'soc_usable':session['soc_usable'],
-            'soc_reason':session.get('soc_reason'),
+            'soc_reason':session.get('soc_reason'),'soc_known':session.get('soc_known',session['soc_usable']),
             'soc_reference_missing':not session['anchor'],
             'soc_reference_source':session['anchor'].get('source','vehicle') if session['anchor'] else None,
             'soc_reference_at':datetime.fromtimestamp(session['anchor']['at'],timezone.utc).isoformat() if session['anchor'] and session['anchor'].get('at') is not None else None}

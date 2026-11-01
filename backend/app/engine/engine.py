@@ -361,10 +361,13 @@ class EnergyEngine:
             if desired and spec.kind=='water_heater':
                 desired = spec.max_power_w if site_available>=spec.max_power_w else 0
             if not coherent and desired and not degraded and not fallback:
+                if desired>(previous or 0):
+                    # Only a change actually held back is reported; an on/off heater can only start.
+                    held=('aucune augmentation' if spec.kind=='charger' and previous else 'démarrage différé')
+                    reason=(f'Commande en attente de confirmation : {held}'
+                            if snapshot.transition_blocked and measurements_coherent(snapshot)
+                            else f'Attente de mesures électriques cohérentes : {held}')
                 desired=min(desired,previous or 0)
-                reason=('Commande en attente de confirmation : aucune augmentation'
-                        if snapshot.transition_blocked and measurements_coherent(snapshot)
-                        else 'Attente de mesures électriques cohérentes : aucune augmentation')
             if desired and not running and policy.start_not_before and now<policy.start_not_before:
                 desired=0
                 remaining=(policy.start_not_before-now).total_seconds()

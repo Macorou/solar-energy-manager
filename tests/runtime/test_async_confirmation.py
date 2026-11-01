@@ -59,5 +59,10 @@ def test_pending_confirmation_has_its_own_reason_when_electrical_checks_are_cohe
     spec=DeviceSpec('device','water_heater',min_power_w=2570,max_power_w=2570)
     policy=DevicePolicy('device',mode='off_peak_solar',armed=True,off_peak=True,target=55)
     result=engine.evaluate(replace(snapshot,transition_blocked=True),[spec],{'device':policy},{})
-    assert result.reasons['device'] == 'Commande en attente de confirmation : aucune augmentation'
+    # A heater already running loses nothing: it keeps its own reason.
+    assert result.reasons['device'] == 'Chauffe heures creuses'
     assert not result.commands
+    idle=EnergyEngine(SimulatedClock(snapshot.at))
+    result=idle.evaluate(replace(snapshot,transition_blocked=True),[spec],{'device':policy},{})
+    assert result.reasons['device'] == 'Commande en attente de confirmation : démarrage différé'
+    assert [c.action for c in result.commands] != ['set_power']

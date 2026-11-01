@@ -31,6 +31,7 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
     !config.armed?['neutral','Observation','eye']:
     !state.connected?['neutral','Hors connexion','link']:['amber','En attente','clock']
   const target=car?(config.mode==='manual'?config.default_soc_target:device.authorization?.target_soc??config.default_soc_target):(device.effective_target??config.target)
+  const solarTarget=car&&config.mode!=='manual'&&config.solar_target!=null&&target!=null&&config.solar_target>target?config.solar_target:null
   const deadline=car&&config.mode!=='manual'&&device.authorization?.expires_at?new Date(device.authorization.expires_at)
     .toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:timezone}):null
   const automatic=config.mode!=='off'&&config.mode!=='manual'
@@ -45,7 +46,7 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
         <div className="device-level">
         <div className="big-number">{value==null?'—':Math.round(value)}<small>{car?'%':'°C'}</small></div>
         <div className="meter"><i style={{width:Math.max(0,Math.min(100,value??0))+'%'}}/></div>
-        <p className="device-target">Objectif {target??'—'} {car?'%':'°C'}{deadline&&<> à {deadline}</>}{!car&&device.target_source&&<> · {device.target_source==='solar'?'solaire':'réseau'}</>}</p>
+        <p className="device-target">Objectif {target??'—'} {car?'%':'°C'}{deadline&&<> à {deadline}</>}{solarTarget!=null&&<> · surplus jusqu’à {solarTarget} %</>}{!car&&device.target_source&&<> · {device.target_source==='solar'?'solaire':'réseau'}</>}</p>
         {useEstimate&&session?.soc_estimated&&<span className="freshness">{session.soc_usable?'Batterie estimée':session.soc_reason||'Estimation à vérifier'}</span>}
         {!fresh&&<span className="freshness old">{car?(value!=null?'Donnée ancienne':'Batterie indisponible'):'Mesure indisponible ou ancienne'}</span>}
         {car&&device.plan_warning&&<span className="freshness old" role="status">{device.plan_warning}</span>}

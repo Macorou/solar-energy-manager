@@ -9,7 +9,7 @@ from app.domain.devices import DeviceSpec,DeviceState,Reservation
 from app.domain.measurements import Quality,utcnow
 from app.domain.site import SiteSnapshot
 from app.domain.commands import CommandIntent,CHARGER_START_WAIT_S,RESERVATION_S
-from app.engine.engine import EnergyEngine
+from app.engine.engine import EnergyEngine,charger_goals
 from app.engine.policies import DevicePolicy
 from app.engine.budget import solar_budget_w
 from app.scheduling.recurrence import occurrences_for
@@ -287,7 +287,7 @@ class Coordinator:
             states=dict(snapshot.device_states)
             for d in config.devices:
                 if d.kind=='charger' and d.id in states:
-                    target=d.default_soc_target if d.mode=='manual' else authorizations[d.id].target_soc
+                    _,target=charger_goals(policies[d.id],authorizations[d.id])
                     states[d.id]=replace(states[d.id],target_reached=self.charging.target_reached(d.id,target))
             snapshot=replace(snapshot,device_states=states)
             waiting_manual_stops=set()

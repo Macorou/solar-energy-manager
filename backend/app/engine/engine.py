@@ -26,6 +26,13 @@ LIMIT_FAULT_RETRY_MAX_S = 1800
 LIMIT_FAULT_RESET_S = 7200
 
 
+def charger_goals(policy, auth):
+    """The car's target, then the solar target that surplus alone may reach above it."""
+    goal = auth.target_soc if auth and policy.mode!='manual' else policy.target or 80
+    solar = max(goal,policy.solar_target) if policy.solar_target and policy.mode!='manual' else goal
+    return goal, solar
+
+
 @dataclass(frozen=True)
 class DecisionBatch:
     commands: tuple
@@ -205,7 +212,15 @@ class EnergyEngine:
             auth = authorizations.get(spec.id)
             manual_active = bool(policy and policy.mode=='manual' and (spec.kind=='charger'
                 or policy.manual_until and now<policy.manual_until))
-            network = bool(policy and (
+            goal = solar_goal = None
+            topping_up = False
+            if spec.kind=='charger' and policy and policy.vehicle_id:
+                goal, solar_goal = charger_goals(policy,auth)
+                telemetry = snapshot.vehicle_telemetry.get(policy.vehicle_id)
+                # Between the target and the solar target only surplus may charge, even in a grid window.
+                topping_up = bool(telemetry and telemetry.usable(now,policy.soc_max_age_s)
+                                  and goal<=telemetry.soc<solar_goal)
+            network = bool(policy and not topping_up and (
                 manual_active
                 or policy.mode=='off_peak_solar' and policy.off_peak
                 or policy.mode=='planned' and auth and auth.allow_grid))
@@ -236,8 +251,6 @@ class EnergyEngine:
             elif spec.kind=='charger' and state.vehicle_connected is False:
                 eligible, reason = False, 'Véhicule non branché'
             elif spec.kind=='charger' and policy.vehicle_id:
-                telemetry = snapshot.vehicle_telemetry.get(policy.vehicle_id)
-                goal = auth.target_soc if auth and policy.mode!='manual' else policy.target or 80
                 if not telemetry or not telemetry.usable(now,policy.soc_max_age_s):
                     # A percentage left here is this session's estimate (the coordinator drops a
                     # Peugeot value read through an API error): unverifiable, it still ends the charge.
@@ -251,7 +264,7 @@ class EnergyEngine:
                         battery_unknown = True
                     else:
                         eligible, reason = False, (telemetry.unavailable_reason if telemetry else None) or 'Batterie indisponible'
-                elif goal<100 and telemetry.soc >= goal:
+                elif solar_goal<100 and telemetry.soc >= solar_goal:
                     eligible, reason = False, 'Objectif atteint'
             if eligible:
                 if policy.mode=='manual':
@@ -267,6 +280,8 @@ class EnergyEngine:
                               else 'Surplus solaire')
                 else:
                     reason = 'Surplus solaire'
+                if eligible and topping_up:
+                    network = False
             hard_valid = (grid_valid and (all_power_valid or degraded) and snapshot.site_limit_w is not None
                           and site_available>=spec.min_power_w>0)
             site_capped = False
@@ -359,6 +374,8 @@ class EnergyEngine:
                 desired=0
                 reason='Fin des heures creuses' if spec.kind=='water_heater' else 'Fin du créneau réseau'
                 self.timers.reached(spec.id+':start',False,0,mono)
+            if topping_up and desired:
+                reason=f'Surplus solaire au-delà de l’objectif, jusqu’à {solar_goal:g} %'
             if battery_unknown and desired:
                 reason=(f'Batterie non vérifiable : charge poursuivie jusqu’à l’objectif (dernière estimation {last_soc:.0f} %)'
                         if last_soc is not None else 'Batterie inconnue : charge poursuivie jusqu’à l’arrêt par la voiture')

@@ -19,6 +19,15 @@ it('shows the warning when the planned grid window is too short',()=>{
   render(<DeviceCard device={device} onAction={()=>{}}/>)
   expect(screen.getByText('Objectif 80 % probablement non atteint à 05:45')).toBeTruthy()
 })
+it('shows the solar target above the car target',()=>{
+  const device={config:{id:'ev',name:'EV',kind:'charger',armed:true,priority:1,default_soc_target:80,solar_target:100,mode:'planned'},
+    state:{observed_power:null,observed_state:'Preparing',connected:true,temperature:null,target_temperature:null,fault:null},
+    reason:'Surplus solaire',reservation_w:0,command:null,authorization:{target_soc:80,expires_at:null}} as LiveDevice
+  const {rerender}=render(<DeviceCard device={device} onAction={()=>{}}/>)
+  expect(screen.getByText(/surplus jusqu’à 100 %/)).toBeTruthy()
+  rerender(<DeviceCard device={{...device,config:{...device.config,mode:'manual'}}} onAction={()=>{}}/>)
+  expect(screen.queryByText(/surplus jusqu’à/)).toBeNull()
+})
 it('retains reported power between updates without confirming a charge from cached power',()=>{
   const device={config:{id:'ev',name:'EV',kind:'charger',armed:false,priority:1,default_soc_target:80},
     state:{observed_power:{value:3456,quality:'estimated',measured_at:new Date().toISOString(),usable:true},

@@ -17,12 +17,14 @@ export function DeviceFields({editing,setEditing,vehicles}:{editing:Device;setEd
               <option value="">À renseigner pour la limitation par phase</option>{editing.phases===1?['L1','L2','L3'].map(p=><option key={p} value={p}>{p}</option>):<><option value="L1,L2,L3">L1, L2, L3</option><option value="L2,L3,L1">L2, L3, L1</option><option value="L3,L1,L2">L3, L1, L2</option></>}</select></label>
             <label>Courant minimal (A)<input required type="number" min="6" value={editing.min_current_a} onChange={e=>setEditing({...editing,min_current_a:Number(e.target.value)})}/></label>
             <label>Courant maximal (A)<input required type="number" min="6" max="80" value={editing.max_current_a} onChange={e=>setEditing({...editing,max_current_a:Number(e.target.value)})}/></label>
-            <label>Objectif solaire habituel (%)<input type="number" min="1" max="100" required value={editing.default_soc_target} onChange={e=>setEditing({...editing,default_soc_target:Number(e.target.value)})}/></label></>:
+            <label>Objectif habituel (%)<input type="number" min="1" max="100" required value={editing.default_soc_target} onChange={e=>setEditing({...editing,default_soc_target:Number(e.target.value)})}/></label>
+            <label>Objectif sur surplus solaire (%)<input type="number" min="1" max="100" placeholder="Aucun" value={editing.solar_target??''} onChange={e=>setEditing({...editing,solar_target:e.target.value===''?null:Number(e.target.value)})}/></label></>:
             <><label>Identifiant passerelle Ariston<input required value={editing.gateway_id} onChange={e=>setEditing({...editing,gateway_id:e.target.value})}/></label>
               <label>Consigne sur le réseau (°C)<input type="number" required value={editing.target??55} onChange={e=>setEditing({...editing,target:Number(e.target.value)})}/></label>
               <label>Consigne sur surplus solaire (°C)<input type="number" min="0" max="100" required value={editing.solar_target??editing.target??55} onChange={e=>setEditing({...editing,solar_target:Number(e.target.value)})}/></label></>}
         </div>
         {kind==='water_heater'&&<p className="hint">Le surplus solaire peut chauffer au-delà de la consigne réseau. Les deux températures doivent respecter les limites natives du ballon. Le mode manuel utilise la consigne réseau.</p>}
+        {kind==='charger'&&<p className="hint">Au-delà de l’objectif du programme ou de l’objectif habituel, seul le surplus solaire charge la voiture, jusqu’à l’objectif sur surplus. Vide : la charge s’arrête à l’objectif. Le mode manuel n’est pas concerné.</p>}
         {kind==='charger'&&<label className="check"><input type="checkbox" checked={editing.allow_insecure_identity} onChange={e=>setEditing({...editing,allow_insecure_identity:e.target.checked})}/>Autoriser l’identité OCPP sans mot de passe sur le réseau local de confiance</label>}
         <CloudSettingsForm value={editing.cloud} onChange={cloud=>setEditing({...editing,cloud})}/>
   </>

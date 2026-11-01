@@ -7,10 +7,10 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 HEADERS = ['Début','Fin','Point de charge','Véhicule','Énergie (kWh)','Durée de charge (s)',
     'Solaire (kWh)','Réseau (kWh)','Origine inconnue (kWh)','Solaire (%)','Coût (EUR)',
-    'Prix moyen (EUR/kWh)','Énergie partielle','Coût partiel','Durée partielle','En cours']
+    'Prix moyen (EUR/kWh)','Énergie partielle','Coût partiel','Part solaire partielle','Durée partielle','En cours']
 KEYS = ['started_at','ended_at','device_name','vehicle_name','energy_kwh','charge_duration_s',
     'solar_kwh','grid_kwh','unknown_kwh','solar_percent','cost_eur','average_price_per_kwh',
-    'energy_partial','cost_partial','duration_partial','active']
+    'energy_partial','cost_partial','solar_partial','duration_partial','active']
 
 
 def safe_text(value):

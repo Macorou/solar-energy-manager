@@ -361,7 +361,9 @@ class ChargingTracker:
             'energy_kwh':energy/1000,'energy_partial':partial,
             'cost_eur':session['cost_eur'] if session['priced_wh']>0 or energy==0 else None,
             'cost_partial':partial or session['priced_wh']+1e-6<energy,
-            'solar_percent':100*session['solar_wh']/energy if not partial and energy>0 and session['allocated_wh']+1e-6>=energy else None,
+            # The share covers the energy of known origin; any other energy only flags it as partial.
+            'solar_percent':100*session['solar_wh']/session['allocated_wh'] if session['allocated_wh']>0 else None,
+            'solar_partial':partial or session['allocated_wh']+1e-6<energy,
             'average_price_per_kwh':session['cost_eur']/(energy/1000) if not partial and energy>0 and session['priced_wh']+1e-6>=energy else None,
             'effective_price_per_kwh':self.effective_price,
             'soc':session['soc'],'soc_estimated':session['soc_estimated'],'soc_usable':session['soc_usable'],

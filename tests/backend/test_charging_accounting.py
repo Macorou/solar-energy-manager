@@ -33,6 +33,7 @@ def test_energy_cost_solar_soc_and_reboot_are_cumulative(tmp_path):
     assert out['energy_kwh']==2
     assert out['cost_eur']==pytest.approx(.2)
     assert out['solar_percent']==pytest.approx(50)
+    assert out['solar_partial'] is False
     assert out['soc']==pytest.approx(80)
     from app.runtime.charging import ChargingTracker
     tracker=ChargingTracker(store);tracker.update(frame(now+timedelta(seconds=30),12000,stamp=stamp),cfg)
@@ -297,7 +298,9 @@ def test_terminal_counter_after_available_is_reconciled_into_last_session(tmp_pa
     unplug=replace(unplug,device_states={'ev':replace(unplug.device_states['ev'],energy_measured_at=now+timedelta(seconds=10))})
     tracker.update(unplug,cfg)
     assert tracker.summary('ev')['cost_partial'] is True
-    assert tracker.summary('ev')['solar_percent'] is None
+    # The measured part keeps its share, flagged as partial until the terminal value.
+    assert tracker.summary('ev')['solar_percent']==pytest.approx(50)
+    assert tracker.summary('ev')['solar_partial'] is True
     terminal=frame(now+timedelta(seconds=25),10030,grid=1000,solar=0,stamp=now,plugged=False)
     terminal=replace(terminal,device_states={'ev':replace(terminal.device_states['ev'],energy_terminal=True)})
     tracker.update(terminal,cfg)
@@ -313,7 +316,27 @@ def test_short_unknown_mix_interval_is_not_silently_priced(tmp_path):
     tracker.update(frame(now+timedelta(seconds=8),10008,grid=1000,solar=0,stamp=now),cfg)
     assert tracker.summary('ev')['cost_partial'] is True
     assert tracker.summary('ev')['cost_eur']==pytest.approx(.0002)
-    assert tracker.summary('ev')['solar_percent'] is None
+    # Only the 2 Wh with a known mix carry the share; the rest makes it partial.
+    assert tracker.summary('ev')['solar_percent']==pytest.approx(50)
+    assert tracker.summary('ev')['solar_partial'] is True
+
+
+def test_solar_share_covers_the_measured_part_after_a_restart_gap(tmp_path):
+    from app.runtime.charging import ChargingTracker
+    from app.storage.charging_sessions import SessionHistory
+    tracker,store,cfg=setup_tracker(tmp_path);now=utcnow()
+    tracker.update(frame(now,10000,grid=0,solar=2000,stamp=now),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),11000,grid=0,solar=2000,stamp=now),cfg)
+    # SEM is down for 30 minutes: the energy charged meanwhile has no known mix.
+    tracker=ChargingTracker(store)
+    tracker.update(frame(now+timedelta(minutes=30),12000,grid=0,solar=2000,stamp=now),cfg)
+    out=tracker.summary('ev')
+    assert out['energy_kwh']==pytest.approx(2)
+    assert out['solar_percent']==pytest.approx(100)
+    assert out['solar_partial'] is True
+    row=SessionHistory(store).all()[0]
+    assert row['solar_percent']==pytest.approx(100)
+    assert row['solar_partial'] is True
 
 
 @pytest.mark.asyncio

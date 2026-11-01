@@ -19,6 +19,14 @@ it('offers Chargé and Coût on both mobile metric selectors for partial session
   expect((within(second).getByRole('option',{name:'Chargé'}) as HTMLOptionElement).selected).toBe(true)
 })
 
+it('flags a solar share computed on part of the session',()=>{
+  const items=[{...data.items[0],solar_percent:40,solar_partial:true}]
+  render(<SessionTable data={{...data,items,totals:{...data.totals,solar_percent:40,solar_partial:true}}} sort="date" direction="desc" onSort={vi.fn()} onPage={vi.fn()} onOpen={vi.fn()}/>)
+  const cells=screen.getAllByText('40 %').map(value=>value.parentElement!)
+  expect(cells.length).toBeGreaterThan(0)
+  for(const cell of cells)expect(within(cell).getByText('Partielle')).toBeTruthy()
+})
+
 it('keeps the cost column available with no price without inventing zero',()=>{
   render(<SessionTable data={{...data,available:{cost:false},items:[{...data.items[0],cost_eur:null}],totals:{...data.totals,known_cost_eur:null}}} sort="date" direction="desc" onSort={vi.fn()} onPage={vi.fn()} onOpen={vi.fn()}/>)
   const second=screen.getByRole('combobox',{name:'Colonne mobile'})

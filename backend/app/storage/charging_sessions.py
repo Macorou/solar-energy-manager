@@ -26,7 +26,7 @@ def history_record(device_id, session, config):
     solar = min(allocated, max(0, count('solar_wh')))
     priced = min(energy, max(0, count('priced_wh')))
     cost = count('cost_eur') if priced > 0 or measured and energy == 0 else None
-    complete_mix = measured and not partial and energy > 0 and allocated + 1e-6 >= energy
+    complete_mix = measured and not partial and allocated + 1e-6 >= energy
     complete_cost = measured and not partial and priced + 1e-6 >= energy
     duration = session.get('charge_duration_s')
     if duration is not None:
@@ -42,7 +42,8 @@ def history_record(device_id, session, config):
         'solar_kwh': solar / 1000 if measured and allocated > 0 else None,
         'grid_kwh': (allocated - solar) / 1000 if measured and allocated > 0 else None,
         'unknown_kwh': max(0, energy - allocated) / 1000 if measured else None,
-        'solar_percent': 100 * solar / energy if complete_mix else None,
+        'solar_percent': 100 * solar / allocated if measured and allocated > 0 else None,
+        'solar_partial': not complete_mix,
         'cost_eur': cost, 'cost_partial': not complete_cost,
         'average_price_per_kwh': cost / (energy / 1000) if complete_cost and energy > 0 else None,
         'charge_duration_s': duration, 'duration_partial': bool(session.get('duration_partial') or base.get('duration_partial') or duration is None),
@@ -70,6 +71,14 @@ class SessionHistory:
                 row=json.loads(stored['data']);runtime=repaired.get(stored['id'])
                 row['soc_start']=runtime.get('history_soc_start') if runtime else None
                 row['soc_start_source']=runtime.get('history_soc_start_source','unavailable') if runtime else 'unavailable'
+                db.execute('UPDATE charging_history SET data=? WHERE id=?',(json.dumps(row,allow_nan=False),stored['id']))
+            # Before 0.1.30 a share was stored only for a complete mix: derive it from
+            # the energy of known origin and flag it as partial.
+            for stored in db.execute("SELECT id,data FROM charging_history WHERE json_type(data,'$.solar_partial') IS NULL").fetchall():
+                row=json.loads(stored['data'])
+                row['solar_partial']=row.get('solar_percent') is None
+                known=(row.get('solar_kwh') or 0)+(row.get('grid_kwh') or 0)
+                if row['solar_partial'] and known>0:row['solar_percent']=100*(row.get('solar_kwh') or 0)/known
                 db.execute('UPDATE charging_history SET data=? WHERE id=?',(json.dumps(row,allow_nan=False),stored['id']))
             for device_id, session in sessions.items():
                 row = history_record(device_id, session, config)

@@ -133,7 +133,7 @@ def _charger(device, vehicles, price):
                device_class='monetary', state_class='total', precision=2,
                attributes={'partial': bool(charging.get('cost_partial'))}),
         entity('session_solar', 'Part solaire de la session', _short(charging.get('solar_percent')), unit='%',
-               precision=1),
+               precision=1, attributes={'partial': bool(charging.get('solar_partial'))}),
         entity('plan_warning', 'Avertissement du programme', device.get('plan_warning') or '')]
 
 

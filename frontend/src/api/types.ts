@@ -10,7 +10,7 @@ export interface MqttStatus {state:'disabled'|'connecting'|'connected'|'disconne
 export interface Sample {value:number|null; measured_at:string|null; checked_at?:string|null; received_at?:string|null; quality:string; usable?:boolean}
 export interface Telemetry {soc:number|null;range_km:number|null;measured_at:string|null;fresh:boolean}
 export interface ChargingSummary {id:string;active:boolean;ended_at?:string|null;energy_kwh:number;energy_partial:boolean;
-  cost_eur:number|null;cost_partial:boolean;solar_percent:number|null;average_price_per_kwh:number|null;
+  cost_eur:number|null;cost_partial:boolean;solar_percent:number|null;solar_partial?:boolean;average_price_per_kwh:number|null;
   effective_price_per_kwh:number|null;soc:number|null;soc_estimated:boolean;soc_usable:boolean;soc_reference_at:string|null;
   soc_reference_missing?:boolean;soc_reference_source?:'vehicle'|null;soc_reason?:string|null}
 export interface LiveDevice {config:Device;state:{observed_power:Sample|null;observed_state:string;connected:boolean;

@@ -32,6 +32,7 @@ class ChargingSession(BaseModel):
     grid_kwh: float | None
     unknown_kwh: float | None
     solar_percent: float | None
+    solar_partial: bool = False
     cost_eur: float | None
     cost_partial: bool
     average_price_per_kwh: float | None
@@ -54,6 +55,7 @@ class Totals(BaseModel):
     grid_kwh: float = 0
     unknown_kwh: float = 0
     solar_percent: float | None = None
+    solar_partial: bool = False
     cost_eur: float | None = None
     partial_cost_eur: float | None = None
     known_cost_eur: float | None = None

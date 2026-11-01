@@ -11,6 +11,7 @@ def totals(rows):
     solar = sum(r['solar_kwh'] or 0 for r in rows)
     grid = sum(r['grid_kwh'] or 0 for r in rows)
     unknown = max(0, energy - solar - grid)
+    known = solar + grid
     partial = any(r['energy_partial'] or r['energy_kwh'] is None for r in rows)
     def is_priced(row): return row['cost_eur'] is not None and not row['cost_partial'] and not row['energy_partial']
     priced = [r for r in rows if is_priced(r)]
@@ -23,7 +24,8 @@ def totals(rows):
     return dict(count=len(rows), energy_kwh=energy, energy_partial=partial,
         missing_energy_count=sum(r['energy_kwh'] is None for r in rows),
         solar_kwh=solar, grid_kwh=grid, unknown_kwh=unknown,
-        solar_percent=100*solar/energy if energy > 0 and not partial and unknown < 1e-8 else None,
+        solar_percent=100*solar/known if known > 0 else None,
+        solar_partial=partial or unknown > 1e-8,
         cost_eur=cost, partial_cost_eur=sum(partial_costs) if partial_costs else None,
         known_cost_eur=sum(known_costs) if known_costs else None,
         known_cost_count=len(known_costs), cost_partial=bool(incomplete),

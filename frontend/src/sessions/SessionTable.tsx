@@ -8,7 +8,7 @@ const metrics:{id:MobileMetric;name:string}[]=[{id:'energy',name:'Chargé'},{id:
 function MetricValue({row,metric,total=false}:{row:ChargingSession|Totals;metric:MobileMetric;total?:boolean}){
   const cost=total?knownCost(row as Totals):row.cost_eur
   const value=metric==='energy'?energy(row.energy_kwh):metric==='cost'?money(cost):metric==='solar'?percent(row.solar_percent):duration(row.charge_duration_s)
-  const partial=metric==='energy'?row.energy_partial:metric==='cost'?row.cost_partial:metric==='duration'?row.duration_partial:false
+  const partial=metric==='energy'?row.energy_partial:metric==='cost'?row.cost_partial:metric==='duration'?row.duration_partial:row.solar_partial
   return <><strong>{value}</strong>{partial&&value!=='—'&&<small className="sessions-data-note">{metric==='cost'?'Partiel':'Partielle'}</small>}{metric==='energy'&&row.energy_kwh==null&&<small className="sessions-data-note">Mesure absente</small>}</>
 }
 

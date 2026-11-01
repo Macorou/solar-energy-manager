@@ -180,6 +180,9 @@ def test_session_entities_flag_partial_values():
     entities = build()
     assert find(entities, 'ev', 'session_energy').attributes == {'partial': False}
     assert find(entities, 'ev', 'session_cost').attributes == {'partial': False}
+    assert find(entities, 'ev', 'session_solar').attributes == {'partial': False}
+    entities = build(with_charger(charging={'solar_partial': True}))
+    assert find(entities, 'ev', 'session_solar').attributes == {'partial': True}
     entities = build(with_charger(charging={'energy_partial': True, 'cost_partial': False}))
     assert find(entities, 'ev', 'session_energy').attributes == {'partial': True}
     assert find(entities, 'ev', 'session_cost').attributes == {'partial': False}

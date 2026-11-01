@@ -2703,6 +2703,11 @@
             ],
             "title": "Solar Percent"
           },
+          "solar_partial": {
+            "type": "boolean",
+            "title": "Solar Partial",
+            "default": false
+          },
           "cost_eur": {
             "anyOf": [
               {
@@ -3892,6 +3897,11 @@
               }
             ],
             "title": "Solar Percent"
+          },
+          "solar_partial": {
+            "type": "boolean",
+            "title": "Solar Partial",
+            "default": false
           },
           "cost_eur": {
             "anyOf": [

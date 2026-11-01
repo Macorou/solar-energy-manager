@@ -985,6 +985,11 @@ export interface components {
             unknown_kwh: number | null;
             /** Solar Percent */
             solar_percent: number | null;
+            /**
+             * Solar Partial
+             * @default false
+             */
+            solar_partial: boolean;
             /** Cost Eur */
             cost_eur: number | null;
             /** Cost Partial */
@@ -1572,6 +1577,11 @@ export interface components {
             unknown_kwh: number;
             /** Solar Percent */
             solar_percent?: number | null;
+            /**
+             * Solar Partial
+             * @default false
+             */
+            solar_partial: boolean;
             /** Cost Eur */
             cost_eur?: number | null;
             /** Partial Cost Eur */

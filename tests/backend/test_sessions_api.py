@@ -41,6 +41,7 @@ def test_weighted_solar_and_cost_are_not_averages_of_percentages(service):
     data=response.json();total=data['totals']
     assert total['energy_kwh']==40
     assert total['solar_percent']==25
+    assert total['solar_partial'] is False
     assert total['grid_kwh']==30
     assert total['cost_eur']==6
     assert total['average_price_per_kwh']==.15
@@ -56,7 +57,9 @@ def test_missing_provenance_partial_meter_and_prices_never_become_fictitious_zer
     insert(app,'b','2026-10-02T10:00:00+00:00',20,10,1,cost_partial=True,energy_partial=True)
     data=client.get('/api/v1/charging-sessions?period=total').json()
     total=data['totals']
-    assert total['solar_percent'] is None
+    # The share covers the 20 kWh of known origin and is flagged as partial.
+    assert total['solar_percent']==50
+    assert total['solar_partial'] is True
     assert total['unknown_kwh']==10
     assert total['energy_partial'] is True
     assert total['cost_eur'] is None
@@ -67,6 +70,24 @@ def test_missing_provenance_partial_meter_and_prices_never_become_fictitious_zer
     assert data['available']['cost'] is True
     assert total['known_cost_eur'] == 1
     assert total['cost_partial'] is True
+
+
+def test_rows_saved_by_older_releases_get_their_partial_solar_share(service):
+    from app.storage.charging_sessions import SessionHistory
+    app,client=service
+    insert(app,'old-partial','2026-10-01T10:00:00+00:00',10,None,None,solar_kwh=2,grid_kwh=3,unknown_kwh=5)
+    insert(app,'old-complete','2026-10-02T10:00:00+00:00',10,4,1)
+    insert(app,'old-unknown','2026-10-03T10:00:00+00:00',10,None,None)
+    SessionHistory(app.state.store).migrate({})
+    rows={r['id']:r for r in client.get('/api/v1/charging-sessions?period=total').json()['items']}
+    assert rows['old-partial']['solar_percent']==40
+    assert rows['old-partial']['solar_partial'] is True
+    assert rows['old-complete']['solar_percent']==40
+    assert rows['old-complete']['solar_partial'] is False
+    assert rows['old-unknown']['solar_percent'] is None
+    assert rows['old-unknown']['solar_partial'] is True
+    ordered=client.get('/api/v1/charging-sessions?period=total&sort=solar&direction=desc').json()['items']
+    assert {r['id'] for r in ordered[:2]}=={'old-partial','old-complete'}
 
 
 def test_known_partial_cost_is_visible_without_inventing_final_price(service):

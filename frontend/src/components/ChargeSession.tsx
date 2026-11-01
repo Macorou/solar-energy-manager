@@ -20,7 +20,7 @@ export function ChargeSession({value}:{value:ChargingSummary}) {
     <div className="charge-totals">
       <div><span>Énergie chargée{value.energy_partial?' · partielle':''}</span><strong>{number(value.energy_kwh)} kWh</strong></div>
       <div><span>Coût{value.cost_partial?' partiel':' de la recharge'}</span><strong>{value.cost_eur==null?'—':value.cost_eur.toLocaleString('fr-FR',{style:'currency',currency:'EUR'})}</strong></div>
-      <div><span>Part solaire estimée</span><strong>{value.solar_percent==null?'—':number(value.solar_percent,1)+' %'}</strong></div>
+      <div><span>Part solaire{value.solar_partial?' partielle':' estimée'}</span><strong>{value.solar_percent==null?'—':number(value.solar_percent,1)+' %'}</strong></div>
     </div>
   </section>
 }

@@ -34,6 +34,16 @@ it('shows an estimated SOC with measured session energy cost and solar allocatio
   expect(screen.getByText('Observation')).toBeTruthy()
 })
 
+it('labels a solar share that covers only part of the session',()=>{
+  const device={config:{id:'ev',name:'Wallbox',kind:'charger',armed:false,priority:1,default_soc_target:80},
+    state:{observed_state:'Charging',connected:true,vehicle_connected:true,observed_power:null},
+    reason:'Charge',command:null,authorization:null,
+    charging:{active:true,energy_kwh:12.5,energy_partial:false,cost_eur:1.24,cost_partial:true,solar_percent:60,solar_partial:true,soc:78,soc_estimated:true,soc_usable:true,effective_price_per_kwh:.08}} as unknown as LiveDevice
+  render(<DeviceCard device={device} onAction={()=>{}}/>)
+  expect(screen.getByText('Part solaire partielle')).toBeTruthy()
+  expect(screen.getByText('60 %')).toBeTruthy()
+})
+
 it('never interprets an offline charger as a physically disconnected car',()=>{
   const device={config:{id:'ev',name:'EV',kind:'charger',armed:false,priority:1},
     state:{observed_state:'Available',connected:false,vehicle_connected:false},reason:'Offline',command:null} as unknown as LiveDevice

@@ -4,11 +4,11 @@ import {SettingsPage} from './Settings'
 import {api} from '../api/client'
 import type {Settings,LiveState} from '../api/types'
 vi.mock('../api/client',async importOriginal=>({...await importOriginal<typeof import('../api/client')>(),api:vi.fn()}))
-beforeEach(()=>{vi.mocked(api).mockImplementation(async path=>(path==='/connections/ocpp'?{stations:[]}:{ok:true}) as never)})
+beforeEach(()=>{vi.mocked(api).mockImplementation(async path=>(path==='/connections/ocpp'?{stations:[]}:path==='/connections/mqtt/status'?{state:'connected',last_publish_at:'2026-10-29T12:00:00Z',error:null}:{ok:true}) as never)})
 afterEach(()=>{cleanup();vi.clearAllMocks()})
 const initial:Settings={timezone:'Europe/Paris',site_limit_w:11000,export_margin_w:100,sample_max_age_s:30,grid_fallback_current_a:0,phase_control_enabled:false,phase_margin_a:1,solar_price_per_kwh:0,devices:[],vehicles:[],schedules:[],off_peak:[],
   home_assistant:{url:'http://ha.test',grid_entity:'sensor.grid',solar_entity:'sensor.solar',house_entity:'',price_entity:'',phases:{},invert_grid:false,device_power_entities:{}},
-  peugeot:{username:'',client_id:'',country:'fr',poll_interval_s:900,max_age_s:1800},ariston:{username:'',poll_interval_s:120,max_age_s:600}}
+  peugeot:{username:'',client_id:'',country:'fr',poll_interval_s:900,max_age_s:1800},ariston:{username:'',poll_interval_s:120,max_age_s:600},mqtt:{broker:'',topic:'sem',client_id:'',username:'',allow_self_signed:false,tls:false,discovery_prefix:'homeassistant'}}
 const run=async(op:()=>Promise<unknown>)=>{await op()}
 const live=(power=732):LiveState=>({simulation:false,at:'2026-10-29T12:00:00Z',running:true,grid:{value:power,measured_at:'2026-10-29T12:00:00Z',quality:'fresh',usable:true},solar:null,solar_budget_w:0,off_peak:false,errors:{},devices:[],vehicles:{}})
 it('updates grouped readings without resetting an open draft',async()=>{
@@ -73,4 +73,30 @@ it('labels historical Peugeot readings while retaining their last known percenta
   const card=within(screen.getByRole('article',{name:'Peugeot test'}))
   expect(card.getByText('60 %')).toBeTruthy()
   expect(card.getByText('Donnée ancienne')).toBeTruthy()
+})
+it.each([['connected','Connecté','Lecture seule'],['connecting','Hors connexion','Lecture seule'],['disconnected','Hors connexion','Connexion refusée'],['disabled','Désactivé','Lecture seule']])('shows the MQTT card for a %s status',async(state,badge,note)=>{
+  vi.mocked(api).mockImplementation(async path=>(path==='/connections/ocpp'?{stations:[]}:path==='/connections/mqtt/status'?{state,last_publish_at:state==='connected'?'2026-10-29T12:00:00Z':null,error:note==='Lecture seule'?null:note}:{ok:true}) as never)
+  render(<SettingsPage settings={initial} connections={{}} save={vi.fn()} run={run}/> )
+  fireEvent.click(screen.getByRole('tab',{name:'Intégrations'}))
+  const card=within(await screen.findByRole('article',{name:'MQTT'}))
+  await waitFor(()=>expect(card.getByText(badge)).toBeTruthy())
+  expect(card.getByText('Home Assistant · découverte automatique')).toBeTruthy();expect(card.getByText(note)).toBeTruthy()
+  expect(card.getByText('Dernier envoi')).toBeTruthy()
+  if(state!=='connected')expect(card.getByText('—')).toBeTruthy()
+  expect(screen.getByText('3 services')).toBeTruthy()
+})
+it('shows an unavailable MQTT status when the status cannot be read, and opens the MQTT form',async()=>{
+  vi.mocked(api).mockImplementation(async path=>{if(path==='/connections/mqtt/status')throw Error('x');return (path==='/connections/ocpp'?{stations:[]}:{ok:true}) as never})
+  render(<SettingsPage settings={initial} connections={{}} save={vi.fn()} run={run}/> )
+  fireEvent.click(screen.getByRole('tab',{name:'Intégrations'}))
+  await waitFor(()=>expect(within(screen.getByRole('article',{name:'MQTT'})).getByText('État indisponible')).toBeTruthy())
+  fireEvent.click(screen.getByRole('button',{name:'Configurer MQTT'}))
+  expect(screen.getByLabelText('Courtier')).toBeTruthy()
+})
+it('offers MQTT in the integration picker',async()=>{
+  render(<SettingsPage settings={initial} connections={{}} save={vi.fn()} run={run}/> )
+  fireEvent.click(screen.getByRole('tab',{name:'Intégrations'}))
+  fireEvent.click(screen.getByRole('button',{name:'Configurer une intégration'}))
+  fireEvent.click(screen.getByRole('button',{name:'MQTT'}))
+  expect(screen.getByLabelText('Courtier')).toBeTruthy()
 })

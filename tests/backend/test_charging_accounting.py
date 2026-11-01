@@ -40,6 +40,38 @@ def test_energy_cost_solar_soc_and_reboot_are_cumulative(tmp_path):
     assert tracker.summary('ev')['soc']==80
 
 
+def test_session_cost_uses_the_car_share_not_the_site_mix(tmp_path):
+    tracker,_,cfg=setup_tracker(tmp_path);now=utcnow()
+    cfg=cfg.model_copy(update={'devices':[*cfg.devices,
+        *SettingsDocument(devices=[{'id':'tank','name':'Tank','kind':'water_heater'}]).devices]})
+    def with_tank(snapshot):
+        stamp=snapshot.at
+        tank=DeviceState('tank',Sample(2000,'W','test',stamp,stamp),'on',True)
+        return replace(snapshot,device_states={**snapshot.device_states,'tank':tank})
+    first=with_tank(frame(now,10000,grid=2000,solar=2000,stamp=now))
+    second=with_tank(frame(now+timedelta(seconds=30),12000,grid=2000,solar=2000,stamp=now))
+    tracker.update(first,cfg);tracker.update(second,cfg)
+    out=tracker.summary('ev')
+    # The car is served last by the grid: all grid for it, while the site mix is 50 %.
+    assert out['cost_eur']==pytest.approx(.4)
+    assert out['solar_percent']==pytest.approx(0)
+
+
+@pytest.mark.parametrize('grid,cost,solar_percent',[(1500,.4,0),(-1000,0,100)])
+def test_session_uses_first_kwh_rule_when_car_power_is_stale(tmp_path,grid,cost,solar_percent):
+    tracker,_,cfg=setup_tracker(tmp_path);now=utcnow()
+    def stale(snapshot):
+        old=snapshot.at-timedelta(seconds=300)
+        state=replace(snapshot.device_states['ev'],observed_power=Sample(2000,'W','test',old,snapshot.at))
+        return replace(snapshot,device_states={'ev':state})
+    tracker.update(stale(frame(now,10000,grid=grid,solar=1000,stamp=now)),cfg)
+    tracker.update(stale(frame(now+timedelta(seconds=30),12000,grid=grid,solar=1000,stamp=now)),cfg)
+    out=tracker.summary('ev')
+    assert out['cost_partial'] is False
+    assert out['cost_eur']==pytest.approx(cost)
+    assert out['solar_percent']==pytest.approx(solar_percent)
+
+
 def test_changed_peugeot_percentage_reanchors_at_current_energy_ignoring_its_date(tmp_path):
     tracker,_,cfg=setup_tracker(tmp_path);now=utcnow();old=now
     tracker.update(frame(now,10000,stamp=old),cfg)
@@ -56,7 +88,7 @@ def test_tariff_change_is_integrated_and_unknown_price_is_not_zero(tmp_path):
     middle=replace(middle,device_states={'ev':replace(middle.device_states['ev'],energy_measured_at=now)})
     tracker.update(middle,cfg)
     tracker.update(frame(now+timedelta(seconds=30),12000,price=.4,grid=1000,solar=0,stamp=old),cfg)
-    assert tracker.summary('ev')['cost_eur']==pytest.approx(.6)
+    assert tracker.summary('ev')['cost_eur']==pytest.approx(.3)
     tracker.update(frame(now+timedelta(seconds=31),12000,price=None,stamp=old),cfg)
     tracker.update(frame(now+timedelta(seconds=60),14000,price=None,stamp=old),cfg)
     assert tracker.summary('ev')['cost_partial'] is True
@@ -270,7 +302,7 @@ def test_terminal_counter_after_available_is_reconciled_into_last_session(tmp_pa
     terminal=replace(terminal,device_states={'ev':replace(terminal.device_states['ev'],energy_terminal=True)})
     tracker.update(terminal,cfg)
     assert tracker.summary('ev')['energy_kwh']==pytest.approx(.03)
-    assert tracker.summary('ev')['cost_eur']==pytest.approx(.006)
+    assert tracker.summary('ev')['cost_eur']==pytest.approx(.003)
 
 
 def test_short_unknown_mix_interval_is_not_silently_priced(tmp_path):
@@ -280,7 +312,7 @@ def test_short_unknown_mix_interval_is_not_silently_priced(tmp_path):
     tracker.update(replace(gap,grid=None,device_states={'ev':replace(gap.device_states['ev'],energy_measured_at=now)}),cfg)
     tracker.update(frame(now+timedelta(seconds=8),10008,grid=1000,solar=0,stamp=now),cfg)
     assert tracker.summary('ev')['cost_partial'] is True
-    assert tracker.summary('ev')['cost_eur']==pytest.approx(.0004)
+    assert tracker.summary('ev')['cost_eur']==pytest.approx(.0002)
     assert tracker.summary('ev')['solar_percent'] is None
 
 
@@ -511,3 +543,25 @@ async def test_engine_never_sees_a_peugeot_percentage_kept_through_an_api_error(
     await runtime.tick(error(frame(now+timedelta(seconds=60),12000,soc=60)))
     car=runtime.snapshot.vehicle_telemetry['car']
     assert car.quality==Quality.ESTIMATED and car.soc==pytest.approx(65)
+
+
+def test_grid_share_failure_never_breaks_the_tick(tmp_path,monkeypatch):
+    from app.runtime import charging
+    tracker,store,cfg=setup_tracker(tmp_path);now=utcnow()
+    def broken(snapshot,config): raise RuntimeError('boom secret-detail')
+    monkeypatch.setattr(charging,'grid_shares',broken)
+    tracker.update(frame(now,10000),cfg)
+    tracker.update(frame(now+timedelta(seconds=30),12000),cfg)
+    tracker.update(frame(now+timedelta(seconds=60),13000),cfg)
+    out=tracker.summary('ev')
+    assert out['energy_kwh']==3
+    entries=store.journal.query(areas=('charging',))['entries']
+    # One line per failure episode, not one per tick, and only the exception type.
+    assert len(entries)==1
+    assert entries[0]['level']=='ERROR' and entries[0]['message']=='Part réseau indisponible (RuntimeError)'
+    monkeypatch.undo()
+    tracker.update(frame(now+timedelta(seconds=90),14000),cfg)
+    assert tracker.summary('ev')['energy_kwh']==4
+    monkeypatch.setattr(charging,'grid_shares',broken)
+    tracker.update(frame(now+timedelta(seconds=120),15000),cfg)
+    assert len(store.journal.query(areas=('charging',))['entries'])==2

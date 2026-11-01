@@ -25,6 +25,10 @@ class SecretStore:
             db.execute('INSERT OR REPLACE INTO secrets VALUES(?,?)',
                        (name, self.cipher.encrypt(value.encode())))
 
+    def delete(self, name: str):
+        with self.store.connection() as db:
+            db.execute('DELETE FROM secrets WHERE key=?', (name,))
+
     def get(self, name: str) -> str | None:
         with self.store.connection() as db:
             row = db.execute('SELECT value FROM secrets WHERE key=?', (name,)).fetchone()

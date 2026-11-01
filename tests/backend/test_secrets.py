@@ -18,3 +18,16 @@ def test_missing_key_for_existing_database_fails_instead_of_replacing_it(tmp_pat
     (tmp_path / 'secrets' / 'master.key').unlink()
     with pytest.raises(RuntimeError, match='key|clé'):
         create_app(RuntimeSettings(data_dir=tmp_path))
+
+
+def test_delete_removes_secret_and_is_idempotent(tmp_path):
+    from app.main import create_app
+    from app.settings import RuntimeSettings
+    app = create_app(RuntimeSettings(data_dir=tmp_path))
+    secrets = app.state.secrets
+    secrets.set('mqtt_password', 'to-be-deleted')
+    assert secrets.present('mqtt_password')
+    secrets.delete('mqtt_password')
+    assert not secrets.present('mqtt_password') and secrets.get('mqtt_password') is None
+    secrets.delete('mqtt_password')
+    secrets.delete('never-existed')

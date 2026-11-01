@@ -8,6 +8,7 @@ from app.storage.database import SQLiteStore
 from app.storage.secrets import SecretStore
 from app.api.auth import router as auth_router, require_auth
 from app.api.connections import router as connections_router
+from app.api.mqtt import router as mqtt_router
 from app.api.schedules import router as schedules_router
 from app.api.tariffs import router as tariffs_router
 from app.connectors.ocpp.registry import OcppRegistry
@@ -22,6 +23,7 @@ from app.api.simulation import router as simulation_router
 from app.api.sessions import router as sessions_router
 from app.api.logs import router as logs_router
 from app.runtime.coordinator import Coordinator
+from app.connectors.mqtt.service import MqttService
 
 
 def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
@@ -50,8 +52,12 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         coordinator = getattr(app.state, 'coordinator', None)
         if coordinator and settings.start_runtime:
             await coordinator.start()
+            try: await app.state.mqtt.start()
+            except Exception as error: store.journal.write('WARN', 'mqtt', f'Démarrage MQTT impossible ({type(error).__name__})')
         yield
         if coordinator and settings.start_runtime:
+            try: await app.state.mqtt.stop()
+            except Exception as error: store.journal.write('WARN', 'mqtt', f'Arrêt MQTT incomplet ({type(error).__name__})')
             await coordinator.stop()
         store.journal.write('INFO', 'system', 'Arrêt Solar Energy Manager')
 
@@ -64,10 +70,12 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.state.peugeot=PeugeotAdapter(secret_store,PeugeotConfig.model_validate(store.load_settings()['peugeot']),journal=store.journal)
     app.state.ariston_adapters={}
     app.state.coordinator=Coordinator(store,app)
+    app.state.mqtt=MqttService(store,secret_store,lambda:app.state.coordinator.public_state())
     app.state.ocpp.on_transaction=app.state.coordinator.engine.forget
     register_server(app,app.state.ocpp)
     app.include_router(auth_router)
     app.include_router(connections_router)
+    app.include_router(mqtt_router)
     app.include_router(schedules_router)
     app.include_router(tariffs_router)
     app.include_router(chargers_router)

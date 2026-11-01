@@ -16,7 +16,8 @@ class HomeAssistantInput(BaseModel):
 def connections(request: Request):
     return {'home_assistant': request.app.state.secrets.present('ha_token'),
             'peugeot': request.app.state.secrets.present('peugeot_refresh'),
-            'ariston': request.app.state.secrets.present('ariston_password')}
+            'ariston': request.app.state.secrets.present('ariston_password'),
+            'mqtt': bool((request.app.state.store.load_settings().get('mqtt') or {}).get('broker'))}
 
 
 @router.post('/connections/home-assistant/test')

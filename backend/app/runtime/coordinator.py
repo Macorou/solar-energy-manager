@@ -21,6 +21,7 @@ from app.api.water_heaters import adapter as ariston_adapter
 from .dispatcher import Dispatcher
 from .instance import InstanceLock
 from .charging import ChargingTracker
+from .energy_prices import device_prices
 from .charger_measurements import select_power
 from app.domain.vehicles import VehicleTelemetry
 
@@ -513,6 +514,8 @@ class Coordinator:
                 'limit_a':c.max_current_a} for p,c in config.home_assistant.phases.items()},
             'price':sample(self.snapshot.price),'effective_price_per_kwh':self.charging.effective_price,
             'solar_budget_w':solar_budget_w(replace(self.snapshot,at=now)),
+            'energy_prices':{'site':None if self.charging.effective_price is None else round(self.charging.effective_price,3),
+                'devices':device_prices(replace(self.snapshot,at=now),config)},
             'off_peak':is_off_peak(now,config.off_peak,config.timezone),'errors':self.errors,
             'devices':[{'config':d.model_dump(mode='json'),
                 'state':device_state(d),

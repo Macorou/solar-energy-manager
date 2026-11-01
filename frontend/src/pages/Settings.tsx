@@ -1,5 +1,5 @@
 import {useEffect,useId,useRef,useState,type ReactNode} from 'react'
-import type {Device,LiveDevice,LiveState,Sample,Settings,Vehicle} from '../api/types'
+import type {Device,LiveDevice,LiveState,MqttStatus,Sample,Settings,Vehicle} from '../api/types'
 import type {Run} from './Devices'
 import {api,date,watts} from '../api/client'
 import {createId} from '../api/id'
@@ -13,7 +13,7 @@ import {SettingsDialog} from '../settings/SettingsDialog'
 import {SourceEditor,type SourceKind} from '../settings/SourceEditor'
 import {DeviceControls} from '../settings/DeviceControls'
 
-type Editor={kind:'device';value:Device}|{kind:'vehicle';value:Vehicle}|{kind:'source';source:SourceKind}|{kind:'connection';name:'home_assistant'|'peugeot'|'ariston'|'ocpp'|'limits'}|{kind:'add'}
+type Editor={kind:'device';value:Device}|{kind:'vehicle';value:Vehicle}|{kind:'source';source:SourceKind}|{kind:'connection';name:'home_assistant'|'peugeot'|'ariston'|'ocpp'|'mqtt'|'limits'}|{kind:'add'}
 const sources:Record<SourceKind,string>={grid:'Compteur réseau',solar:'Production solaire',house:'Consommation maison',price:'Prix du réseau'}
 const number=(n:number|null|undefined,digits=1)=>n==null||!Number.isFinite(n)?'—':n.toLocaleString('fr-FR',{maximumFractionDigits:digits})
 function sampleValue(s:Sample|null|undefined,maxAge=30):number|null{
@@ -40,10 +40,11 @@ export function SettingsPage({settings,state=null,save,run,connections}:{setting
   const [tab,setTab]=useState('equipment'),[editor,setEditor]=useState<Editor|null>(null)
   const [pending,setPending]=useState(false),[dialogError,setDialogError]=useState(''),[dialogMessage,setDialogMessage]=useState('')
   const closeAfterRun=useRef(false)
-  const [ocpp,setOcpp]=useState<OcppConnection[]>([]),[ocppError,setOcppError]=useState(false)
+  const [ocpp,setOcpp]=useState<OcppConnection[]>([]),[ocppError,setOcppError]=useState(false),[mqtt,setMqtt]=useState<MqttStatus|null>(null)
   const tabsId=useId()
   useEffect(()=>{let active=true
-    async function refresh(){try{const data=await api<{stations:OcppConnection[]}>('/connections/ocpp');if(active){setOcpp(data.stations||[]);setOcppError(false)}}catch{if(active){setOcpp([]);setOcppError(true)}}}
+    async function refresh(){try{const data=await api<{stations:OcppConnection[]}>('/connections/ocpp');if(active){setOcpp(data.stations||[]);setOcppError(false)}}catch{if(active){setOcpp([]);setOcppError(true)}}
+      try{const data=await api<MqttStatus>('/connections/mqtt/status');if(active)setMqtt(data)}catch{if(active)setMqtt(null)}}
     void refresh();const timer=setInterval(()=>void refresh(),10000);return()=>{active=false;clearInterval(timer)}
   },[])
   function open(next:Editor){closeAfterRun.current=false;setDialogError('');setDialogMessage('');setEditor(next)}
@@ -75,7 +76,7 @@ export function SettingsPage({settings,state=null,save,run,connections}:{setting
         <Row label="Source" value={kind==='house'?settings.home_assistant.house_entity?'Capteur Home Assistant':'Calcul réseau + solaire':settings.home_assistant.solar_entity?'Capteur Home Assistant':'À configurer'}/>}
     </Card>
   }
-  const title=editor?.kind==='device'?'Configurer '+editor.value.name:editor?.kind==='vehicle'?'Configurer '+editor.value.name:editor?.kind==='source'?'Configurer '+sources[editor.source]:editor?.kind==='connection'?'Configurer '+({home_assistant:'Home Assistant',peugeot:'Compte Peugeot',ariston:'Ariston NET',ocpp:'Serveur OCPP',limits:'Gestion de la charge'}[editor.name]):'Ajouter une intégration'
+  const title=editor?.kind==='device'?'Configurer '+editor.value.name:editor?.kind==='vehicle'?'Configurer '+editor.value.name:editor?.kind==='source'?'Configurer '+sources[editor.source]:editor?.kind==='connection'?'Configurer '+({home_assistant:'Home Assistant',peugeot:'Compte Peugeot',ariston:'Ariston NET',ocpp:'Serveur OCPP',mqtt:'MQTT',limits:'Gestion de la charge'}[editor.name]):'Ajouter une intégration'
   return <div className="settings-workspace"><p className="settings-intro">Vos équipements et leurs connexions, au même endroit.</p>
     <div className="settings-tabs" role="tablist" aria-label="Sections des réglages">{[['equipment','Équipements','settings'],['integrations','Intégrations','plug'],['installation','Installation','sliders']].map(([id,label,icon])=><button type="button" role="tab" key={id} id={tabsId+id} aria-selected={tab===id} aria-controls={tabsId+'panel'} onClick={()=>setTab(id)}><Icon name={icon} size={18}/>{label}</button>)}</div>
     <div id={tabsId+'panel'} role="tabpanel" aria-labelledby={tabsId+tab}>
@@ -97,10 +98,13 @@ export function SettingsPage({settings,state=null,save,run,connections}:{setting
           <span className={'badge '+(connections[key]?'green':'neutral')}>{connections[key]?'Accès enregistré':'À connecter'}</span>
           <Row label="Équipements associés" value={key==='peugeot'?settings.vehicles.length:key==='ariston'?heaters.length:settings.devices.length}/>
           <Row label="Intervalle de lecture" value={key==='home_assistant'?'Mesures locales':number(settings[key].poll_interval_s,0)+' s'}/></Card>)}
-      </Group><Group name="Services locaux" count="2 services">
+      </Group><Group name="Services locaux" count="3 services">
         <Card name="Serveur OCPP" subtitle="Connexion directe à la borne" icon="link" onConfigure={()=>open({kind:'connection',name:'ocpp'})} note={ocppError?'Lecture du service indisponible':'Authentification conservée sur le serveur'}>
           <span className={'badge '+(ocpp.some(s=>s.connected)?'green':'neutral')}>{ocppError?'État indisponible':ocpp.some(s=>s.connected)?'Connecté':ocpp.length?'Hors connexion':'Aucune borne'}</span>
           <Row label="Bornes connectées" value={ocppError?'—':ocpp.filter(s=>s.connected).length}/><Row label="Bornes configurées" value={chargers.length}/></Card>
+        <Card name="MQTT" subtitle="Home Assistant · découverte automatique" icon="ha" onConfigure={()=>open({kind:'connection',name:'mqtt'})} note={mqtt?.error||'Lecture seule'}>
+          <span className={'badge '+(mqtt?.state==='connected'?'green':mqtt?.state==='connecting'||mqtt?.state==='disconnected'?'amber':'neutral')}>{!mqtt?'État indisponible':mqtt.state==='connected'?'Connecté':mqtt.state==='disabled'?'Désactivé':'Hors connexion'}</span>
+          <Row label="Dernier envoi" value={mqtt?.last_publish_at?new Date(mqtt.last_publish_at).toLocaleTimeString('fr-FR',{timeZone:settings.timezone}):'—'}/></Card>
         <Card name="Gestion de la charge" subtitle="Limites et budget de puissance" icon="grid" onConfigure={()=>open({kind:'connection',name:'limits'})} note="Pilotage local">
           <span className={'badge '+(settings.phase_control_enabled?'green':'neutral')}>{settings.phase_control_enabled?'Limitation active':'Limitation par phase désactivée'}</span><Row label="Limite totale" value={watts(settings.site_limit_w)}/><Row label="Marge par phase" value={number(settings.phase_margin_a)+' A'}/>
         </Card><AddCard label="Configurer une intégration" onClick={()=>open({kind:'add'})}/>
@@ -113,7 +117,7 @@ export function SettingsPage({settings,state=null,save,run,connections}:{setting
       {editor.kind==='device'&&settings.devices.some(d=>d.id===editor.value.id)&&<DeviceControls device={settings.devices.find(d=>d.id===editor.value.id)!} run={dialogRun} onRemoved={saved}/>}
       {editor.kind==='vehicle'&&<VehicleEditor initial={editor.value} settings={settings} save={save} run={dialogRun} onSaved={saved}/>}
       {editor.kind==='connection'&&(editor.name==='ocpp'?<OcppSettings devices={settings.devices} run={dialogRun}/>:<ConnectionForm section={editor.name==='limits'?'installation':editor.name} onSaved={saved} settings={settings} save={save} run={dialogRun} connections={connections}/>)}
-      {editor.kind==='add'&&<div className="integration-picker">{(['home_assistant','peugeot','ariston','ocpp'] as const).map(name=><button type="button" key={name} onClick={()=>open({kind:'connection',name})}>{{home_assistant:'Home Assistant',peugeot:'Peugeot',ariston:'Ariston NET',ocpp:'Serveur OCPP'}[name]}<Icon name="arrow" size={18}/></button>)}</div>}
+      {editor.kind==='add'&&<div className="integration-picker">{(['home_assistant','peugeot','ariston','ocpp','mqtt'] as const).map(name=><button type="button" key={name} onClick={()=>open({kind:'connection',name})}>{{home_assistant:'Home Assistant',peugeot:'Peugeot',ariston:'Ariston NET',ocpp:'Serveur OCPP',mqtt:'MQTT'}[name]}<Icon name="arrow" size={18}/></button>)}</div>}
     </SettingsDialog>}
   </div>
 }

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from app.domain.measurements import Quality
 from app.engine.evcc_soc import SocEstimator
 from app.domain.commands import CHARGER_START_WAIT_S
+from app.runtime.energy_prices import grid_shares
 from app.storage.charging_sessions import SessionHistory
 from app.sessions.soc_capture import capture_start, recover_start
 
@@ -50,7 +51,7 @@ def mix_context(snapshot,solar_price):
 
 class ChargingTracker:
     def __init__(self,store):
-        self.store=store
+        self.store=store;self.shares_failed=False
         self.sessions=store.get('charging_sessions',{})
         for session in self.sessions.values():recover_start(session)
         self.history=SessionHistory(store)
@@ -70,6 +71,18 @@ class ChargingTracker:
         key=vehicle_id+'|'+vin
         self.peugeot_references[key]={'soc':soc,'at':stamp}
 
+    def safe_grid_shares(self,snapshot,config):
+        # Pricing must never break the control tick: unknown shares fall back to the first-kWh/None path.
+        try:
+            shares=grid_shares(snapshot,config)
+            self.shares_failed=False
+            return shares
+        except Exception as error:
+            if not self.shares_failed:
+                self.store.journal.write('ERROR','charging',f'Part réseau indisponible ({type(error).__name__})')
+            self.shares_failed=True
+            return {}
+
     def update(self,snapshot,config):
         now=snapshot.at.timestamp(); vehicles={v.id:v for v in config.vehicles}
         # Keep the latest constructor reference even outside a plug session.
@@ -80,7 +93,10 @@ class ChargingTracker:
                 stamp=raw.measured_at.timestamp() if raw.measured_at and raw.measured_at.tzinfo else None
                 self.remember_peugeot(vehicle.id,vehicle.vin,raw.soc,stamp)
         self.store.set('peugeot_soc_references',self.peugeot_references)
-        fraction,price,self.effective_price=mix_context(snapshot,config.solar_price_per_kwh)
+        # The site mix only drives the site price; a session is priced with its own car share.
+        _,price,self.effective_price=mix_context(snapshot,config.solar_price_per_kwh)
+        shares=self.safe_grid_shares(snapshot,config)
+        grid_readable=bool(snapshot.grid and snapshot.grid.usable(snapshot.at,config.sample_max_age_s))
         for device in config.devices:
             if device.kind!='charger': continue
             state=snapshot.device_states.get(device.id)
@@ -144,6 +160,10 @@ class ChargingTracker:
                     else status_at.timestamp()+config.sample_max_age_s if status_valid else now)
                 if not power_valid and not status_valid:session['duration_partial']=True
                 session['checked_at']=now
+                fraction=shares.get(device.id)
+                if fraction is None and grid_readable:
+                    # No usable car power: first-kWh rule, grid price when the site imports.
+                    fraction=1. if max(0,snapshot.grid.value)>0 else 0.
                 contexts=session['contexts']; entry=[now,fraction,price,config.solar_price_per_kwh]
                 if (not contexts or now-contexts[-1][0]>=10 or price!=contexts[-1][2]
                     or (fraction is None)!=(contexts[-1][1] is None)):

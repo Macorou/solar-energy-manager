@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from datetime import time
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -150,6 +151,40 @@ class AristonConfig(Model):
     max_age_s: int = Field(600, ge=60)
 
 
+class MqttConfig(Model):
+    broker: str = ''
+    topic: str = 'sem'
+    client_id: str = ''
+    username: str = ''
+    allow_self_signed: bool = False
+    tls: bool = False
+    discovery_prefix: str = 'homeassistant'
+
+    @field_validator('broker')
+    @classmethod
+    def broker_address(cls, value):
+        host, _, port = value.rpartition(':')
+        if value and not (host and port.isascii() and port.isdigit() and 1 <= int(port) <= 65535
+                          and not re.search(r'[\s/]', host)):
+            raise ValueError('Courtier invalide : utiliser hôte:port (port de 1 à 65535, sans espace ni « / »)')
+        return value
+
+    @field_validator('topic', 'discovery_prefix')
+    @classmethod
+    def topic_name(cls, value, info):
+        required = info.field_name == 'discovery_prefix'
+        if re.search(r'[#+\s]', value) or value.startswith('/') or value.endswith('/') or (required and not value):
+            raise ValueError(('Préfixe de découverte invalide : non vide, ' if required else 'Sujet invalide : ')
+                             + 'sans « # », « + », espace ni « / » au début ou à la fin')
+        if not required and value.split('/')[0].lower() == 'evcc':
+            raise ValueError('Sujet réservé à EVCC : choisir un autre préfixe')
+        return value
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.broker and self.topic)
+
+
 class SettingsDocument(Model):
     timezone: str = 'Europe/Paris'
     site_limit_w: float | None = Field(None, gt=0)
@@ -168,6 +203,7 @@ class SettingsDocument(Model):
     home_assistant: HomeAssistantConfig = Field(default_factory=HomeAssistantConfig)
     peugeot: PeugeotConfig = Field(default_factory=PeugeotConfig)
     ariston: AristonConfig = Field(default_factory=AristonConfig)
+    mqtt: MqttConfig = Field(default_factory=MqttConfig)
 
     @field_validator('timezone')
     @classmethod

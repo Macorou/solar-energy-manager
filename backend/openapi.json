@@ -213,6 +213,108 @@
         }
       }
     },
+    "/api/v1/connections/mqtt": {
+      "put": {
+        "summary": "Configure Mqtt",
+        "operationId": "configure_mqtt_api_v1_connections_mqtt_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MqttInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Mqtt",
+        "operationId": "delete_mqtt_api_v1_connections_mqtt_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/connections/mqtt/test": {
+      "post": {
+        "summary": "Test Mqtt",
+        "operationId": "test_mqtt_api_v1_connections_mqtt_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MqttInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/connections/mqtt/status": {
+      "get": {
+        "summary": "Mqtt Status",
+        "operationId": "mqtt_status_api_v1_connections_mqtt_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedules": {
       "get": {
         "summary": "Listing",
@@ -3191,6 +3293,73 @@
         "type": "object",
         "title": "ManualRequest"
       },
+      "MqttConfig": {
+        "properties": {
+          "broker": {
+            "type": "string",
+            "title": "Broker",
+            "default": ""
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic",
+            "default": "sem"
+          },
+          "client_id": {
+            "type": "string",
+            "title": "Client Id",
+            "default": ""
+          },
+          "username": {
+            "type": "string",
+            "title": "Username",
+            "default": ""
+          },
+          "allow_self_signed": {
+            "type": "boolean",
+            "title": "Allow Self Signed",
+            "default": false
+          },
+          "tls": {
+            "type": "boolean",
+            "title": "Tls",
+            "default": false
+          },
+          "discovery_prefix": {
+            "type": "string",
+            "title": "Discovery Prefix",
+            "default": "homeassistant"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "MqttConfig"
+      },
+      "MqttInput": {
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/MqttConfig"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "config"
+        ],
+        "title": "MqttInput"
+      },
       "OcppCredentials": {
         "properties": {
           "password": {
@@ -3615,6 +3784,9 @@
           },
           "ariston": {
             "$ref": "#/components/schemas/AristonConfig"
+          },
+          "mqtt": {
+            "$ref": "#/components/schemas/MqttConfig"
           }
         },
         "additionalProperties": false,

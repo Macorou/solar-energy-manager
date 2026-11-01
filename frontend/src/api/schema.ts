@@ -140,6 +140,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/connections/mqtt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Configure Mqtt */
+        put: operations["configure_mqtt_api_v1_connections_mqtt_put"];
+        post?: never;
+        /** Delete Mqtt */
+        delete: operations["delete_mqtt_api_v1_connections_mqtt_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connections/mqtt/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Mqtt */
+        post: operations["test_mqtt_api_v1_connections_mqtt_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connections/mqtt/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mqtt Status */
+        get: operations["mqtt_status_api_v1_connections_mqtt_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedules": {
         parameters: {
             query?: never;
@@ -1219,6 +1271,50 @@ export interface components {
              */
             duration_minutes: number;
         };
+        /** MqttConfig */
+        MqttConfig: {
+            /**
+             * Broker
+             * @default
+             */
+            broker: string;
+            /**
+             * Topic
+             * @default sem
+             */
+            topic: string;
+            /**
+             * Client Id
+             * @default
+             */
+            client_id: string;
+            /**
+             * Username
+             * @default
+             */
+            username: string;
+            /**
+             * Allow Self Signed
+             * @default false
+             */
+            allow_self_signed: boolean;
+            /**
+             * Tls
+             * @default false
+             */
+            tls: boolean;
+            /**
+             * Discovery Prefix
+             * @default homeassistant
+             */
+            discovery_prefix: string;
+        };
+        /** MqttInput */
+        MqttInput: {
+            config: components["schemas"]["MqttConfig"];
+            /** Password */
+            password?: string | null;
+        };
         /** OcppCredentials */
         OcppCredentials: {
             /** Password */
@@ -1418,6 +1514,7 @@ export interface components {
             home_assistant?: components["schemas"]["HomeAssistantConfig"];
             peugeot?: components["schemas"]["PeugeotConfig"];
             ariston?: components["schemas"]["AristonConfig"];
+            mqtt?: components["schemas"]["MqttConfig"];
         };
         /** Setup */
         Setup: {
@@ -1755,6 +1852,112 @@ export interface operations {
         };
     };
     measurements_api_v1_measurements_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    configure_mqtt_api_v1_connections_mqtt_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MqttInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mqtt_api_v1_connections_mqtt_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    test_mqtt_api_v1_connections_mqtt_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MqttInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mqtt_status_api_v1_connections_mqtt_status_get: {
         parameters: {
             query?: never;
             header?: never;

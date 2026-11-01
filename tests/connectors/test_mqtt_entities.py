@@ -1,3 +1,4 @@
+import pytest
 import json
 from datetime import datetime, timedelta, timezone
 from app.connectors.mqtt.entities import build_entities
@@ -201,3 +202,45 @@ def test_plugged_is_unavailable_when_the_charger_is_not_connected():
     for connected in (False, None):
         entities = build(with_charger(state={'connected': connected, 'vehicle_connected': True}))
         assert find(entities, 'ev', 'plugged').value is None
+
+
+def commands_config(**mqtt):
+    return SettingsDocument.model_validate({
+        'mqtt': {'commands_enabled': True, **mqtt},
+        'devices': [{'id': 'ev', 'name': 'Wallbox', 'kind': 'charger', 'mode': 'planned', 'vehicle_id': 'car'},
+                    {'id': 'ev2', 'name': 'Garage', 'kind': 'charger', 'mode': 'off'},
+                    {'id': 'tank', 'name': 'Ballon', 'kind': 'water_heater'}],
+        'vehicles': [{'id': 'car'}, {'id': 'van'}],
+        'schedules': [{'id': 'week', 'name': 'Semaine', 'vehicle_id': 'car', 'target_soc': 80},
+                      {'id': 'we', 'name': 'Week-end', 'vehicle_id': 'car', 'target_soc': 100, 'enabled': False},
+                      {'id': 'other', 'name': 'Autre', 'vehicle_id': 'van'}]})
+
+
+def test_commands_disabled_add_no_entities():
+    assert not [e for e in build() if e.command]
+    config = commands_config()
+    config.mqtt.commands_enabled = False
+    assert not [e for e in build(config=config) if e.command]
+
+
+@pytest.mark.parametrize('mode,label', [('planned', 'Auto'), ('manual', 'Manuel'), ('off', 'Pause'),
+                                        ('solar', 'None'), ('off_peak_solar', 'None')])
+def test_car_mode_select_maps_sem_modes(mode, label):
+    config = commands_config()
+    config.devices[0].mode = mode
+    select = find(build(config=config), 'ev', 'car_mode')
+    assert select.component == 'select' and select.command is True and select.value == label
+    assert select.options == ('Auto', 'Manuel', 'Pause') and select.name == 'Mode de la voiture'
+    assert select.device_name == 'SEM – Wallbox'
+
+
+def test_one_target_number_per_program_of_the_car():
+    entities = build(config=commands_config())
+    numbers = [e for e in entities if e.component == 'number']
+    assert [(e.group, e.key, e.name) for e in numbers] == [
+        ('ev', 'program_week_target', 'Objectif – Semaine'), ('ev', 'program_we_target', 'Objectif – Week-end')]
+    assert [e.value for e in numbers] == ['80', '100']
+    assert all(e.command and e.unit == '%' and (e.minimum, e.maximum, e.step) == (1, 100, 1) for e in numbers)
+    assert {e.device_name for e in numbers} == {'SEM – Wallbox'}
+    assert [e.key for e in entities if e.group == 'ev2' and e.command] == ['car_mode']
+    assert not [e for e in entities if e.group == 'tank' and e.command]

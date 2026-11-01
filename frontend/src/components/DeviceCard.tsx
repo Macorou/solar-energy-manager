@@ -53,13 +53,13 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
         </div>
         <div className="mode-switch" aria-label="Mode de pilotage">
           <button className={automatic?'selected automatic':''} aria-pressed={automatic} disabled={!config.armed} onClick={()=>onAction(config.id,'resume')}><Icon name="leaf" size={14}/>Automatique</button>
-          <button className={config.mode==='manual'?'selected':''} aria-pressed={config.mode==='manual'} disabled={!config.armed} onClick={()=>onAction(config.id,'manual')} title={car?'Manuel jusqu’à votre changement de mode':'Démarrage temporaire pendant 30 minutes'}><Icon name="hand" size={14}/>Manuel</button>
+          <button className={config.mode==='manual'?'selected':''} aria-pressed={config.mode==='manual'} disabled={!config.armed} onClick={()=>onAction(config.id,'manual')} title={car?'Manuel jusqu’au débranchement de la voiture':'Démarrage temporaire pendant 30 minutes'}><Icon name="hand" size={14}/>Manuel</button>
           <button className={config.mode==='off'?'selected':''} aria-pressed={config.mode==='off'} disabled={!config.armed} onClick={()=>onAction(config.id,'pause')}><Icon name="pause" size={14}/>Pause</button>
         </div>
         <div className="device-reading"><Icon name={car?'bolt':'calendar'} size={26}/><div>
           <strong>{watts(power)}</strong><span>{displayed.estimated.power?'Puissance estimée · état OCPP':car?'Puissance de charge actuelle':'Puissance de chauffe actuelle'}</span>
         </div></div>
-        <button className={'start-now '+(car?'charge':'heat')} disabled={!config.armed} title={car?'Recharge manuelle jusqu’à votre changement de mode':'Commande manuelle temporaire de 30 minutes'} onClick={()=>onAction(config.id,'manual')}><Icon name="play" size={16}/>{car?'Charger maintenant':'Chauffer maintenant'}</button>
+        <button className={'start-now '+(car?'charge':'heat')} disabled={!config.armed} title={car?'Recharge manuelle jusqu’au débranchement de la voiture':'Commande manuelle temporaire de 30 minutes'} onClick={()=>onAction(config.id,'manual')}><Icon name="play" size={16}/>{car?'Charger maintenant':'Chauffer maintenant'}</button>
       </div>
     </div>
     {car&&session&&<ChargeSession value={session}/>}

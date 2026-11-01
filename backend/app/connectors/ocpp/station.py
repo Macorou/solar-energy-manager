@@ -53,6 +53,7 @@ class Station(ChargePoint):
         self.registry.store.set('ocpp_metadata',self.registry.metadata)
         if hasattr(self,'sem_profile_values'):del self.sem_profile_values
         self.registry.rebooted.update(config.id for config in self.registry.devices(self.id))
+        self.registry.connected_since[self.id]=utcnow()  # a restart: earlier plug readings are history
         return call_result.BootNotification(current_time=utcnow().isoformat(),interval=30,status='Accepted')
 
     @on(Action.heartbeat)

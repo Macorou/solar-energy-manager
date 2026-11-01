@@ -5,7 +5,7 @@ import {ConnectionForm} from './ConnectionForm'
 import {api} from '../api/client'
 vi.mock('../api/client',()=>({api:vi.fn().mockResolvedValue({ok:true})}))
 afterEach(()=>{cleanup();vi.clearAllMocks();vi.restoreAllMocks()})
-const mqtt={broker:'192.168.1.30:1883',topic:'sem',client_id:'',username:'sem',allow_self_signed:false,tls:false,discovery_prefix:'homeassistant'}
+const mqtt={broker:'192.168.1.30:1883',topic:'sem',client_id:'',username:'sem',allow_self_signed:false,tls:false,discovery_prefix:'homeassistant',commands_enabled:false}
 const initial={devices:[],vehicles:[],schedules:[],off_peak:[],mqtt,site_limit_w:12000,timezone:'Europe/Paris'} as unknown as Settings
 const run=async(op:()=>Promise<unknown>,_message?:string)=>{await op()}
 const show=(connections:Record<string,boolean>={mqtt:true},runner:typeof run=run)=>render(<ConnectionForm section="mqtt" settings={initial} save={vi.fn()} run={runner} connections={connections}/>)
@@ -69,13 +69,13 @@ it('resets the whole form to the server defaults after a deletion',async()=>{
   fireEvent.click(screen.getByRole('button',{name:'Supprimer'}))
   await screen.findByRole('status')
   // The app refreshes settings from the server after a run: it now holds the defaults
-  view.rerender(<ConnectionForm section="mqtt" settings={{...custom,mqtt:{broker:'',topic:'sem',client_id:'',username:'',allow_self_signed:false,tls:false,discovery_prefix:'homeassistant'}} as Settings} {...props}/>)
+  view.rerender(<ConnectionForm section="mqtt" settings={{...custom,mqtt:{broker:'',topic:'sem',client_id:'',username:'',allow_self_signed:false,tls:false,discovery_prefix:'homeassistant',commands_enabled:false}} as Settings} {...props}/>)
   expect((screen.getByLabelText('Sujet') as HTMLInputElement).value).toBe('sem')
   expect((screen.getByLabelText('Préfixe de découverte Home Assistant') as HTMLInputElement).value).toBe('homeassistant')
   expect((screen.getByLabelText('Connexion chiffrée (TLS)') as HTMLInputElement).checked).toBe(false)
   expect((screen.getByLabelText('Mot de passe') as HTMLInputElement).value).toBe('')
   fireEvent.click(screen.getByRole('button',{name:'Enregistrer'}))
-  await waitFor(()=>expect(api).toHaveBeenCalledWith('/connections/mqtt','PUT',{config:{broker:'',topic:'sem',client_id:'',username:'',allow_self_signed:false,tls:false,discovery_prefix:'homeassistant'},password:null}))
+  await waitFor(()=>expect(api).toHaveBeenCalledWith('/connections/mqtt','PUT',{config:{broker:'',topic:'sem',client_id:'',username:'',allow_self_signed:false,tls:false,discovery_prefix:'homeassistant',commands_enabled:false},password:null}))
 })
 it('warns and stays open when a save that disables publication could not remove the entities',async()=>{
   vi.mocked(api).mockResolvedValue({ok:true,entities_removed:false} as never)
@@ -92,4 +92,14 @@ it('closes normally after a save that reports entities removed or no information
   render(<ConnectionForm section="mqtt" settings={initial} save={vi.fn()} run={run} connections={{mqtt:true}} onSaved={onSaved}/>)
   fireEvent.click(screen.getByRole('button',{name:'Enregistrer'}))
   await waitFor(()=>expect(onSaved).toHaveBeenCalledOnce());expect(screen.queryByRole('status')).toBeNull()
+})
+it('lets the user allow Home Assistant commands with a warning',async()=>{
+  show()
+  const box=screen.getByLabelText('Autoriser les commandes depuis Home Assistant') as HTMLInputElement
+  const warning='Toute personne ou tout appareil ayant accès à votre courtier MQTT pourra changer le mode de charge de la voiture.'
+  expect(box.checked).toBe(false);expect(screen.queryByText(warning)).toBeNull()
+  fireEvent.click(box)
+  expect(screen.getByText(warning)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button',{name:'Enregistrer'}))
+  await waitFor(()=>expect(api).toHaveBeenCalledWith('/connections/mqtt','PUT',{config:{...mqtt,commands_enabled:true},password:null}))
 })

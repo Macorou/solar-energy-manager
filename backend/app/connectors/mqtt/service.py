@@ -46,7 +46,8 @@ class _AiomqttSession:
     async def messages(self):
         async for message in self.client.messages:
             payload = message.payload
-            yield str(message.topic), payload.decode(errors='replace') if isinstance(payload, (bytes, bytearray)) else str(payload)
+            yield (str(message.topic), payload.decode(errors='replace') if isinstance(payload, (bytes, bytearray)) else str(payload),
+                   bool(message.retain))
 
 
 class _Bounded:
@@ -68,8 +69,8 @@ class MqttService:
     """Publishes SEM state to MQTT. It lives in its own task and only ever reports through `status()` and the journal."""
 
     def __init__(self, store, secrets, state_provider, client_factory=None, *,
-                 client_timeout=CLIENT_TIMEOUT_S, interval=LOOP_INTERVAL_S, backoff=BACKOFF_S):
-        self.store, self.secrets, self.state_provider = store, secrets, state_provider
+                 client_timeout=CLIENT_TIMEOUT_S, interval=LOOP_INTERVAL_S, backoff=BACKOFF_S, commands=None):
+        self.store, self.secrets, self.state_provider, self.commands = store, secrets, state_provider, commands
         self.client_factory = client_factory or default_client_factory
         self.client_timeout, self.interval, self.backoff = client_timeout, interval, backoff
         self.default_client_id = 'sem-' + os.urandom(4).hex()
@@ -80,6 +81,7 @@ class MqttService:
         self._reached = False  # the current attempt got connected at least once
         self._phase = 'connect'
         self._reannounce = asyncio.Event()
+        self._wake = asyncio.Event()  # a command was applied: publish now instead of waiting for the next round
 
     def status(self) -> dict:
         return {'state': self._state, 'last_publish_at': self._last_publish_at, 'error': self._error}
@@ -109,9 +111,12 @@ class MqttService:
 
     def _client_id(self, config): return config.client_id or self.default_client_id
 
-    async def _sleep(self, seconds):
-        try: await asyncio.wait_for(self._stop.wait(), seconds)
-        except TimeoutError: pass
+    async def _sleep(self, seconds, wake=False):
+        waits = {asyncio.ensure_future(self._stop.wait())}
+        if wake: waits.add(asyncio.ensure_future(self._wake.wait()))
+        try: await asyncio.wait(waits, timeout=seconds, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for wait in waits: wait.cancel()
 
     async def _run(self):
         delay = self.backoff[0]
@@ -176,12 +181,16 @@ class MqttService:
             entities = self.entities(document)
             await publisher.announce(entities)
             await client.subscribe(f'{config.discovery_prefix}/status')
+            commands = self.commands is not None and config.commands_enabled
+            if commands: await client.subscribe(f'{config.topic}/+/+/set')
             signature = self._signature(entities)
             self._reannounce.clear()
-            reader = asyncio.create_task(self._read(raw, f'{config.discovery_prefix}/status'))
+            reader = asyncio.create_task(self._read(raw, f'{config.discovery_prefix}/status',
+                                                    config.topic if commands else None, publisher))
             try:
                 self._connected()
                 while not self._stop.is_set():
+                    self._wake.clear()
                     document, latest = self._load()
                     if (document.mqtt, latest) != (config, password): break
                     if reader.done():
@@ -194,7 +203,7 @@ class MqttService:
                         signature = self._signature(entities)
                         await publisher.announce(entities)
                     self._last_publish_at = utcnow().isoformat()
-                    await self._sleep(self.interval)
+                    await self._sleep(self.interval, wake=True)
                 try: await client.publish(topic, 'offline', True)
                 except Exception: pass  # best effort: the broker publishes the will when the link drops
             finally:
@@ -204,9 +213,21 @@ class MqttService:
     def entities(self, document):
         return build_entities(self.state_provider(), document, utcnow())
 
-    async def _read(self, client, topic):
-        async for received, payload in client.messages():
+    async def _read(self, client, topic, prefix=None, publisher=None):
+        """Routes incoming messages; `prefix` is set only while commands are enabled."""
+        async for received, payload, *flags in client.messages():
             if received == topic and payload == 'online': self._reannounce.set()
+            elif prefix is not None and received.startswith(f'{prefix}/') and received.endswith('/set'):
+                if flags and flags[0]:  # retained: a stale command must never run again after a reconnection
+                    self.store.journal.write('WARN', 'mqtt', 'Commande Home Assistant retenue ignorée')
+                    continue
+                try: result = await self.commands.handle(prefix, received, payload)
+                except Exception as error:  # a failing command must not stop the reader
+                    self.store.journal.write('ERROR', 'mqtt', f'Commande Home Assistant en échec ({type(error).__name__})')
+                    continue
+                if result:
+                    publisher.invalidate(*result)
+                    self._wake.set()
 
     @asynccontextmanager
     async def _connect(self, config, password, client_id, will_topic):

@@ -1,10 +1,11 @@
 from fastapi import APIRouter,Depends,Request,HTTPException
 from pydantic import BaseModel,Field,SecretStr
-from datetime import timedelta
 import asyncio
 from app.api.auth import require_auth
 from app.settings import SettingsDocument
 from app.domain.measurements import utcnow
+from app.runtime.device_modes import DeviceNotFound,ModeRefused,apply_manual,apply_pause,apply_resume
+from contextlib import contextmanager
 
 router=APIRouter(prefix='/api/v1',dependencies=[Depends(require_auth)])
 
@@ -16,8 +17,15 @@ def lookup(request,device_id):
     return config,device
 
 
+@contextmanager
+def mode_errors():
+    try: yield
+    except DeviceNotFound as error: raise HTTPException(404,str(error))
+    except ModeRefused as error: raise HTTPException(409,str(error))
+
+
 class ManualRequest(BaseModel):
-    duration_minutes:int=Field(30,ge=1,le=720,description='Durée du mode manuel du ballon. Ignorée pour la voiture : le mode manuel reste actif jusqu’à une intervention utilisateur.')
+    duration_minutes:int=Field(30,ge=1,le=720,description='Durée du mode manuel du ballon. Ignorée pour la voiture : le mode manuel reste actif jusqu’au débranchement de la voiture.')
 
 
 @router.post('/devices/{device_id}/meter-read')
@@ -34,53 +42,19 @@ async def meter_read(device_id:str,request:Request):
 
 @router.post('/devices/{device_id}/manual')
 def manual(device_id:str,body:ManualRequest,request:Request):
-    config,device=lookup(request,device_id)
-    if not device.armed: raise HTTPException(409,'Activer et vérifier cet appareil avant une commande')
-    values=request.app.state.store.get('manual_controls',{})
-    previous=values.get(device_id,{}).get('previous_mode',device.mode)
-    values[device_id]={'until':None if device.kind=='charger' else (utcnow()+timedelta(minutes=body.duration_minutes)).isoformat(),
-                       'previous_mode':previous if previous!='manual' else 'off'}
-    request.app.state.store.set('manual_controls',values)
-    device.mode='manual'
-    request.app.state.store.save_settings(config.model_dump(mode='json'))
-    request.app.state.store.append_event({'kind':'manual','device_id':device_id,
-        'details':{'duration_minutes':None if device.kind=='charger' else body.duration_minutes,
-                   'persistent':device.kind=='charger','origin':'web'}})
-    return {'ok':True,'until':values[device_id]['until']}
+    with mode_errors(): until=apply_manual(request.app.state,device_id,body.duration_minutes)
+    return {'ok':True,'until':until}
 
 
 @router.post('/devices/{device_id}/pause')
 def pause(device_id:str,request:Request):
-    config,device=lookup(request,device_id)
-    modes=request.app.state.store.get('paused_modes',{})
-    manuals=request.app.state.store.get('manual_controls',{})
-    previous=manuals.get(device_id,{}).get('previous_mode') if device.mode=='manual' else device.mode
-    if previous in ('solar','planned','off_peak_solar'): modes[device_id]=previous
-    request.app.state.store.set('paused_modes',modes)
-    manuals.pop(device_id,None)
-    request.app.state.store.set('manual_controls',manuals)
-    device.mode='off'
-    request.app.state.store.save_settings(config.model_dump(mode='json'))
-    request.app.state.coordinator.engine.forget(device_id)
+    with mode_errors(): apply_pause(request.app.state,device_id)
     return {'ok':True,'status':'stop_requested'}
 
 
 @router.post('/devices/{device_id}/resume')
 def resume(device_id:str,request:Request):
-    config,device=lookup(request,device_id)
-    if not device.armed: raise HTTPException(409,'Appareil non activé')
-    record=request.app.state.coordinator.dispatcher.records.get(device_id)
-    if record and record['status']=='unknown': raise HTTPException(409,'Vérifier et acquitter le résultat inconnu')
-    automatic_modes=('solar','planned','off_peak_solar')
-    manuals=request.app.state.store.get('manual_controls',{})
-    previous_manual=manuals.get(device_id,{}).get('previous_mode') if device.mode=='manual' else None
-    previous_pause=request.app.state.store.get('paused_modes',{}).get(device_id)
-    device.mode=next((mode for mode in (device.mode,previous_manual,previous_pause)
-                      if mode in automatic_modes),'solar')
-    manuals.pop(device_id,None)
-    request.app.state.store.set('manual_controls',manuals)
-    request.app.state.store.save_settings(config.model_dump(mode='json'))
-    request.app.state.coordinator.engine.forget(device_id)
+    with mode_errors(): apply_resume(request.app.state,device_id)
     return {'ok':True}
 
 

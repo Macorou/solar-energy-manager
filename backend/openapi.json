@@ -3291,7 +3291,7 @@
             "maximum": 720.0,
             "minimum": 1.0,
             "title": "Duration Minutes",
-            "description": "Durée du mode manuel du ballon. Ignorée pour la voiture : le mode manuel reste actif jusqu’à une intervention utilisateur.",
+            "description": "Durée du mode manuel du ballon. Ignorée pour la voiture : le mode manuel reste actif jusqu’au débranchement de la voiture.",
             "default": 30
           }
         },
@@ -3334,6 +3334,11 @@
             "type": "string",
             "title": "Discovery Prefix",
             "default": "homeassistant"
+          },
+          "commands_enabled": {
+            "type": "boolean",
+            "title": "Commands Enabled",
+            "default": false
           }
         },
         "additionalProperties": false,

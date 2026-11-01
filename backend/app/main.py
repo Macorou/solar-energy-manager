@@ -23,6 +23,7 @@ from app.api.simulation import router as simulation_router
 from app.api.sessions import router as sessions_router
 from app.api.logs import router as logs_router
 from app.runtime.coordinator import Coordinator
+from app.connectors.mqtt.commands import CommandHandler
 from app.connectors.mqtt.service import MqttService
 
 
@@ -70,7 +71,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.state.peugeot=PeugeotAdapter(secret_store,PeugeotConfig.model_validate(store.load_settings()['peugeot']),journal=store.journal)
     app.state.ariston_adapters={}
     app.state.coordinator=Coordinator(store,app)
-    app.state.mqtt=MqttService(store,secret_store,lambda:app.state.coordinator.public_state())
+    app.state.mqtt=MqttService(store,secret_store,lambda:app.state.coordinator.public_state(),commands=CommandHandler(lambda:app.state))
     app.state.ocpp.on_transaction=app.state.coordinator.engine.forget
     register_server(app,app.state.ocpp)
     app.include_router(auth_router)

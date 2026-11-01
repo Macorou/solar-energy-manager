@@ -57,7 +57,7 @@ def register_server(app,registry):
         await websocket.accept(subprotocol='ocpp1.6')
         journal.write('INFO',area,'Connexion OCPP 1.6 établie')
         station=Station(charge_point_id,Connection(websocket,journal=journal,station_id=charge_point_id),registry)
-        registry.stations[charge_point_id]=station
+        registry.connect(charge_point_id,station)
         registry.connection_errors.pop(charge_point_id,None)
         try:
             await station.start()

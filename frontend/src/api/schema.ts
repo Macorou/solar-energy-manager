@@ -1271,7 +1271,7 @@ export interface components {
         ManualRequest: {
             /**
              * Duration Minutes
-             * @description Durée du mode manuel du ballon. Ignorée pour la voiture : le mode manuel reste actif jusqu’à une intervention utilisateur.
+             * @description Durée du mode manuel du ballon. Ignorée pour la voiture : le mode manuel reste actif jusqu’au débranchement de la voiture.
              * @default 30
              */
             duration_minutes: number;
@@ -1313,6 +1313,11 @@ export interface components {
              * @default homeassistant
              */
             discovery_prefix: string;
+            /**
+             * Commands Enabled
+             * @default false
+             */
+            commands_enabled: boolean;
         };
         /** MqttInput */
         MqttInput: {

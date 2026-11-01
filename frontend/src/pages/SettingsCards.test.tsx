@@ -8,7 +8,7 @@ beforeEach(()=>{vi.mocked(api).mockImplementation(async path=>(path==='/connecti
 afterEach(()=>{cleanup();vi.clearAllMocks()})
 const initial:Settings={timezone:'Europe/Paris',site_limit_w:11000,export_margin_w:100,sample_max_age_s:30,grid_fallback_current_a:0,phase_control_enabled:false,phase_margin_a:1,solar_price_per_kwh:0,devices:[],vehicles:[],schedules:[],off_peak:[],
   home_assistant:{url:'http://ha.test',grid_entity:'sensor.grid',solar_entity:'sensor.solar',house_entity:'',price_entity:'',phases:{},invert_grid:false,device_power_entities:{}},
-  peugeot:{username:'',client_id:'',country:'fr',poll_interval_s:900,max_age_s:1800},ariston:{username:'',poll_interval_s:120,max_age_s:600},mqtt:{broker:'',topic:'sem',client_id:'',username:'',allow_self_signed:false,tls:false,discovery_prefix:'homeassistant'}}
+  peugeot:{username:'',client_id:'',country:'fr',poll_interval_s:900,max_age_s:1800},ariston:{username:'',poll_interval_s:120,max_age_s:600},mqtt:{broker:'',topic:'sem',client_id:'',username:'',allow_self_signed:false,tls:false,discovery_prefix:'homeassistant',commands_enabled:false}}
 const run=async(op:()=>Promise<unknown>)=>{await op()}
 const live=(power=732):LiveState=>({simulation:false,at:'2026-10-29T12:00:00Z',running:true,grid:{value:power,measured_at:'2026-10-29T12:00:00Z',quality:'fresh',usable:true},solar:null,solar_budget_w:0,off_peak:false,errors:{},devices:[],vehicles:{}})
 it('updates grouped readings without resetting an open draft',async()=>{

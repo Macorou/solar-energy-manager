@@ -137,4 +137,15 @@ def test_settings_saved_before_mqtt_existed_are_read_with_its_defaults(tmp_path)
     app.state.store.save_settings(stored)
     mqtt = client.get('/api/v1/settings').json()['mqtt']
     assert mqtt == {'broker': '', 'topic': 'sem', 'client_id': '', 'username': '',
-                    'allow_self_signed': False, 'tls': False, 'discovery_prefix': 'homeassistant'}
+                    'allow_self_signed': False, 'tls': False, 'discovery_prefix': 'homeassistant',
+                    'commands_enabled': False}
+
+
+def test_commands_enabled_defaults_to_false_and_is_kept_when_set(tmp_path):
+    app, client = ready(tmp_path)
+    stored = app.state.store.load_settings()
+    stored['mqtt'].pop('commands_enabled', None)
+    app.state.store.save_settings(stored)
+    assert client.get('/api/v1/settings').json()['mqtt']['commands_enabled'] is False
+    assert client.put('/api/v1/connections/mqtt', json={'config': {**CONFIG, 'commands_enabled': True}}).status_code == 200
+    assert client.get('/api/v1/settings').json()['mqtt']['commands_enabled'] is True

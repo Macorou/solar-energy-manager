@@ -18,6 +18,7 @@ class OcppRegistry:
         self.connection_errors={}
         self.meter_cache={}
         self.rebooted=set()
+        self.connected_since={}
         self.suspend_requested={}
         self.profile_migrations=store.get('ocpp_profile_migrations',{})
         self.profile_values=store.get('ocpp_profile_values',{})
@@ -36,6 +37,10 @@ class OcppRegistry:
     def config(self,device_id):
         return next((d for d in self.devices() if d.id==device_id),None)
 
+    def connect(self,station_id,station):
+        self.stations[station_id]=station
+        self.connected_since[station_id]=utcnow()
+
     def state(self,device_id):
         state=self.states.get(device_id,DeviceState(device_id))
         config=self.config(device_id)
@@ -49,7 +54,8 @@ class OcppRegistry:
             state=replace(state,observed_power=Sample(0,'W',
                 'OCPP estimation état '+state.observed_state,utcnow(),utcnow(),Quality.ESTIMATED))
         return replace(state,transaction_active=(config.charge_point_id,config.connector_id) in self.active,
-            start_pending=device_id in self.pending_start)
+            start_pending=device_id in self.pending_start,
+            connected_since=self.connected_since.get(config.charge_point_id),rebooted=device_id in self.rebooted)
 
     def authorized(self,config):
         until=self.allowed_until.get(config.id)

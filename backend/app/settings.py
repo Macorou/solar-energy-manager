@@ -159,6 +159,7 @@ class MqttConfig(Model):
     allow_self_signed: bool = False
     tls: bool = False
     discovery_prefix: str = 'homeassistant'
+    commands_enabled: bool = False
 
     @field_validator('broker')
     @classmethod

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import ssl
 import time
 from contextlib import asynccontextmanager
@@ -418,3 +419,130 @@ async def test_default_factory_options(monkeypatch):
     assert verified['tls_params'].cert_reqs in (None, ssl.CERT_REQUIRED)
     insecure = await open_default(monkeypatch, MqttConfig(broker='h:8883', tls=True, allow_self_signed=True))
     assert insecure['tls_insecure'] is True and insecure['tls_params'].cert_reqs == ssl.CERT_NONE
+
+
+class FakeHandler:
+    """Records what the service routes to it; `errors` are raised one per call, first call first."""
+
+    def __init__(self, result=('site', 'price'), errors=()):
+        self.calls, self.result, self.errors = [], result, list(errors)
+
+    async def handle(self, prefix, topic, payload):
+        self.calls.append((prefix, topic, payload))
+        if self.errors and (error := self.errors.pop(0)): raise error
+        return self.result
+
+
+def with_commands(tmp_path, handler, interval=FAST['interval'], **mqtt):
+    store, secrets, broker, _ = setup(tmp_path, broker='b:1883', **mqtt)
+    service = MqttService(store, secrets, lambda: make_state(), broker.factory, commands=handler,
+                          **{**FAST, 'interval': interval})
+    return store, broker, service
+
+
+async def test_command_message_is_handled_and_state_republished_at_once(tmp_path):
+    handler = FakeHandler()
+    _, broker, service = with_commands(tmp_path, handler, interval=5, commands_enabled=True)
+    await service.start()
+    try:
+        await until(lambda: broker.on('sem/site/price/state') == ['0.123'])
+        assert broker.subscribed == ['homeassistant/status', 'sem/+/+/set']
+        await asyncio.sleep(0.1)  # the loop is now asleep for 5 s
+        await broker.incoming.put(('sem/ev/car_mode/set', 'Pause', False))
+        await until(lambda: broker.on('sem/site/price/state') == ['0.123', '0.123'], timeout=2)  # forgotten, sent again
+        assert handler.calls == [('sem', 'sem/ev/car_mode/set', 'Pause')]
+        await broker.incoming.put(('sem/ev/car_mode/set', 'Auto'))  # an old two-item message is not retained
+        await until(lambda: len(handler.calls) == 2)
+    finally: await service.stop()
+
+
+async def test_retained_command_is_ignored(tmp_path):
+    handler = FakeHandler()
+    store, broker, service = with_commands(tmp_path, handler, commands_enabled=True)
+    await service.start()
+    try:
+        await until(lambda: service.status()['state'] == 'connected')
+        await broker.incoming.put(('sem/ev/car_mode/set', 'Pause', True))
+        await until(lambda: 'Commande Home Assistant retenue ignorée' in str(store.journal.query(areas=('mqtt',))))
+        assert handler.calls == []
+        entries = store.journal.query(areas=('mqtt',))['entries']
+        assert [(e['level'], e['message']) for e in entries] == [('WARN', 'Commande Home Assistant retenue ignorée')]
+    finally: await service.stop()
+
+
+async def test_commands_disabled_neither_subscribe_nor_apply(tmp_path):
+    handler = FakeHandler()
+    _, broker, service = with_commands(tmp_path, handler)
+    await service.start()
+    try:
+        await until(lambda: service.status()['state'] == 'connected')
+        first = len(broker.config_topics())
+        await broker.incoming.put(('sem/ev/car_mode/set', 'Pause', False))
+        await broker.incoming.put(('homeassistant/status', 'online'))  # read after the command: it was consumed
+        await until(lambda: len(broker.config_topics()) == 2 * first)
+        assert broker.subscribed == ['homeassistant/status'] and handler.calls == []
+    finally: await service.stop()
+
+
+async def test_handler_error_does_not_stop_the_reader(tmp_path):
+    handler = FakeHandler(errors=[RuntimeError('boom-secret')])
+    store, broker, service = with_commands(tmp_path, handler, commands_enabled=True)
+    await service.start()
+    try:
+        await until(lambda: service.status()['state'] == 'connected')
+        await broker.incoming.put(('sem/ev/car_mode/set', 'Pause', False))
+        await broker.incoming.put(('sem/ev/car_mode/set', 'Auto', False))
+        await until(lambda: len(handler.calls) == 2)
+        seen = service.status()['last_publish_at']
+        await until(lambda: service.status()['last_publish_at'] != seen)  # the publish loop keeps going
+        entries = store.journal.query(areas=('mqtt',))['entries']
+        assert [e['level'] for e in entries] == ['ERROR'] and 'RuntimeError' in entries[0]['message']
+        assert 'boom-secret' not in str(entries) and len(broker.connections) == 1
+        assert service.status()['state'] == 'connected'
+    finally: await service.stop()
+
+
+SELECT = 'homeassistant/select/sem_ev/car_mode/config'
+NUMBER = 'homeassistant/number/sem_ev/program_semaine_target/config'
+
+
+def save_car(store, commands_enabled=True, program='Semaine'):
+    store.save_settings(SettingsDocument.model_validate({
+        'mqtt': {'broker': 'b:1883', 'commands_enabled': commands_enabled},
+        'devices': [{'id': 'ev', 'name': 'Wallbox', 'kind': 'charger', 'armed': True, 'vehicle_id': 'car'}],
+        'vehicles': [{'id': 'car'}],
+        'schedules': [{'id': 'semaine', 'name': program, 'vehicle_id': 'car', 'target_soc': 80}]}).model_dump(mode='json'))
+
+
+async def test_turning_commands_off_removes_the_entities_and_the_subscription(tmp_path):
+    store, broker, service = with_commands(tmp_path, FakeHandler())
+    save_car(store)
+    await service.start()
+    try:
+        await until(lambda: broker.on(SELECT) and broker.on(NUMBER))
+        assert broker.on(SELECT)[-1] and broker.on(NUMBER)[-1]
+        assert broker.subscribed == ['homeassistant/status', 'sem/+/+/set']
+        known = len(broker.subscribed)
+        save_car(store, commands_enabled=False)  # the session restarts without commands
+        await until(lambda: len(broker.connections) == 2 and service.status()['state'] == 'connected')
+        await until(lambda: broker.on(SELECT)[-1] == '' and broker.on(NUMBER)[-1] == '')
+        assert (SELECT, '', True) in broker.sent and (NUMBER, '', True) in broker.sent  # retained, so Home Assistant forgets them
+        assert broker.subscribed[known:] == ['homeassistant/status']  # no '/set' subscription on the new connection
+    finally: await service.stop()
+
+
+async def test_renaming_a_program_reannounces_the_number_under_the_same_unique_id(tmp_path):
+    store, broker, service = with_commands(tmp_path, FakeHandler(), interval=0.05)
+    save_car(store)
+    await service.start()
+    try:
+        await until(lambda: broker.on(NUMBER))
+        first = json.loads(broker.on(NUMBER)[-1])
+        assert first['name'] == 'Objectif – Semaine'
+        save_car(store, program='Semaine 2')
+        await until(lambda: len(broker.on(NUMBER)) > 1)
+        again = json.loads(broker.on(NUMBER)[-1])
+        assert again['name'] == 'Objectif – Semaine 2'
+        assert again['unique_id'] == first['unique_id'] == 'sem_ev_program_semaine_target'
+        assert len(broker.connections) == 1
+    finally: await service.stop()

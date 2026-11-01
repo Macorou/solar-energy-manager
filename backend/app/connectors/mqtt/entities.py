@@ -17,7 +17,7 @@ PROVIDER_ERRORS = {
 class Entity:
     group: str  # 'site' or a SEM device id
     key: str
-    component: str  # 'sensor' or 'binary_sensor'
+    component: str  # 'sensor', 'binary_sensor', 'select' or 'number'
     name: str
     device_name: str
     value: str | None  # None means unavailable; binary values are 'ON'/'OFF'
@@ -27,6 +27,11 @@ class Entity:
     precision: int | None = None
     attributes: dict | None = None
     throttled: bool = False
+    command: bool = False  # commandable: discovery adds a command topic
+    options: tuple[str, ...] | None = None  # select choices
+    minimum: float | None = None  # number bounds
+    maximum: float | None = None
+    step: float | None = None
 
 
 def _number(value, decimals):
@@ -171,7 +176,8 @@ def _site(state, now):
 
 
 def build_entities(state: dict, config: SettingsDocument, now: datetime) -> list[Entity]:
-    # `config` is accepted for symmetry with the runtime; names and targets come from the published state.
+    # Names and targets come from the published state; `config` only adds the commandable entities.
+    from app.connectors.mqtt.commands import command_entities  # lazy: commands imports Entity from here
     device_prices = (state.get('energy_prices') or {}).get('devices') or {}
     entities = _site(state, now)
     for device in state.get('devices', []):
@@ -180,4 +186,5 @@ def build_entities(state: dict, config: SettingsDocument, now: datetime) -> list
             entities += _charger(device, state.get('vehicles') or {}, price)
         else:
             entities += _heater(device, price)
+    if config.mqtt.commands_enabled: entities += command_entities(config)
     return entities

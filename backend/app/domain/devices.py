@@ -41,6 +41,8 @@ class DeviceState:
     start_pending: bool | None = None
     offered_current: Sample | None = None
     status_received_at: datetime | None = None
+    connected_since: datetime | None = None  # when SEM last saw the station (re)connect or boot
+    rebooted: bool = False
 
 
 @dataclass(frozen=True)

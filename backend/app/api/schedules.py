@@ -9,14 +9,21 @@ from app.scheduling.recurrence import occurrences_for
 router=APIRouter(prefix='/api/v1/schedules',dependencies=[Depends(require_auth)])
 
 
-def persist(request, programs):
-    raw=request.app.state.store.load_settings()
+def save_programs(store, programs:list[ChargeProgram])->None:
+    raw=store.load_settings()
     raw['schedules']=[p.model_dump(mode='json') for p in programs]
     try:
         validated=SettingsDocument.model_validate(raw)
     except ValueError:
-        raise HTTPException(422,'Programme ou véhicule non valide') from None
-    request.app.state.store.save_settings(validated.model_dump(mode='json'))
+        raise ValueError('Programme ou véhicule non valide') from None
+    store.save_settings(validated.model_dump(mode='json'))
+
+
+def persist(request, programs):
+    try:
+        save_programs(request.app.state.store,programs)
+    except ValueError as error:
+        raise HTTPException(422,str(error)) from None
 
 
 @router.get('')

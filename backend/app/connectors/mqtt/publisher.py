@@ -30,6 +30,11 @@ class Publisher:
             'state_class': entity.state_class, 'suggested_display_precision': entity.precision}
         data |= {key: value for key, value in optional.items() if value is not None}
         if entity.attributes is not None: data['json_attributes_topic'] = self.topic(entity, 'attributes')
+        if entity.command:
+            data['command_topic'] = self.topic(entity, 'set')
+            if entity.component == 'select': data['options'] = list(entity.options or ())
+            if entity.component == 'number':
+                data |= {'min': entity.minimum, 'max': entity.maximum, 'step': entity.step}
         return data
 
     async def announce(self, entities: list[Entity]) -> None:
@@ -64,6 +69,10 @@ class Publisher:
             if available != last.get('available'):
                 await self.client.publish(self.topic(entity, 'available'), 'online' if available else 'offline', True)
                 last['available'] = available
+
+    def invalidate(self, group: str, key: str) -> None:
+        """Forget what was sent for this entity, so the next `publish` sends its state again."""
+        self.last.pop((group, key), None)
 
     async def clear(self) -> None:
         for item in self.store.get(ANNOUNCED_KEY, []):

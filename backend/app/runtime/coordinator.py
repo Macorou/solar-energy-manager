@@ -74,6 +74,8 @@ class Coordinator:
         self.engine.charger_fault_retry={key:{'until':datetime.fromisoformat(value['until']),'attempt':value['attempt']}
             for key,value in store.get('charger_limit_retry',{}).items()}
         self.charging=ChargingTracker(store)
+        self.last_plugged: dict[str,bool]={}
+        self.link_seen: dict[str,datetime|None]={}
         network_state=store.get('runtime_network_state',{})
         self.engine.network_allowed=network_state.get('allowed',{})
         self.engine.network_stop_pending=set(network_state.get('stop_pending',[]))
@@ -248,11 +250,41 @@ class Coordinator:
             self.store.save_settings(config.model_dump(mode='json'))
         return policies
 
+    def end_manual_on_unplug(self,snapshot,config):
+        """Manual ends only on an observed plugged -> unplugged transition of a connected charger."""
+        changed=False
+        for device in config.devices:
+            if device.kind!='charger': continue
+            state=snapshot.device_states.get(device.id)
+            if not state or not state.connected:
+                self.last_plugged.pop(device.id,None); continue
+            if self.link_seen.get(device.id)!=state.connected_since:
+                self.link_seen[device.id]=state.connected_since; self.last_plugged.pop(device.id,None)
+            # Only a StatusNotification received on the current link counts: the value kept across a
+            # reconnect, or any value of a charger still flagged as restarted, is doubtful.
+            fresh=bool(state.connected_since and state.status_received_at
+                       and state.status_received_at>state.connected_since and not state.rebooted)
+            plugged=state.vehicle_connected if fresh else None
+            if plugged is None: continue
+            was=self.last_plugged.get(device.id,False)
+            self.last_plugged[device.id]=plugged
+            if plugged or not was or device.mode!='manual': continue
+            device.mode='planned'
+            manuals=self.store.get('manual_controls',{})
+            manuals.pop(device.id,None)
+            self.store.set('manual_controls',manuals)
+            self.store.save_settings(config.model_dump(mode='json'))
+            self.engine.forget(device.id)
+            self.store.journal.write('INFO','device:'+device.id,'Voiture débranchée : fin du mode Manuel, retour en Auto (Planifié)')
+            changed=True
+        return changed
+
     async def tick(self,snapshot=None):
         async with self.lock:
             config=SettingsDocument.model_validate(self.store.load_settings())
             snapshot=snapshot or await self.acquire(config)
             self.charging.update(snapshot,config)
+            self.end_manual_on_unplug(snapshot,config)
             # A Peugeot percentage kept through an API error is ignored: the car may have
             # been driven since. Only this session's estimate may still end a charge.
             effective={key:value if value.quality!=Quality.UNAVAILABLE else replace(value,soc=None)

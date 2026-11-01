@@ -23,8 +23,22 @@ def test_a_grid_window_keeps_charging_without_a_known_soc():
     batch = EnergyEngine(clock).evaluate(plugged(clock.now()), [CAR], MANUAL, {})
     assert [c.action for c in batch.commands] == ['set_power']
     assert batch.reasons['ev'] == 'Batterie inconnue : charge poursuivie jusqu’à l’arrêt par la voiture'
+
+
+def test_solar_mode_takes_surplus_without_a_known_soc():
+    clock = SimulatedClock()
     solar = {'ev': DevicePolicy('ev', 'solar', armed=True, vehicle_id='car')}
+    # Without surplus nothing starts: the grid is never used outside a grid window.
     assert EnergyEngine(clock).evaluate(plugged(clock.now()), [CAR], solar, {}).commands == ()
+    engine = EnergyEngine(clock)
+    for _ in range(3):  # a solar start waits for a stable surplus
+        now = clock.now()
+        s = lambda value: Sample(value, 'W', 'test', now, now, checked_at=now)
+        sunny = SiteSnapshot(**{**plugged(now).__dict__, 'grid': s(-3000), 'solar': s(3500)})
+        batch = engine.evaluate(sunny, [CAR], solar, {})
+        clock.advance(30)
+    assert [c.action for c in batch.commands] == ['set_power'] and batch.commands[0].limit_w <= 3000
+    assert batch.reasons['ev'] == 'Batterie inconnue : charge poursuivie jusqu’à l’arrêt par la voiture'
 
 
 def test_an_unverifiable_estimate_still_ends_the_charge_at_the_target():

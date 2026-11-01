@@ -256,14 +256,13 @@ class EnergyEngine:
                     # Peugeot value read through an API error): unverifiable, it still ends the charge.
                     last_soc = (telemetry.soc if telemetry and telemetry.soc is not None
                                 and math.isfinite(telemetry.soc) and 0<=telemetry.soc<=100 else None)
-                    if network and last_soc is not None and goal<100 and last_soc>=goal:
+                    reached = goal if network else solar_goal
+                    if last_soc is not None and reached<100 and last_soc>=reached:
                         eligible, reason = False, 'Objectif atteint (dernière estimation)'
-                    elif network:
-                        # In a grid window (planned or manual) the charge goes on: without any
-                        # percentage the car itself stops when full.
-                        battery_unknown = True
                     else:
-                        eligible, reason = False, (telemetry.unavailable_reason if telemetry else None) or 'Batterie indisponible'
+                        # The charge goes on, from the grid in a grid window, else on surplus only:
+                        # without any percentage the car itself stops when full.
+                        battery_unknown = True
                 elif solar_goal<100 and telemetry.soc >= solar_goal:
                     eligible, reason = False, 'Objectif atteint'
             if eligible:

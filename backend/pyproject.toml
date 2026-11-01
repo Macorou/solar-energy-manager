@@ -1,6 +1,6 @@
 [project]
 name = "solar-energy-manager"
-version = "0.1.27"
+version = "0.1.28"
 requires-python = ">=3.12"
 dependencies = ["fastapi==0.162.0", "starlette==0.52.1", "anyio==4.11.0", "uvicorn==0.54.0", "httpx==0.28.1", "websockets==17.3", "ocpp==2.1.0", "cryptography==50.0.2", "argon2-cffi==25.1.0", "ariston==0.19.9", "aiomqtt==2.5.1", "tzdata==2026.5"]
 

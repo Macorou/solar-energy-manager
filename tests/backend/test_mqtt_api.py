@@ -127,3 +127,14 @@ def test_delete_reports_no_cleanup_attempt_as_null(tmp_path):
     app, client = ready(tmp_path, remove_result=None)
     response = client.delete('/api/v1/connections/mqtt')
     assert response.status_code == 200 and response.json() == {'ok': True, 'entities_removed': None}
+
+
+def test_settings_saved_before_mqtt_existed_are_read_with_its_defaults(tmp_path):
+    # A volume from 0.1.27 has no 'mqtt' section: the settings page must still get one.
+    app, client = ready(tmp_path)
+    stored = app.state.store.load_settings()
+    stored.pop('mqtt', None)
+    app.state.store.save_settings(stored)
+    mqtt = client.get('/api/v1/settings').json()['mqtt']
+    assert mqtt == {'broker': '', 'topic': 'sem', 'client_id': '', 'username': '',
+                    'allow_self_signed': False, 'tls': False, 'discovery_prefix': 'homeassistant'}

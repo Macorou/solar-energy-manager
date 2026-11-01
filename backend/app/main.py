@@ -110,7 +110,10 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
     @app.get('/api/v1/settings', dependencies=[Depends(require_auth)])
     def read_settings():
-        return store.load_settings()
+        # A document saved by an older release lacks newer sections: send their defaults.
+        stored = store.load_settings()
+        try: return SettingsDocument.model_validate(stored).model_dump(mode='json')
+        except ValueError: return stored
 
     @app.put('/api/v1/settings', dependencies=[Depends(require_auth)])
     def write_settings(body: SettingsDocument):

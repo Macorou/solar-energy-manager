@@ -1,82 +1,129 @@
 # Solar Energy Manager
 
-Gestionnaire d’énergie indépendant et auto-hébergé pour piloter une recharge de voiture électrique et un ballon d’eau chaude selon le surplus solaire et les horaires souhaités.
+Gestionnaire d’énergie auto-hébergé qui pilote la recharge d’une voiture électrique et un ballon d’eau chaude selon le surplus solaire, les heures creuses et les programmes choisis. SEM décide localement et commande directement la borne et le ballon. Home Assistant lui fournit les mesures et reçoit en retour ses calculs.
 
-## État du projet
+**Version actuelle : 0.1.32** · image privée `ghcr.io/macorou/solar-energy-manager` · déploiement Docker / Portainer
 
-Première version à mettre en service : application, interface et tests automatisés développés. Les comptes et appareils réels restent à vérifier avant activation. L’état exact du conteneur et de sa publication est indiqué dans le guide de distribution. Voir le [compte rendu de validation](docs/deployment/acceptance-report.md).
+![Vue d’ensemble : flux d’énergie, voiture, ballon et planning (données fictives)](docs/assets/readme/vue-ensemble.png)
 
-- [Conception validée](docs/superpowers/specs/2026-10-26-solar-energy-manager-design.md)
-- [Plan de développement V1](docs/superpowers/plans/2026-10-26-solar-energy-manager-v1.md)
-- [Distribution privée GitHub, GHCR et Portainer](docs/deployment/github-portainer.md)
+> Les captures de cette page sont produites par les tests de l’interface, avec des données fictives. Elles ne montrent aucune installation réelle.
 
-## Fonctions de la première version
+## Ce que fait SEM
 
-- Application web en français, utilisable sur ordinateur et téléphone.
-- Bornes OCPP 1.6J, avec une première Wallbox Pulsar Plus et plusieurs bornes enregistrables.
-- Données de batterie de la Peugeot e-208 de 2020 récupérées auprès des services Peugeot.
-- Pilotage natif du ballon Ariston NUOS Plus Wi-Fi, selon ses capacités réellement vérifiées.
-- Mesures de production et d’échanges réseau issues de Home Assistant.
-- Répartition du surplus solaire, priorités configurables et gestion réglable des passages de nuages.
-- Programmes récurrents de recharge et plages HC/HP saisies dans l’application.
-- Image Docker privée publiée sur GitHub Container Registry et fichier Compose pour une Stack Portainer.
-- [Sessions de charge](docs/features/charging-sessions.md) : historique persistant, périodes mois/année/total, graphiques énergie/coût, filtres et exports CSV/Excel.
+**Recharge de la voiture**
+- Pilote une borne **OCPP 1.6J** (Wallbox Pulsar Plus en service, autres bornes enregistrables).
+- Régulation du courant adaptée d’EVCC : pas de 0,1 A, limites par phase, réduction immédiate en cas de surcharge, temporisations pour les passages de nuages.
+- Modes **Automatique**, **Manuel** et **Pause**. Le mode Manuel repasse en Automatique au débranchement.
+- Programmes récurrents : objectif en % à une heure donnée, jours de la semaine, début du créneau réseau autorisé.
+- **Objectif sur surplus** : au-delà de l’objectif, la voiture continue de charger avec le seul surplus solaire.
+- Batterie lue auprès de Peugeot, puis estimée pendant la session à partir de l’énergie chargée.
+- Courant de secours réglable quand la mesure réseau manque.
 
-Après fonctionnement de la base : intégration de remontée vers Home Assistant, puis gestion EDF Tempo.
+**Ballon d’eau chaude**
+- Pilotage natif d’un **Ariston NUOS Plus Wi-Fi** : arrêt, solaire, heures creuses + solaire.
+- Consignes de température distinctes pour le réseau et pour le solaire.
+- Cycle manuel « Chauffer maintenant » et confirmation croisée Ariston / Home Assistant.
 
-## Aperçus
+**Partage du surplus**
+- Priorités de démarrage entre appareils, réglables par glisser-déposer.
+- Réglages par appareil pour les passages de nuages : surplus pour démarrer, délais, appoint réseau toléré.
+- Plages d’heures creuses et prix du réseau, avec le prix effectif de l’énergie consommée.
 
-Les données, horaires et priorités illustrés sont fictifs et modifiables. Ces images ne prouvent aucune connexion matérielle.
+**Suivi**
+- **Sessions de charge** : historique persistant, vues mois / année / total, énergie, coût et part solaire, filtres, exports CSV et Excel.
+- **Historique** des décisions et des commandes, avec leurs confirmations.
+- **Journaux** de communication (OCPP, Home Assistant, Peugeot, Ariston, moteur) : direct, recherche, niveaux, zones et téléchargement. Les secrets sont masqués avant l’enregistrement.
 
-Patch 0.1.8 : carte Maison affichant la consommation totale du logement, voiture et ballon inclus, avec capteur HA facultatif et calcul automatique lorsque le champ est vide. Les valeurs inchangées vérifiées récemment restent affichables. Voir [les détails et la mise à jour](docs/deployment/patch-0.1.8.md).
+**Home Assistant**
+- Lecture des mesures : compteur réseau (trois phases), production solaire, consommation de la maison, prix.
+- Publication par **MQTT avec découverte automatique** : prix instantané de l’énergie (site, voiture, ballon), surplus, batterie, puissances, états, raisons, sessions. Voir la [note 0.1.28](docs/deployment/patch-0.1.28.md).
+- Commandes facultatives depuis Home Assistant (désactivées par défaut) : mode de la voiture et objectif de chaque programme. Voir la [note 0.1.31](docs/deployment/patch-0.1.31.md).
 
-Le patch 0.1.7 est inclus : confirmation des lectures HA asynchrones, consignes réseau/solaire distinctes par ballon et arrêt explicite en fin de créneau réseau pour le ballon et la voiture. Voir [les détails](docs/deployment/patch-0.1.7.md).
+**Interface et accès**
+- Application web en français, thèmes sombre et clair, adaptée au téléphone (iPhone / Safari compris).
+- Compte administrateur unique, connexion maintenue 30 jours après la dernière visite.
+- Réglages → Sécurité : liste des appareils connectés et déconnexion à distance.
 
-Le patch 0.1.6 est inclus : correction du cycle de chauffe après un ancien arrêt en attente, avec confirmation croisée Ariston/HA, temporisation native avant départ et conservation des demandes manuelles. Voir [les détails](docs/deployment/patch-0.1.6.md).
+## Aperçu
 
-Le patch 0.1.5 est inclus : la connexion Ariston reste disponible lors d'un changement de mode ; correction du faux refus `unsupported_native_control` pendant l'initialisation. Voir [les détails](docs/deployment/patch-0.1.5.md).
+| Planning | Sessions de charge |
+|---|---|
+| ![Planning : programme de la voiture, heures creuses du ballon, priorités et passages de nuages](docs/assets/readme/planning.png) | ![Sessions de charge : énergie par année, part solaire, détail des sessions](docs/assets/readme/sessions-de-charge.png) |
 
-Le patch 0.1.4 est inclus : les puissances inchangées confirmées par Home Assistant restent utilisables pour le pilotage manuel et automatique. Le dernier SOC Peugeot connu reste affiché avec sa date et « Donnée ancienne » lorsque nécessaire. Voir [les détails](docs/deployment/patch-0.1.4.md).
+| Réglages | Journaux | Téléphone |
+|---|---|---|
+| ![Réglages : équipements, mesures et sources](docs/assets/readme/reglages.png) | ![Journaux de communication en direct](docs/assets/readme/journaux.png) | ![Vue d’ensemble sur téléphone](docs/assets/readme/telephone.png) |
 
-L’interface conserve la composition et les dessins de la version 0.1.3 :
+## Matériel et services
 
-![Tableau de bord illustré 0.1.3 — données fictives de test](docs/assets/dashboard-0.1.3.png)
+| Élément | Prise en charge |
+|---|---|
+| Borne | OCPP 1.6J, en WebSocket sur le même port que l’interface (`/ocpp/IDENTIFIANT_BORNE`). Validée sur Wallbox Pulsar Plus. |
+| Voiture | Peugeot e-208 (2020) : batterie et autonomie lues sur les services Peugeot. Une autre voiture charge sans pourcentage de batterie. |
+| Ballon | Ariston NUOS Plus Wi-Fi, par le cloud Ariston NET. |
+| Mesures | Capteurs Home Assistant : réseau par phase, production solaire, consommation de la maison. |
+| Publication | Courtier MQTT (Mosquitto, par exemple) avec découverte Home Assistant. |
+| Serveur | Docker Linux amd64, un seul conteneur, données dans un volume. |
 
-[Version mobile](docs/assets/dashboard-0.1.3-mobile.png) · [Concept de référence](docs/assets/pilotage-energie-concept-v1.png) · [Revue et vérifications de la correction](docs/development-review-ui-0.1.3.md)
+Les fonctions EVCC qui n’ont pas été reprises (bascule automatique mono/triphasé, autres protocoles de borne) ne sont pas prises en charge.
 
-## Sources et dépendances
+## Installation
 
-FastAPI, React/TypeScript, SQLite, bibliothèques `ocpp` et `ariston`. Les connecteurs produisent des mesures normalisées ; le moteur décide ; le coordinateur sérialise les commandes et conserve les réservations jusqu’à réconciliation. Les appels cloud s’exécutent en arrière-plan. Les adaptations ciblées d’EVCC et leur licence MIT sont identifiées dans [la provenance Peugeot](docs/third-party/peugeot-provenance.md). Ce projet possède son propre service et son interface.
+1. Dans Portainer, ajouter le registre privé `ghcr.io` avec un jeton GitHub autorisé en lecture sur le paquet (`read:packages`).
+2. Créer une Stack à partir de [compose.yaml](compose.yaml). Variables facultatives : `SEM_VERSION`, `SEM_HTTP_PORT` (8080 par défaut), `SEM_PUBLIC_URL`, `SEM_SECURE_COOKIE` (`true` derrière HTTPS).
+3. Ouvrir `http://IP_DU_SERVEUR:8080`. Lire le code de première connexion avec `cat /data/bootstrap-token` dans la console du conteneur, puis créer le mot de passe administrateur.
+4. Dans Réglages, renseigner la limite électrique, les capteurs Home Assistant, puis la borne, la voiture et le ballon. Tester chaque connexion avant d’activer l’appareil.
 
-Les comptes connectés, identifiants, jetons et données d’exploitation ne doivent pas être versionnés. Le dépôt et le paquet GHCR doivent rester privés.
+Le détail est dans le [guide Portainer](docs/deployment/portainer.md), avec la mise en service de la [Wallbox](docs/deployment/wallbox-commissioning.md), du compte [Peugeot](docs/deployment/peugeot-connection.md) et du ballon [Ariston](docs/deployment/ariston-commissioning.md).
 
-## Installation Portainer
+## Mise à jour
 
-Utiliser [compose.yaml](compose.yaml) dans une Stack, après ajout du registre privé GHCR. Suivre le [guide Portainer](docs/deployment/portainer.md). Le port 8080 dessert le web et `/ocpp/IDENTIFIANT_BORNE`.
+Changer `SEM_VERSION` dans la Stack, puis la mettre à jour en téléchargeant l’image. Le volume de données est conservé. Chaque version a sa note dans [docs/deployment](docs/deployment/) (`patch-0.1.X.md`). Elle précise s’il faut sauvegarder le volume avant la mise à jour et comment revenir en arrière. La procédure de sauvegarde est décrite dans [sauvegarde et restauration](docs/deployment/backup-restore.md).
 
-Au premier démarrage, lire `/data/bootstrap-token` dans la console du conteneur et créer le compte administrateur dans l’interface. Configurer les mesures et les appareils, tester les connexions, vérifier les capacités et le repli hors ligne, puis activer chaque appareil séparément. Les valeurs indisponibles restent inconnues. Le mode manuel est temporaire et propre à chaque appareil ; la démonstration ne commande aucun appareil.
+## Fonctionnement
 
-Guides : [Wallbox](docs/deployment/wallbox-commissioning.md), [Peugeot](docs/deployment/peugeot-connection.md), [Ariston](docs/deployment/ariston-commissioning.md), [sauvegarde et restauration](docs/deployment/backup-restore.md).
+Les connecteurs (OCPP, Home Assistant, Peugeot, Ariston) produisent des mesures datées et normalisées. Le moteur répartit la puissance disponible selon les limites, les programmes et les priorités. Le coordinateur envoie les commandes une à une, réserve la puissance demandée jusqu’à la confirmation par une mesure, et consigne chaque décision dans l’historique. Une valeur absente reste inconnue : elle n’est jamais remplacée par zéro.
 
-## Développement et vérifications
+Backend Python 3.12 (FastAPI, SQLite, bibliothèques `ocpp` et `ariston`), interface React / TypeScript, image Docker publiée sur GitHub Container Registry.
 
-Python 3.12 et Node.js 24.11.1. Installer les dépendances de `backend/requirements.lock` dans un environnement Python dédié, puis :
+## Sécurité et données
+
+- Le conteneur tourne sans privilège (UID 10001), avec un système de fichiers en lecture seule hors du volume `/data`.
+- Les mots de passe et jetons des services (Peugeot, Ariston, MQTT, borne) sont chiffrés dans le volume et ne sont jamais réaffichés ni écrits dans les journaux.
+- Le cookie de session est inaccessible aux scripts et n’est pas envoyé depuis un autre site.
+- Le dépôt et l’image restent privés. Aucun identifiant, jeton ni donnée d’exploitation n’est versionné.
+
+## Développement
+
+Python 3.12 et Node.js 24.11.1. Installer `backend/requirements.lock` dans un environnement Python dédié, puis :
 
 ```sh
 python -m pytest -q
 npm --prefix frontend ci
 npm --prefix frontend test
 npm --prefix frontend run build
-python scripts/export_openapi.py
-npm --prefix frontend run types
+python scripts/export_openapi.py && npm --prefix frontend run types
 ```
 
-Pour le parcours navigateur : installer Chromium et WebKit avec `npx playwright install chromium webkit` depuis `frontend`, puis `npm run e2e`. Le test lance une API temporaire sans connecteurs actifs. `SEM_PYTHON` peut préciser l’interpréteur, `SEM_BROWSER` un navigateur Chromium local et `SEM_SCREENSHOT_DIR` le dossier des captures. Le smoke test Docker s’exécute en CI avec `SEM_TEST_IMAGE=sem:test` après construction.
+Les tests utilisent un dossier de données jetable (`SEM_DATA_DIR`) et des transports simulés : ils n’envoient aucune commande à un appareil réel.
 
-Pour démarrer le service local après compilation, définir `SEM_DATA_DIR` vers un répertoire de travail dédié :
+Tests navigateur : depuis `frontend`, `npx playwright install chromium webkit` puis `npm run e2e`. Ils lancent une API temporaire avec des données fictives. `SEM_PYTHON` choisit l’interpréteur, `SEM_BROWSER` un Chrome local, `SEM_SCREENSHOT_DIR` le dossier des captures.
+
+Service local, après compilation de l’interface :
 
 ```sh
-uvicorn app.main:create_app --factory --app-dir backend --host 127.0.0.1 --port 8080
+SEM_DATA_DIR=./work/data uvicorn app.main:create_app --factory --app-dir backend --host 127.0.0.1 --port 8080
 ```
 
-Une seule instance de contrôle par volume est autorisée. La V1 vise Linux amd64. Les limites par phase et le comportement hors ligne doivent être vérifiés sur l’installation avant activation.
+Publier une version : pousser un tag `v0.1.X`. Le workflow lance les tests backend, frontend et navigateur, construit l’image, la vérifie, puis la publie sur GHCR.
+
+## Documentation
+
+- [Conception](docs/superpowers/specs/2026-10-26-solar-energy-manager-design.md) et [plans de développement](docs/superpowers/plans/)
+- [Sessions de charge](docs/features/charging-sessions.md) · [Journaux](docs/features/journaux.md)
+- [Distribution GitHub, GHCR et Portainer](docs/deployment/github-portainer.md) · [Compte rendu de validation](docs/deployment/acceptance-report.md)
+- [Recherches sur EVCC](docs/research/)
+
+## Provenance
+
+La régulation de recharge, les profils OCPP et la lecture de batterie Peugeot reprennent du code d’[EVCC](https://github.com/evcc-io/evcc), sous licence MIT. La source utilisée et les adaptations sont décrites dans [la provenance](docs/third-party/peugeot-provenance.md) et la licence est dans [evcc-MIT.txt](docs/third-party/evcc-MIT.txt). SEM a son propre service et sa propre interface ; il ne dépend pas d’une installation EVCC.

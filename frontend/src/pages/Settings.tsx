@@ -12,6 +12,7 @@ import {DeviceEditor,newDevice,VehicleEditor} from '../settings/AssetEditor'
 import {SettingsDialog} from '../settings/SettingsDialog'
 import {SourceEditor,type SourceKind} from '../settings/SourceEditor'
 import {DeviceControls} from '../settings/DeviceControls'
+import {ConnectedDevices} from '../settings/ConnectedDevices'
 
 type Editor={kind:'device';value:Device}|{kind:'vehicle';value:Vehicle}|{kind:'source';source:SourceKind}|{kind:'connection';name:'home_assistant'|'peugeot'|'ariston'|'ocpp'|'mqtt'|'limits'}|{kind:'add'}
 const sources:Record<SourceKind,string>={grid:'Compteur réseau',solar:'Production solaire',house:'Consommation maison',price:'Prix du réseau'}
@@ -78,7 +79,7 @@ export function SettingsPage({settings,state=null,save,run,connections}:{setting
   }
   const title=editor?.kind==='device'?'Configurer '+editor.value.name:editor?.kind==='vehicle'?'Configurer '+editor.value.name:editor?.kind==='source'?'Configurer '+sources[editor.source]:editor?.kind==='connection'?'Configurer '+({home_assistant:'Home Assistant',peugeot:'Compte Peugeot',ariston:'Ariston NET',ocpp:'Serveur OCPP',mqtt:'MQTT',limits:'Gestion de la charge'}[editor.name]):'Ajouter une intégration'
   return <div className="settings-workspace"><p className="settings-intro">Vos équipements et leurs connexions, au même endroit.</p>
-    <div className="settings-tabs" role="tablist" aria-label="Sections des réglages">{[['equipment','Équipements','settings'],['integrations','Intégrations','plug'],['installation','Installation','sliders']].map(([id,label,icon])=><button type="button" role="tab" key={id} id={tabsId+id} aria-selected={tab===id} aria-controls={tabsId+'panel'} onClick={()=>setTab(id)}><Icon name={icon} size={18}/>{label}</button>)}</div>
+    <div className="settings-tabs" role="tablist" aria-label="Sections des réglages">{[['equipment','Équipements','settings'],['integrations','Intégrations','plug'],['installation','Installation','sliders'],['security','Sécurité','lock']].map(([id,label,icon])=><button type="button" role="tab" key={id} id={tabsId+id} aria-selected={tab===id} aria-controls={tabsId+'panel'} onClick={()=>setTab(id)}><Icon name={icon} size={18}/>{label}</button>)}</div>
     <div id={tabsId+'panel'} role="tabpanel" aria-labelledby={tabsId+tab}>
       {tab==='equipment'&&<><p className="settings-reading-status"><span className={'status-dot '+(!state?'unavailable':'')}/>{state?.at?'Mesures actualisées à '+new Date(state.at).toLocaleTimeString('fr-FR',{timeZone:settings.timezone}):'En attente de mesures'}</p>
         <Group name="Bornes et véhicules" count={(chargers.length+settings.vehicles.length)+' équipements'}>{chargers.map(asset)}
@@ -110,6 +111,7 @@ export function SettingsPage({settings,state=null,save,run,connections}:{setting
         </Card><AddCard label="Configurer une intégration" onClick={()=>open({kind:'add'})}/>
       </Group></>}
       {tab==='installation'&&<div className="settings-installation"><ConnectionForm section="installation" settings={settings} save={save} run={run} connections={connections}/></div>}
+      {tab==='security'&&<ConnectedDevices run={run} timezone={settings.timezone}/>}
     </div>
     {editor&&<SettingsDialog key={editor.kind==='device'||editor.kind==='vehicle'?editor.value.id:editor.kind==='source'?editor.source:editor.kind==='connection'?editor.name:'add'} title={title} onClose={close} pending={pending} error={dialogError} message={dialogMessage}>
       {editor.kind==='source'&&<SourceEditor kind={editor.source} settings={settings} run={dialogRun} onSaved={saved}/>}

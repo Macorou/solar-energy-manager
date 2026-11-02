@@ -12,5 +12,6 @@ export function Icon({name,size=22}:{name:string;size?:number}) {
     tank:'M5 5a7 3 0 0 1 14 0v13a7 3 0 0 1-14 0ZM5 5a7 3 0 0 0 14 0M8 21v2m8-2v2M12 9v6m0 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3',up:'m6 15 6-6 6 6',down:'m6 9 6 6 6-6',
     chart:'M5 20V10m7 10V4m7 16V7',ha:'m3 10 9-8 9 8v12H3Zm9-3v11m0-5-5-4m5 7 5-5M7 8v2m10 0v2',left:'m15 5-7 7 7 7',right:'m9 5 7 7-7 7',euro:'M19 5a8 8 0 1 0 0 14M3 10h12M3 14h10',download:'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',trash:'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7'}
   paths.logs='M4 3h16v18H4ZM8 8h8M8 12h8M8 16h5'
+  paths.lock='M5 11h14v10H5ZM8 11V7a4 4 0 0 1 8 0v4m-4 4v2'
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]||paths.bolt}/></svg>
 }

@@ -17,6 +17,9 @@ class SQLiteStore:
                 CREATE TABLE IF NOT EXISTS secrets(key TEXT PRIMARY KEY, value BLOB NOT NULL);
                 CREATE TABLE IF NOT EXISTS users(username TEXT PRIMARY KEY, password_hash TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, expires REAL NOT NULL);
+                -- Kept apart from sessions so an older release can still insert its two columns.
+                CREATE TABLE IF NOT EXISTS session_info(token_hash TEXT PRIMARY KEY, id TEXT UNIQUE NOT NULL,
+                    created REAL, last_seen REAL, user_agent TEXT NOT NULL, ip TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT,
                     at TEXT NOT NULL, kind TEXT NOT NULL, device_id TEXT, details TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS charging_history(

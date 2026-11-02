@@ -50,3 +50,12 @@ it('shows stored OCPP identity and retains its secret on a blank save',async()=>
   await waitFor(()=>expect(api).toHaveBeenCalledWith('/connections/ocpp/box','PUT',{password:null}))
   expect(screen.getByText(/Délai de communication dépassé/)).toBeTruthy()
 })
+
+it('opens the connected devices list from the security tab',async()=>{
+  vi.mocked(api).mockImplementation(async(path)=>path==='/auth/sessions'?
+    [{id:'a1',device:'Chrome · Windows',ip:'',created_at:null,last_seen_at:null,current:true}] as never:{ok:true} as never)
+  render(<SettingsPage settings={structuredClone(initial)} connections={{}} save={vi.fn()} run={async op=>{await op()}}/>)
+  fireEvent.click(screen.getByRole('tab',{name:'Sécurité'}))
+  expect(await screen.findByText('Chrome · Windows')).toBeTruthy()
+  expect(screen.getByRole('heading',{name:'Appareils connectés'})).toBeTruthy()
+})

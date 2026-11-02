@@ -6,6 +6,7 @@ export type Vehicle = Complete<components['schemas']['VehicleConfig']>
 export type Program = Complete<components['schemas']['ChargeProgram']>
 export type Cloud = Complete<components['schemas']['CloudSettings']>
 export type MqttConfig = Complete<components['schemas']['MqttConfig']>
+export type ConnectedDevice = components['schemas']['ConnectedDevice']
 export interface MqttStatus {state:'disabled'|'connecting'|'connected'|'disconnected';last_publish_at:string|null;error:string|null}
 export interface Sample {value:number|null; measured_at:string|null; checked_at?:string|null; received_at?:string|null; quality:string; usable?:boolean}
 export interface Telemetry {soc:number|null;range_km:number|null;measured_at:string|null;fresh:boolean}

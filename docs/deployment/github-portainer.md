@@ -1,20 +1,27 @@
 # Dépôt privé, images GHCR et Portainer
 
-Statut : stratégie de livraison validée ; image et Compose à produire pendant le développement. Aucune commande de déploiement présentée ici ne signifie qu’une image existe déjà.
+Statut : image `0.1.3` publiée en privé et téléchargée avec authentification dans GitHub Actions. Elle reprend les dessins exacts de la voiture et du ballon du concept initial. Le déploiement sur le Portainer de l’utilisateur n’a pas été vérifié ici.
 
 ## Emplacements
 
 - Dépôt privé : https://github.com/Macorou/solar-energy-manager
-- Image cible : `ghcr.io/macorou/solar-energy-manager`
-- Version et digest : à renseigner uniquement après publication et vérification effectives.
-- Fichier de déploiement prévu : `compose.yaml`, sans construction requise dans Portainer.
+- Image : `ghcr.io/macorou/solar-energy-manager:0.1.3`, Linux amd64.
+- Digest publié et téléchargé : `sha256:6541744e1ea6bd9761efb0187e4306b349b7d34e852d1f2e87a221ab4cb97af8`.
+- Préversion et fichiers d’installation : https://github.com/Macorou/solar-energy-manager/releases/tag/v0.1.3
+- Fichier de déploiement : `compose.yaml`, sans construction requise dans Portainer.
+- [Contrôles Linux, Docker, publication et distribution privée réussis](https://github.com/Macorou/solar-energy-manager/actions/runs/40463554465).
+- [Revue et vérifications de la correction visuelle](../development-review-ui-0.1.1.md).
+
+Le workflow vérifie `visibility=private`, le téléchargement authentifié du digest, le refus d’accès anonyme et le label OCI de source. L’association visible sur la page du paquet n’est pas déduite du champ REST `repository`, absent pour ce conteneur.
+
+Les versions 0.1.0 et 0.1.2 restent disponibles. Le tag de préparation 0.1.1 a échoué au contrôle de largeur Linux avant la publication d’une image ; la correction finale est 0.1.3, sans déplacement de ce tag. Pour mettre à jour une Stack existante, conserver le volume et définir `SEM_VERSION=0.1.3`.
 
 ## Chaîne de livraison prévue
 
 1. Développer et tester une étape dans le dépôt privé.
 2. Exécuter les vérifications backend, interface et conteneur dans GitHub Actions.
 3. Pour une version approuvée, construire et publier l’image avec le `GITHUB_TOKEN` du workflow et le droit `packages: write`.
-4. Vérifier que le paquet GHCR est privé, lié au dépôt et téléchargeable avec un accès autorisé.
+4. Vérifier que le paquet GHCR est privé, téléchargeable avec un accès autorisé et porteur du label OCI de source attendu.
 5. Référencer la version ou le digest vérifié dans le Compose.
 6. Déployer cette image depuis une Stack Portainer avec son volume de données.
 

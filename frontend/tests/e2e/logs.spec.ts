@@ -1,0 +1,55 @@
+import {test,expect} from '@playwright/test'
+import path from 'node:path'
+import fs from 'node:fs/promises'
+
+test('journaux filters, pause, download and mobile layout use the authenticated real API',async({page},info)=>{
+  const status=await (await page.request.get('/api/v1/setup/status')).json()
+  await page.request.post(status.configured?'/api/v1/auth/login':'/api/v1/setup',{data:{token:'test-bootstrap-only',username:'admin',password:'a-secure-test-password'}})
+  await page.goto('/')
+  await page.getByRole('button',{name:'Journaux',exact:true}).click()
+  const console=page.getByRole('region',{name:'Console des journaux'})
+  await expect(console).toContainText('MeterValues')
+  await page.getByLabel('Niveau des journaux').selectOption('ERROR')
+  await expect(console).toContainText('timeout')
+  await expect(console).not.toContainText('Lecture réussie')
+  await page.getByPlaceholder('Rechercher').fill('NO-SUCH-ENTRY')
+  await expect(page.getByText('Aucune ligne pour ces filtres.')).toBeVisible()
+  await page.getByPlaceholder('Rechercher').fill('')
+  await page.getByLabel('Niveau des journaux').selectOption('DEBUG')
+  await page.getByRole('button',{name:'Toutes les zones',exact:true}).click()
+  await page.getByLabel('Toutes les zones',{exact:true}).uncheck()
+  await page.getByLabel('ocpp:wallbox',{exact:true}).check()
+  await page.keyboard.press('Escape')
+  await expect(console).toContainText('MeterValues')
+  await expect(console).not.toContainText('Lecture réussie')
+  await page.getByRole('button',{name:'Mettre en pause les journaux'}).click()
+  const current=await console.textContent()
+  await page.request.get('/api/v1/no-such-route')
+  await page.waitForTimeout(3200)
+  expect(await console.textContent()).toBe(current)
+  await page.getByRole('button',{name:'1 zone',exact:true}).click()
+  await page.getByLabel('Toutes les zones',{exact:true}).check()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button',{name:'Reprendre les journaux'}).click()
+  await expect(console).toContainText('/api/v1/no-such-route')
+  const downloaded=page.waitForEvent('download')
+  await page.getByRole('button',{name:'Télécharger les journaux'}).click()
+  const file=await downloaded
+  const content=await fs.readFile((await file.path())!,'utf8')
+  expect(content).toContain('MeterValues')
+  expect(content).not.toContain('private-fixture-secret')
+  for(const theme of ['dark','light']){
+    await page.evaluate(theme=>{document.documentElement.dataset.theme=theme},theme)
+    for(const width of [320,375,390,430,1440]){
+      await page.setViewportSize({width,height:900})
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()
+      await expect(console).toBeVisible()
+      const button=await page.getByRole('button',{name:'Mettre en pause les journaux'}).boundingBox()
+      expect(button!.height).toBeGreaterThanOrEqual(44)
+    }
+  }
+  await page.setViewportSize({width:info.project.name==='webkit-mobile'?390:1440,height:900})
+  await page.evaluate(()=>{document.documentElement.dataset.theme='dark'})
+  await page.waitForTimeout(250)
+  if(process.env.SEM_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.SEM_SCREENSHOT_DIR,`journaux-${info.project.name}.png`),fullPage:true})
+})

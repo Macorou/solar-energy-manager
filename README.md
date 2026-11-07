@@ -2,7 +2,7 @@
 
 Gestionnaire d’énergie auto-hébergé qui pilote la recharge d’une voiture électrique et un ballon d’eau chaude selon le surplus solaire, les heures creuses et les programmes choisis. SEM décide localement et commande directement la borne et le ballon. Home Assistant lui fournit les mesures et reçoit en retour ses calculs.
 
-**Version actuelle : 0.1.34** · image privée `ghcr.io/macorou/solar-energy-manager` · déploiement Docker / Portainer
+**Version actuelle : 0.1.35** · image privée `ghcr.io/macorou/solar-energy-manager` · déploiement Docker / Portainer
 
 ![Vue d’ensemble : flux d’énergie, voiture, ballon et planning (données fictives)](docs/assets/readme/vue-ensemble.png)
 
@@ -22,7 +22,7 @@ Gestionnaire d’énergie auto-hébergé qui pilote la recharge d’une voiture 
 **Ballon d’eau chaude**
 - Pilotage natif d’un **Ariston NUOS Plus Wi-Fi** : arrêt, solaire, heures creuses + solaire.
 - Consignes de température distinctes pour le réseau et pour le solaire.
-- Cycle manuel « Chauffer maintenant » et confirmation croisée Ariston / Home Assistant.
+- Manuel et « Chauffer maintenant » de 30 min à 4 h au choix, confirmation croisée Ariston / Home Assistant.
 
 **Partage du surplus**
 - Priorités de démarrage entre appareils, réglables par glisser-déposer.

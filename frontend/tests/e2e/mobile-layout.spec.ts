@@ -32,24 +32,26 @@ test('phone cards keep artwork separate from usable full-width controls',async({
     })
     expect(alpha).toEqual([0,0,0,0])
   }
-  // The duration: inline and compact on a desktop, on its own row (16 px, 44 px high) on a phone.
-  const duration=async()=>page.getByRole('article',{name:'Wallbox Pulsar Plus'}).evaluate(card=>{
+  // The duration (car and water heater): inline and compact on a desktop, on its own row (16 px, 44 px high) on a phone.
+  const duration=async(name='Wallbox Pulsar Plus')=>page.getByRole('article',{name}).evaluate(card=>{
     const select=card.querySelector('.manual-hours select') as HTMLSelectElement,label=card.querySelector('.manual-hours>span')!
     const manual=[...card.querySelectorAll('.mode-switch button')].find(n=>n.textContent==='Manuel')!.getBoundingClientRect()
     const box=select.getBoundingClientRect(),style=getComputedStyle(select),context=document.createElement('canvas').getContext('2d')!
     context.font=`${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
-    const needed=context.measureText('12 h').width+parseFloat(style.paddingLeft)+parseFloat(style.paddingRight)+16
+    const needed=Math.max(...[...select.options].map(o=>context.measureText(o.text).width))+parseFloat(style.paddingLeft)+parseFloat(style.paddingRight)+16
     return {below:box.top>=manual.bottom-1,font:parseFloat(style.fontSize),height:box.height,fits:box.width>=needed,
       inside:box.right<=card.getBoundingClientRect().right,label:label.getBoundingClientRect().width>1?label.textContent:null}
   })
   // The webkit-mobile project starts as a touch phone, where the phone layout applies from the start.
-  if(!testInfo.project.use.isMobile)expect(await duration()).toMatchObject({below:false,fits:true,label:null})
+  if(!testInfo.project.use.isMobile)for(const name of ['Wallbox Pulsar Plus','Ariston NUOS'])
+    expect(await duration(name)).toMatchObject({below:false,fits:true,label:null})
   for(const theme of ['dark','light']){
     if(theme==='light')await page.getByRole('button',{name:'Passer au thème clair'}).click()
     for(const width of [320,375,390,430]){
       await page.setViewportSize({width,height:844})
       expect(await duration()).toMatchObject({below:true,font:16,fits:true,inside:true,label:'Durée'})
       expect((await duration()).height).toBeGreaterThanOrEqual(44)
+      expect(await duration('Ariston NUOS')).toMatchObject({below:true,font:16,fits:true,inside:true,label:'Durée'})
       for(const name of ['Wallbox Pulsar Plus','Ariston NUOS']){
         const card=page.getByRole('article',{name})
         const art=await card.locator('.device-art').boundingBox(),controls=await card.locator('.mode-switch').boundingBox()

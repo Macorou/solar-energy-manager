@@ -14,19 +14,26 @@ def find(state,device_id):
     return config,device
 
 
-def apply_manual(state,device_id:str,duration_minutes:int=30,origin:str='web')->str|None:
+def apply_manual(state,device_id:str,duration_minutes:int|None=None,origin:str='web')->str:
     config,device=find(state,device_id)
     if not device.armed: raise ModeRefused('Activer et vérifier cet appareil avant une commande')
+    car=device.kind=='charger'
+    if duration_minutes is None: duration_minutes=240 if car else 30
+    if car and not (60<=duration_minutes<=720 and duration_minutes%60==0): raise ModeRefused('Durée de 1 h à 12 h')
+    if not car and not 1<=duration_minutes<=720: raise ModeRefused('Durée de 1 à 720 minutes')
     values=state.store.get('manual_controls',{})
     previous=values.get(device_id,{}).get('previous_mode',device.mode)
-    values[device_id]={'until':None if device.kind=='charger' else (utcnow()+timedelta(minutes=duration_minutes)).isoformat(),
+    values[device_id]={'until':(utcnow()+timedelta(minutes=duration_minutes)).isoformat(),
                        'previous_mode':previous if previous!='manual' else 'off'}
     state.store.set('manual_controls',values)
     device.mode='manual'
     state.store.save_settings(config.model_dump(mode='json'))
-    state.store.append_event({'kind':'manual','device_id':device_id,
-        'details':{'duration_minutes':None if device.kind=='charger' else duration_minutes,
-                   'persistent':device.kind=='charger','origin':origin}})
+    details={'duration_minutes':duration_minutes,'origin':origin}
+    if origin=='web' and getattr(getattr(state,'coordinator',None),'red_peak_active',False):
+        # The web interface asked for confirmation before sending it.
+        details['reason']='Confirmé : jour rouge, heures pleines'
+        state.store.journal.write('INFO','device:'+device_id,'Manuel confirmé pendant les heures pleines rouges')
+    state.store.append_event({'kind':'manual','device_id':device_id,'details':details})
     return values[device_id]['until']
 
 

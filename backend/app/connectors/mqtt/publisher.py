@@ -1,4 +1,5 @@
 import json
+from app import VERSION
 from app.connectors.mqtt.entities import Entity
 
 THROTTLE_S = 10
@@ -25,7 +26,7 @@ class Publisher:
             'availability': [{'topic': f'{self.prefix}/status'}, {'topic': self.topic(entity, 'available')}],
             'availability_mode': 'all',
             'device': {'identifiers': [f'sem_{entity.group}'], 'name': entity.device_name,
-                'manufacturer': 'Solar Energy Manager', 'model': 'SEM'}}
+                'manufacturer': 'Solar Energy Manager', 'model': 'SEM', 'sw_version': VERSION}}
         optional = {'unit_of_measurement': entity.unit, 'device_class': entity.device_class,
             'state_class': entity.state_class, 'suggested_display_precision': entity.precision}
         data |= {key: value for key, value in optional.items() if value is not None}

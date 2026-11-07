@@ -25,5 +25,7 @@ class SiteSnapshot:
     phase_control_enabled: bool = False
     phase_margin_a: float = 1
     price: Sample | None = None
+    tempo_state: str | None = None
+    tempo_changed_at: datetime | None = None
     grid_fallback_current_a: float = 0
 

@@ -2,7 +2,7 @@
 
 Gestionnaire d’énergie auto-hébergé qui pilote la recharge d’une voiture électrique et un ballon d’eau chaude selon le surplus solaire, les heures creuses et les programmes choisis. SEM décide localement et commande directement la borne et le ballon. Home Assistant lui fournit les mesures et reçoit en retour ses calculs.
 
-**Version actuelle : 0.1.33** · image privée `ghcr.io/macorou/solar-energy-manager` · déploiement Docker / Portainer
+**Version actuelle : 0.1.34** · image privée `ghcr.io/macorou/solar-energy-manager` · déploiement Docker / Portainer
 
 ![Vue d’ensemble : flux d’énergie, voiture, ballon et planning (données fictives)](docs/assets/readme/vue-ensemble.png)
 
@@ -13,7 +13,7 @@ Gestionnaire d’énergie auto-hébergé qui pilote la recharge d’une voiture 
 **Recharge de la voiture**
 - Pilote une borne **OCPP 1.6J** (Wallbox Pulsar Plus en service, autres bornes enregistrables).
 - Régulation du courant adaptée d’EVCC : pas de 0,1 A, limites par phase, réduction immédiate en cas de surcharge, temporisations pour les passages de nuages.
-- Modes **Automatique**, **Manuel** et **Pause**. Le mode Manuel repasse en Automatique au débranchement.
+- Modes **Automatique**, **Manuel** et **Pause**. Le Manuel dure de 1 h à 12 h au choix et repasse en Automatique à la fin de la durée ou au débranchement.
 - Programmes récurrents : objectif en % à une heure donnée, jours de la semaine, début du créneau réseau autorisé.
 - **Objectif sur surplus** : au-delà de l’objectif, la voiture continue de charger avec le seul surplus solaire.
 - Batterie lue auprès de Peugeot, puis estimée pendant la session à partir de l’énergie chargée.
@@ -28,6 +28,7 @@ Gestionnaire d’énergie auto-hébergé qui pilote la recharge d’une voiture 
 - Priorités de démarrage entre appareils, réglables par glisser-déposer.
 - Réglages par appareil pour les passages de nuages : surplus pour démarrer, délais, appoint réseau toléré.
 - Plages d’heures creuses et prix du réseau, avec le prix effectif de l’énergie consommée.
+- **Jours rouges EDF Tempo** (couleur lue dans Home Assistant) : aucun courant réseau en automatique pendant les heures pleines, surplus solaire seul, Manuel possible après confirmation. Voir la [note 0.1.34](docs/deployment/patch-0.1.34.md).
 
 **Suivi**
 - **Sessions de charge** : historique persistant, vues mois / année / total, énergie, coût et part solaire, filtres, exports CSV et Excel.

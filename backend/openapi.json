@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Solar Energy Manager",
-    "version": "0.1.33"
+    "version": "0.1.34"
   },
   "paths": {
     "/api/v1/setup/status": {
@@ -3252,6 +3252,11 @@
             "title": "Price Entity",
             "default": ""
           },
+          "tempo_entity": {
+            "type": "string",
+            "title": "Tempo Entity",
+            "default": ""
+          },
           "phases": {
             "additionalProperties": {
               "$ref": "#/components/schemas/PhaseConfig"
@@ -3416,12 +3421,16 @@
       "ManualRequest": {
         "properties": {
           "duration_minutes": {
-            "type": "integer",
-            "maximum": 720.0,
-            "minimum": 1.0,
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Duration Minutes",
-            "description": "Durée du mode manuel du ballon. Ignorée pour la voiture : le mode manuel reste actif jusqu’au débranchement de la voiture.",
-            "default": 30
+            "description": "Durée du mode manuel en minutes. Voiture : 60 à 720 par heures entières (4 h par défaut ; le débranchement termine le mode manuel plus tôt). Ballon : 1 à 720 (30 min par défaut). Une durée hors limites est refusée (409)."
           }
         },
         "type": "object",

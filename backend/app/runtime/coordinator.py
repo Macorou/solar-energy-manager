@@ -15,6 +15,7 @@ from app.engine.budget import solar_budget_w
 from app.scheduling.recurrence import occurrences_for
 from app.scheduling.authorization import select_authorization
 from app.scheduling.tariff_windows import is_off_peak
+from app.scheduling.tempo import TempoTracker,next_tempo_day_start,parse_color,red_peak
 from app.connectors.home_assistant.client import HomeAssistantSource
 from app.connectors.ocpp.registry import ChargerAdapter
 from app.api.water_heaters import adapter as ariston_adapter
@@ -27,6 +28,7 @@ from app.domain.vehicles import VehicleTelemetry
 
 
 CHARGE_EFFICIENCY=.85  # EVCC's initial grid-to-battery efficiency
+AUTOMATIC_MODES=('solar','planned','off_peak_solar')
 
 
 def plan_warnings(snapshot,config,occurrences):
@@ -80,7 +82,8 @@ class Coordinator:
         self.engine.network_allowed=network_state.get('allowed',{})
         self.engine.network_stop_pending=set(network_state.get('stop_pending',[]))
         self.dispatcher=Dispatcher(store)
-        kinds={item['id']:item['kind'] for item in (store.load_settings() or {}).get('devices',[])}
+        settings=store.load_settings() or {}
+        kinds={item['id']:item['kind'] for item in settings.get('devices',[])}
         for key,record in self.dispatcher.records.items():
             if kinds.get(key)=='charger' and record['status'] in ('accepted','observed'):
                 self.engine.requested[key]=record['power_w']
@@ -106,6 +109,15 @@ class Coordinator:
         self.reasons={}; self.authorizations={}; self.running=False; self.loop_task=None
         self.effective_targets={}; self.target_sources={}; self.plan_warnings={}
         self.last_tick=None
+        # Tempo: the colour read for the current Tempo day and the red peak state survive a restart,
+        # so that a restart neither lifts the restriction nor ends a Manual confirmed during it.
+        self.tempo=TempoTracker();self.tempo_saved=store.get('tempo',{})
+        self.tempo.configured=bool(settings.get('home_assistant',{}).get('tempo_entity'))
+        self.red_peak_active=bool(self.tempo_saved.get('red_peak'))
+        self.tempo_color=None;self.tempo_unknown=False
+        if self.tempo_saved.get('color') and self.tempo_saved.get('read_at'):
+            self.tempo.update(self.tempo_saved['color'],datetime.fromisoformat(self.tempo_saved['read_at']),
+                settings.get('timezone') or 'Europe/Paris')
         self.last_diagnostic=None;self.last_diagnostic_reasons={}
         self.instance=InstanceLock(store.path.parent/'controller.lock')
 
@@ -221,6 +233,14 @@ class Coordinator:
             sample_max_age_s=config.sample_max_age_s,reservations=tuple(self.reservations.values()),
             grid_fallback_current_a=config.grid_fallback_current_a)
 
+    def previous_mode(self,device,entry):
+        """The mode a Manual returns to; a car always returns to an automatic mode (never Pause)."""
+        previous=entry.get('previous_mode') if entry else None
+        if device.kind!='charger': return previous or 'off'
+        if previous in AUTOMATIC_MODES: return previous
+        paused=self.store.get('paused_modes',{}).get(device.id)
+        return paused if paused in AUTOMATIC_MODES else 'planned'
+
     def policies(self,config,now):
         manuals=self.store.get('manual_controls',{})
         policies={}
@@ -228,17 +248,21 @@ class Coordinator:
         for device in config.devices:
             entry=manuals.get(device.id)
             until=datetime.fromisoformat(entry['until']) if entry and entry.get('until') else None
-            if device.kind=='charger' and device.mode=='manual':
-                # Migrate old timed car overrides without changing the selected mode.
-                if entry and entry.get('until') is not None:
-                    entry['until']=None; changed=True
-                until=None
+            if device.kind=='charger' and device.mode=='manual' and not until:
+                # A car Manual from 0.1.23-0.1.33 had no end: bounded once, a running charge is not cut.
+                until=now+timedelta(hours=12)
+                manuals[device.id]={'until':until.isoformat(),'previous_mode':self.previous_mode(device,entry)}
+                changed=True
             elif device.mode=='manual' and (not until or until<=now):
-                device.mode=entry.get('previous_mode','off') if entry else 'off'
+                device.mode=self.previous_mode(device,entry)
                 manuals.pop(device.id,None); changed=True
+                if device.kind=='charger':
+                    self.store.append_event({'kind':'manual_ended','device_id':device.id,'details':{'reason':'Durée écoulée'}})
+                    self.store.journal.write('INFO','device:'+device.id,'Fin de la durée du mode Manuel, retour en automatique')
             cloud=device.cloud.model_dump()
+            if self.red_peak_active: cloud|={'import_tolerance_w':0,'stop_delay_s':0,'min_run_s':0}
             last_command=getattr(self.adapters.get(device.id),'last_command',None)
-            policies[device.id]=DevicePolicy(device.id,device.mode,**cloud,
+            policies[device.id]=DevicePolicy(device.id,device.mode,**cloud,grid_blocked=self.red_peak_active,
                 target=device.default_soc_target if device.kind=='charger' else device.target,
                 solar_target=device.solar_target,
                 armed=device.armed,vehicle_id=device.vehicle_id,soc_max_age_s=config.peugeot.max_age_s,
@@ -249,6 +273,55 @@ class Coordinator:
             self.store.set('manual_controls',manuals)
             self.store.save_settings(config.model_dump(mode='json'))
         return policies
+
+    def update_tempo(self,snapshot,config):
+        """Red day, peak hours: no automatic grid use. Acts and records only on a change of state."""
+        now,zone=snapshot.at,config.timezone
+        configured=bool(config.home_assistant.tempo_entity)
+        if not configured: self.tempo=TempoTracker()
+        self.tempo.configured=configured
+        saved=dict(self.tempo_saved) if configured else {}
+        # The Tempo day (06:00 -> 06:00) the state belongs to: a red peak saved on another day is
+        # not this one, so a start missed while SEM was stopped still ends a running Manual.
+        day=next_tempo_day_start(now,zone).isoformat()
+        reading=parse_color(snapshot.tempo_state) if configured else None
+        if reading and self.tempo.update(reading,now,zone,snapshot.tempo_changed_at):
+            if (saved.get('color'),saved.get('until'))!=(reading,day):
+                saved|={'color':reading,'read_at':now.isoformat(),'until':day}
+        color=self.tempo.color(now)
+        # Just after 06:00, yesterday's colour is ignored for a moment: not an unknown colour yet.
+        unknown=configured and color is None and not (reading and self.tempo.stale(now,zone,snapshot.tempo_changed_at))
+        if unknown and not self.tempo_unknown:
+            self.store.journal.write('WARN','tempo','Couleur Tempo inconnue')
+        self.tempo_color,self.tempo_unknown=color,unknown
+        active=red_peak(color,now,config.off_peak,zone)
+        # A state saved before 'day' existed counts as today's (first tick after the update).
+        was=self.red_peak_active and saved.get('day',day)==day
+        if active and not was:
+            self.store.append_event({'kind':'tempo_red_peak','details':{'state':'start','reason':'Début'}})
+            self.store.journal.write('INFO','tempo','Heures pleines rouges : réseau coupé en automatique')
+            self.red_peak_active=True
+            self.end_manuals_for_red_peak(config)
+        elif not active and self.red_peak_active:
+            self.store.append_event({'kind':'tempo_red_peak','details':{'state':'end','reason':'Fin'}})
+            self.store.journal.write('INFO','tempo','Fin des heures pleines rouges')
+        self.red_peak_active=active
+        saved|={'red_peak':active,'day':day}
+        if saved!=self.tempo_saved:
+            self.store.set('tempo',saved);self.tempo_saved=saved
+
+    def end_manuals_for_red_peak(self,config):
+        """A Manual running when the red peak starts ends as on expiry; one started during it is kept."""
+        manuals=self.store.get('manual_controls',{})
+        ended=[device for device in config.devices if device.mode=='manual']
+        for device in ended:
+            device.mode=self.previous_mode(device,manuals.pop(device.id,None))
+            self.store.append_event({'kind':'manual_ended','device_id':device.id,
+                'details':{'reason':'Heures pleines rouges','cause':'tempo_red_peak'}})
+            self.store.journal.write('INFO','device:'+device.id,'Heures pleines rouges : fin du mode Manuel, retour en automatique')
+        if ended:
+            self.store.set('manual_controls',manuals)
+            self.store.save_settings(config.model_dump(mode='json'))
 
     def end_manual_on_unplug(self,snapshot,config):
         """Manual ends only on an observed plugged -> unplugged transition of a connected charger."""
@@ -285,6 +358,7 @@ class Coordinator:
             snapshot=snapshot or await self.acquire(config)
             self.charging.update(snapshot,config)
             self.end_manual_on_unplug(snapshot,config)
+            self.update_tempo(snapshot,config)
             # A Peugeot percentage kept through an API error is ignored: the car may have
             # been driven since. Only this session's estimate may still end a charge.
             effective={key:value if value.quality!=Quality.UNAVAILABLE else replace(value,soc=None)
@@ -536,6 +610,7 @@ class Coordinator:
             if device.kind=='water_heater' and value.temperature is not None and target is not None:
                 value=replace(value,target_reached=value.temperature>=target)
             return asdict(value)|{'observed_power':sample(value.observed_power)}
+        manuals=self.store.get('manual_controls',{})
         return {'simulation':False,'at':self.last_tick,'running':self.running,
             'grid':sample(self.snapshot.grid),'solar':sample(self.snapshot.solar),
             'house':sample(self.snapshot.house),'house_configured':bool(config.home_assistant.house_entity),
@@ -549,9 +624,12 @@ class Coordinator:
             'energy_prices':{'site':None if self.charging.effective_price is None else round(self.charging.effective_price,3),
                 'devices':device_prices(replace(self.snapshot,at=now),config)},
             'off_peak':is_off_peak(now,config.off_peak,config.timezone),'errors':self.errors,
+            'tempo':{'configured':self.tempo.configured,'color':self.tempo_color,'red_peak':self.red_peak_active,
+                'unknown':self.tempo_unknown},
             'devices':[{'config':d.model_dump(mode='json'),
                 'state':device_state(d),
                 'reason':self.reasons.get(d.id,'En attente de mesures'),
+                'manual_until':manuals.get(d.id,{}).get('until') if d.mode=='manual' else None,
                 'effective_target':self.effective_targets.get(d.id,d.target),
                 'target_source':self.target_sources.get(d.id,'grid'),
                 'plan_warning':self.plan_warnings.get(d.id),

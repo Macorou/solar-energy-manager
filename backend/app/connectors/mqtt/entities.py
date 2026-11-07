@@ -156,6 +156,14 @@ def _heater(device, price):
                unit='°C', device_class='temperature', precision=1, attributes={'source': source})]
 
 
+def _tempo(tempo, entity):
+    if not (tempo or {}).get('configured'): return []
+    color = tempo.get('color')
+    return [entity('tempo_color', 'Couleur Tempo', color.capitalize() if color else None),
+            entity('tempo_restriction', 'Restriction Tempo active', _binary(tempo.get('red_peak')),
+                   component='binary_sensor')]
+
+
 def _site(state, now):
     at = _time(state.get('at'))
     active = bool(state.get('running')) and at is not None and (now - at).total_seconds() < CONTROL_MAX_AGE_S
@@ -172,7 +180,7 @@ def _site(state, now):
                state_class='measurement', throttled=True),
         entity('off_peak', 'Heures creuses', _binary(state.get('off_peak')), component='binary_sensor'),
         entity('control_active', 'Pilotage actif', _binary(active), component='binary_sensor'),
-        entity('problem', 'Problème en cours', problem)]
+        entity('problem', 'Problème en cours', problem)] + _tempo(state.get('tempo'), entity)
 
 
 def build_entities(state: dict, config: SettingsDocument, now: datetime) -> list[Entity]:

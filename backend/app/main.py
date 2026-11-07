@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import secrets
 from fastapi import FastAPI, Depends, Request, HTTPException
+from app import VERSION
 from app.settings import RuntimeSettings, SettingsDocument
 from app.storage.database import SQLiteStore
 from app.storage.secrets import SecretStore
@@ -62,7 +63,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             await coordinator.stop()
         store.journal.write('INFO', 'system', 'Arrêt Solar Energy Manager')
 
-    app = FastAPI(title='Solar Energy Manager', version='0.1.33', lifespan=lifespan)
+    app = FastAPI(title='Solar Energy Manager', version=VERSION, lifespan=lifespan)
     app.state.store = store
     app.state.secrets = secret_store
     app.state.runtime_settings = settings
@@ -102,11 +103,11 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
     @app.get('/api/v1/health/live')
     def health():
-        return {'status': 'ok', 'version': '0.1.33'}
+        return {'status': 'ok', 'version': VERSION}
 
     @app.get('/api/v1/system/status', dependencies=[Depends(require_auth)])
     def status():
-        return {'version': '0.1.33', 'simulation': False,
+        return {'version': VERSION, 'simulation': False,
                 'runtime': 'running' if app.state.coordinator.running else 'not_started'}
 
     @app.get('/api/v1/settings', dependencies=[Depends(require_auth)])

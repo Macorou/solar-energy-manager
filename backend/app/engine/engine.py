@@ -24,6 +24,8 @@ CHARGER_DECLINED_S = 120
 LIMIT_FAULT_RETRY_S = 300
 LIMIT_FAULT_RETRY_MAX_S = 1800
 LIMIT_FAULT_RESET_S = 7200
+# Tempo red day, peak hours: automatic modes may only use surplus (Manual is exempt).
+GRID_BLOCKED_REASON = 'Jour rouge, heures pleines : solaire seul'
 
 
 def charger_goals(policy, auth):
@@ -220,7 +222,8 @@ class EnergyEngine:
                 # Between the target and the solar target only surplus may charge, even in a grid window.
                 topping_up = bool(telemetry and telemetry.usable(now,policy.soc_max_age_s)
                                   and goal<=telemetry.soc<solar_goal)
-            network = bool(policy and not topping_up and (
+            blocked = bool(policy and policy.grid_blocked and not manual_active)
+            network = bool(policy and not topping_up and not blocked and (
                 manual_active
                 or policy.mode=='off_peak_solar' and policy.off_peak
                 or policy.mode=='planned' and auth and auth.allow_grid))
@@ -271,11 +274,13 @@ class EnergyEngine:
                     network, reason = eligible, 'Commande manuelle' if eligible else 'Commande manuelle terminée'
                 elif policy.mode=='planned':
                     eligible = bool(auth and (auth.allow_grid or auth.allow_solar))
-                    network = bool(auth and auth.allow_grid)
-                    reason = auth.reason if auth else 'Aucun programme applicable'
+                    network = bool(auth and auth.allow_grid and not blocked)
+                    reason = (GRID_BLOCKED_REASON if blocked and auth and auth.allow_grid
+                              else auth.reason if auth else 'Aucun programme applicable')
                 elif policy.mode=='off_peak_solar':
-                    network = policy.off_peak
-                    reason = ('Chauffe heures creuses' if network and target_sources.get(spec.id)!='solar'
+                    network = policy.off_peak and not blocked
+                    reason = (GRID_BLOCKED_REASON if blocked
+                              else 'Chauffe heures creuses' if network and target_sources.get(spec.id)!='solar'
                               else 'Surplus solaire')
                 else:
                     reason = 'Surplus solaire'
@@ -330,7 +335,7 @@ class EnergyEngine:
                         enable_delay_s=policy.start_delay_s,disable_delay_s=policy.stop_delay_s,
                         enable_threshold_w=-max(spec.min_power_w,policy.start_surplus_w) if policy.start_surplus_w else 0,
                         disable_threshold_w=max(0,min(policy.import_tolerance_w,shared_tolerance-tolerance_spent)),
-                        hold_minimum=mono-self.running_since.get(spec.id,mono)<policy.min_run_s)
+                        hold_minimum=not blocked and mono-self.running_since.get(spec.id,mono)<policy.min_run_s)
                     desired=min(site_available,current*unit)
                     site_capped=site_available<current*unit
                     reason=pv.reason
@@ -340,7 +345,8 @@ class EnergyEngine:
                     tolerance = max(0,min(policy.import_tolerance_w,shared_tolerance-tolerance_spent))
                     deficient = solar_available+tolerance < spec.min_power_w
                     stopped = self.timers.reached(spec.id+':stop',deficient,policy.stop_delay_s,mono)
-                    minimum_run = mono-self.running_since.get(spec.id,mono)<policy.min_run_s
+                    # Red peak: no minimum run on the grid either.
+                    minimum_run = not blocked and mono-self.running_since.get(spec.id,mono)<policy.min_run_s
                     if deficient and stopped and not minimum_run:
                         reason = 'Surplus insuffisant : suspension'
                     else:
@@ -358,6 +364,8 @@ class EnergyEngine:
                         reason = f'Attente de surplus stable ({remaining:.0f} s)' if enough else 'Surplus insuffisant'
             elif eligible:
                 reason = 'Mesure réseau indisponible ou limite de puissance'
+            if blocked and eligible and hard_valid and not desired and not fallback and not degraded:
+                reason = GRID_BLOCKED_REASON
             if desired and spec.kind=='water_heater':
                 desired = spec.max_power_w if site_available>=spec.max_power_w else 0
             if not coherent and desired and not degraded and not fallback:

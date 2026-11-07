@@ -244,3 +244,20 @@ def test_one_target_number_per_program_of_the_car():
     assert {e.device_name for e in numbers} == {'SEM – Wallbox'}
     assert [e.key for e in entities if e.group == 'ev2' and e.command] == ['car_mode']
     assert not [e for e in entities if e.group == 'tank' and e.command]
+
+
+def test_tempo_entities_published_only_when_configured():
+    keys = lambda s: {e.key for e in build(s) if e.group == 'site'}
+    assert not keys(make_state()) & {'tempo_color', 'tempo_restriction'}
+    off = make_state(tempo={'configured': False, 'color': None, 'red_peak': False, 'unknown': True})
+    assert not keys(off) & {'tempo_color', 'tempo_restriction'}
+    on = build(make_state(tempo={'configured': True, 'color': 'rouge', 'red_peak': True, 'unknown': False}))
+    assert find(on, 'site', 'tempo_color').value == 'Rouge'
+    assert find(on, 'site', 'tempo_color').name == 'Couleur Tempo'
+    assert find(on, 'site', 'tempo_restriction').value == 'ON'
+    assert find(on, 'site', 'tempo_restriction').component == 'binary_sensor'
+    blue = build(make_state(tempo={'configured': True, 'color': 'bleu', 'red_peak': False, 'unknown': False}))
+    assert find(blue, 'site', 'tempo_color').value == 'Bleu'
+    assert find(blue, 'site', 'tempo_restriction').value == 'OFF'
+    unk = build(make_state(tempo={'configured': True, 'color': None, 'red_peak': False, 'unknown': True}))
+    assert find(unk, 'site', 'tempo_color').value is None

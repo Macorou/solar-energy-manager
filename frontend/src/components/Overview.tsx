@@ -15,7 +15,7 @@ function publication(mqtt:MqttStatus|null,timezone:string){
 }
 
 export function Overview({settings,state,connections,onAction,onNavigate}:{settings:Settings;state:LiveState|null;
-  connections:Record<string,boolean>;onAction:(id:string,action:string)=>void;onNavigate:(page:string)=>void}) {
+  connections:Record<string,boolean>;onAction:(id:string,action:string,durationMinutes?:number)=>void;onNavigate:(page:string)=>void}) {
   const live=(config:Settings['devices'][number]):LiveDevice=>state?.devices.find(device=>device.config.id===config.id)??{
     config,state:{observed_power:null,observed_state:'unknown',connected:false,temperature:null,target_temperature:null,fault:null},
     reason:'En attente de mesures',reservation_w:0,command:null,authorization:null}
@@ -28,7 +28,7 @@ export function Overview({settings,state,connections,onAction,onNavigate}:{setti
     <EnergyFlow settings={settings} state={state}/>
     <div className="device-grid">{(['charger','water_heater'] as const).flatMap(kind=>{
       const devices=settings.devices.filter(device=>device.kind===kind)
-      return devices.length?devices.map(config=><DeviceCard key={config.id} device={live(config)} telemetry={state?.vehicles[config.vehicle_id]} timezone={settings.timezone} onAction={onAction}/>):
+      return devices.length?devices.map(config=><DeviceCard key={config.id} device={live(config)} telemetry={state?.vehicles[config.vehicle_id]} timezone={settings.timezone} tempo={state?.tempo} onAction={onAction}/>):
         [<UnconfiguredDeviceCard key={kind} kind={kind} onConfigure={()=>onNavigate('settings')}/>]
     })}</div>
     {state&&Object.keys(state.errors).length>0&&<section className="panel readings-errors"><h2>Points à vérifier</h2>{Object.entries(state.errors).map(([id,text])=><p key={id}>{settings.devices.find(device=>device.id===id)?.name||id} : {text}</p>)}</section>}

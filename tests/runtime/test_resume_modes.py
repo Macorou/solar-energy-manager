@@ -28,7 +28,7 @@ def test_automatic_selection_keeps_the_current_automatic_policy(tmp_path,kind,mo
 @pytest.mark.parametrize('kind,mode',[('charger','planned'),('water_heater','off_peak_solar'),('charger','solar')])
 def test_manual_to_automatic_restores_the_saved_policy_and_clears_the_timer(tmp_path,kind,mode):
     app,client=service(tmp_path,kind,mode)
-    assert client.post('/api/v1/devices/device/manual',json={'duration_minutes':30}).status_code==200
+    assert client.post('/api/v1/devices/device/manual',json={'duration_minutes':60}).status_code==200
     assert client.post('/api/v1/devices/device/resume').status_code==200
     assert client.get('/api/v1/settings').json()['devices'][0]['mode']==mode
     assert 'device' not in app.state.store.get('manual_controls',{})
@@ -37,7 +37,7 @@ def test_manual_to_automatic_restores_the_saved_policy_and_clears_the_timer(tmp_
 def test_manual_after_pause_restores_the_pre_pause_policy(tmp_path):
     app,client=service(tmp_path,'charger','planned')
     assert client.post('/api/v1/devices/device/pause').status_code==200
-    assert client.post('/api/v1/devices/device/manual',json={'duration_minutes':30}).status_code==200
+    assert client.post('/api/v1/devices/device/manual',json={'duration_minutes':60}).status_code==200
     assert client.post('/api/v1/devices/device/resume').status_code==200
     assert client.get('/api/v1/settings').json()['devices'][0]['mode']=='planned'
 

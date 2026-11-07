@@ -20,4 +20,4 @@ class DevicePolicy:
     off_peak: bool = False
     start_not_before: datetime | None = None
     solar_target: float | None = None
-
+    grid_blocked: bool = False

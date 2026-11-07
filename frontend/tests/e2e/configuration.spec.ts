@@ -133,7 +133,7 @@ test('reference composition with clearly labelled fictional telemetry remains is
   await page.setViewportSize({width:390,height:844})
   await page.screenshot({path:path.join(directory,'solar-energy-manager-v0.1.3-reference-mobile.png'),fullPage:true})
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
-  for(const width of [320,768,801,980,1024,1440,1920]) {
+  for(const width of [320,601,768,801,980,981,1024,1101,1180,1280,1440,1500,1920]) {
     await page.setViewportSize({width,height:900})
     const layout=await page.evaluate(()=>({width:document.documentElement.scrollWidth,
       overflowing:[...document.querySelectorAll('.device-card,.mode-switch,.stat-card,.timeline-panel,.connection-card')]

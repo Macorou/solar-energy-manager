@@ -343,6 +343,21 @@ button.start-now:disabled {opacity:.5}
 :root[data-theme="dark"] .tempo-context.bleu {color:var(--blue)}:root[data-theme="dark"] .tempo-context.blanc {color:var(--text)}:root[data-theme="dark"] .tempo-context.rouge {color:var(--error)}:root[data-theme="dark"] .tempo-context.unknown {color:var(--amber)}
 :root[data-theme="dark"] .tempo-pill {background:var(--error-bg);color:var(--error);border-color:#6b3d3d}
 @media(max-width:450px){.tempo-context {padding-left:8px}}
+/* Desktop: the duration stays beside Manuel only when the controls column has room for the three
+   modes plus the list (about 295 px with wide fallback fonts at 12 px); otherwise it takes its own
+   row under the modes. Narrower still, the mode icons go so that the labels fit. */
+.device-controls {container-type:inline-size}
+@container (max-width:339px){
+  .mode-switch {flex-wrap:wrap}
+  .mode-switch .manual-hours {order:1;flex:0 0 100%;justify-content:space-between;gap:10px;border:0;border-top:1px solid var(--line);padding:0 2px 0 10px;font-size:11px;font-weight:500}
+  .mode-switch .manual-hours>span {position:static;width:auto;height:auto;overflow:visible;clip:auto}
+  .mode-switch .manual-hours select {font-size:12px;padding:0 8px}
+  .mode-switch .manual-hours+button {border-left:1px solid var(--line)}
+}
+@container (max-width:229px){
+  .mode-switch button {gap:0}
+  .mode-switch button>svg {display:none}
+}
 /* Phones and touch screens: the duration gets its own row under the modes, at 16 px so that
    iOS Safari does not zoom on tap, with a 44 px touch target. */
 @media(max-width:450px),(pointer:coarse){

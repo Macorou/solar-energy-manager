@@ -42,7 +42,8 @@ test('phone cards keep artwork separate from usable full-width controls',async({
     return {below:box.top>=manual.bottom-1,font:parseFloat(style.fontSize),height:box.height,fits:box.width>=needed,
       inside:box.right<=card.getBoundingClientRect().right,label:label.getBoundingClientRect().width>1?label.textContent:null}
   })
-  expect(await duration()).toMatchObject({below:false,fits:true,label:null})
+  // The webkit-mobile project starts as a touch phone, where the phone layout applies from the start.
+  if(!testInfo.project.use.isMobile)expect(await duration()).toMatchObject({below:false,fits:true,label:null})
   for(const theme of ['dark','light']){
     if(theme==='light')await page.getByRole('button',{name:'Passer au thème clair'}).click()
     for(const width of [320,375,390,430]){

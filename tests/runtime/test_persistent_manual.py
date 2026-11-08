@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 import pytest
 from app.domain.devices import DeviceSpec, DeviceState
 from app.domain.measurements import Sample, utcnow
@@ -12,32 +12,39 @@ from app.simulation.clock import SimulatedClock
 from test_resume_modes import service
 
 
-def test_manual_charger_has_no_expiry_even_for_an_old_ui_sending_30_minutes(tmp_path):
+def test_car_manual_has_an_end_and_an_old_ui_gets_four_hours(tmp_path):
     app, client = service(tmp_path, 'charger', 'planned')
     result = client.post('/api/v1/devices/device/manual', json={'duration_minutes':30})
-    assert result.status_code == 200
-    assert result.json()['until'] is None
-    assert app.state.store.get('manual_controls')['device']['until'] is None
+    assert result.status_code == 409
+    start = utcnow()
+    result = client.post('/api/v1/devices/device/manual', json={})
+    assert result.status_code == 200 and result.json()['until'] is not None
+    until = app.state.store.get('manual_controls')['device']['until']
+    assert until == result.json()['until']
+    assert timedelta(minutes=239) < datetime.fromisoformat(until)-start < timedelta(minutes=241)
     assert client.post('/api/v1/devices/device/manual', json={}).status_code == 200
     assert app.state.store.get('manual_controls')['device']['previous_mode'] == 'planned'
 
 
 @pytest.mark.parametrize('legacy', [True, False])
-def test_overnight_and_restart_do_not_return_a_manual_charger_to_automatic(tmp_path, legacy):
+def test_restart_keeps_a_manual_charger_until_its_end(tmp_path, legacy):
+    # A car Manual without an end (0.1.23 to 0.1.33, or set without manual controls) is bounded to 12 h.
     app, client = service(tmp_path, 'charger', 'manual')
     now = utcnow()
     if legacy:
-        app.state.store.set('manual_controls', {'device':{
-            'until':(now-timedelta(hours=10)).isoformat(), 'previous_mode':'planned'}})
+        app.state.store.set('manual_controls', {'device':{'until':None, 'previous_mode':'planned'}})
     config = SettingsDocument.model_validate(app.state.store.load_settings())
     assert app.state.coordinator.policies(config, now)['device'].mode == 'manual'
     assert config.devices[0].mode == 'manual'
+    assert app.state.store.get('manual_controls')['device'] == {
+        'until':(now+timedelta(hours=12)).isoformat(), 'previous_mode':'planned'}
     reopened = Coordinator(app.state.store)
-    next_day = SettingsDocument.model_validate(app.state.store.load_settings())
-    assert reopened.policies(next_day, now+timedelta(days=2))['device'].mode == 'manual'
+    later = SettingsDocument.model_validate(app.state.store.load_settings())
+    assert reopened.policies(later, now+timedelta(hours=11))['device'].mode == 'manual'
     assert app.state.store.load_settings()['devices'][0]['mode'] == 'manual'
-    if legacy:
-        assert app.state.store.get('manual_controls')['device']['until'] is None
+    ended = SettingsDocument.model_validate(app.state.store.load_settings())
+    assert reopened.policies(ended, now+timedelta(hours=12, seconds=1))['device'].mode == 'planned'
+    assert app.state.store.load_settings()['devices'][0]['mode'] == 'planned'
 
 
 @pytest.mark.parametrize('expiry', [None, 'past'])

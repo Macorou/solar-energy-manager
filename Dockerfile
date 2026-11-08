@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.lock && groupadd --gid 10001
 COPY backend/app/ ./backend/app/
 COPY --from=frontend /build/dist/ ./frontend/dist/
 COPY docs/third-party/ ./licenses/
+COPY LICENSE ./licenses/LICENSE
 USER 10001:10001
 EXPOSE 8080
 VOLUME ["/data"]

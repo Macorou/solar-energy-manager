@@ -1,14 +1,36 @@
-import type {LiveDevice,Telemetry} from '../api/types'
+import {useState} from 'react'
+import type {LiveDevice,Telemetry,TempoState} from '../api/types'
+import {ConfirmDialog} from './ConfirmDialog'
 import {watts} from '../api/client'
 import {Icon} from './Icon'
 import {DeviceIllustration} from './DeviceIllustration'
 import {ChargeSession,vehicleStatus} from './ChargeSession'
 import {reportedPower,useLastPowerReadings} from './powerDisplay'
 
-export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{device:LiveDevice;telemetry?:Telemetry;
-  onAction:(id:string,action:string)=>void;timezone?:string}) {
+const CAR_MINUTES=Array.from({length:12},(_,i)=>(i+1)*60)
+const HEATER_MINUTES=[30,60,90,120,180,240]
+const durationLabel=(m:number)=>m<60?m+' min':Math.floor(m/60)+' h'+(m%60?' '+m%60:'')
+// The car keeps its 0.1.34 key, in hours; the water heater stores minutes.
+const durationKey=(id:string,car:boolean)=>(car?'sem.manualHours.':'sem.manualMinutes.')+id
+function savedMinutes(id:string,car:boolean){
+  const options=car?CAR_MINUTES:HEATER_MINUTES,fallback=car?240:30
+  try{const raw=Number(localStorage.getItem(durationKey(id,car))),minutes=car?raw*60:raw
+    return options.includes(minutes)?minutes:fallback}catch{return fallback}}
+
+export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris',tempo}:{device:LiveDevice;telemetry?:Telemetry;
+  onAction:(id:string,action:string,durationMinutes?:number)=>void;timezone?:string;tempo?:TempoState}) {
   const {config,state,command}=device
   const car=config.kind==='charger'
+  // `confirm` holds the duration waiting for the red-peak confirmation.
+  const options=car?CAR_MINUTES:HEATER_MINUTES
+  const [minutes,setMinutes]=useState(()=>savedMinutes(config.id,car)),[confirm,setConfirm]=useState<number|null>(null)
+  const choose=(m:number)=>{setMinutes(m);try{localStorage.setItem(durationKey(config.id,car),String(car?m/60:m))}catch{/* storage unavailable */}}
+  const send=(m:number)=>{choose(m);onAction(config.id,'manual',m)}
+  const manual=(m=minutes)=>tempo?.red_peak?setConfirm(m):send(m)
+  // During a Manual, a new duration restarts it from now (same flow as the Manual button).
+  const pick=(m:number)=>config.mode==='manual'?manual(m):choose(m)
+  const manualEnd=config.mode==='manual'&&device.manual_until?new Date(device.manual_until)
+    .toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:timezone}):null
   const session=device.charging
   const useEstimate=car&&session?.soc!=null&&(session.active||!!session.ended_at&&
     (!telemetry?.measured_at||new Date(telemetry.measured_at)<=new Date(session.ended_at)))
@@ -46,22 +68,25 @@ export function DeviceCard({device,telemetry,onAction,timezone='Europe/Paris'}:{
         <div className="device-level">
         <div className="big-number">{value==null?'—':Math.round(value)}<small>{car?'%':'°C'}</small></div>
         <div className="meter"><i style={{width:Math.max(0,Math.min(100,value??0))+'%'}}/></div>
-        <p className="device-target">Objectif {target??'—'} {car?'%':'°C'}{deadline&&<> à {deadline}</>}{solarTarget!=null&&<> · surplus jusqu’à {solarTarget} %</>}{!car&&device.target_source&&<> · {device.target_source==='solar'?'solaire':'réseau'}</>}</p>
+        <p className="device-target">Objectif {target??'—'} {car?'%':'°C'}{deadline&&<> à {deadline}</>}{solarTarget!=null&&<> · surplus jusqu’à {solarTarget} %</>}{!car&&device.target_source&&<> · {device.target_source==='solar'?'solaire':'réseau'}</>}{manualEnd&&<> · Manuel jusqu’à {manualEnd}</>}</p>
         {useEstimate&&session?.soc_estimated&&<span className="freshness">{session.soc_usable?'Batterie estimée':session.soc_reason||'Estimation à vérifier'}</span>}
         {!fresh&&<span className="freshness old">{car?(value!=null?'Donnée ancienne':'Batterie indisponible'):'Mesure indisponible ou ancienne'}</span>}
         {car&&device.plan_warning&&<span className="freshness old" role="status">{device.plan_warning}</span>}
         </div>
         <div className="mode-switch" aria-label="Mode de pilotage">
           <button className={automatic?'selected automatic':''} aria-pressed={automatic} disabled={!config.armed} onClick={()=>onAction(config.id,'resume')}><Icon name="leaf" size={14}/>Automatique</button>
-          <button className={config.mode==='manual'?'selected':''} aria-pressed={config.mode==='manual'} disabled={!config.armed} onClick={()=>onAction(config.id,'manual')} title={car?'Manuel jusqu’au débranchement de la voiture':'Démarrage temporaire pendant 30 minutes'}><Icon name="hand" size={14}/>Manuel</button>
+          <button className={config.mode==='manual'?'selected':''} aria-pressed={config.mode==='manual'} disabled={!config.armed} onClick={()=>manual()} title="Manuel pendant la durée choisie"><Icon name="hand" size={14}/>Manuel</button>
+          <label className="manual-hours"><span>Durée</span><select aria-label="Durée du mode manuel" value={minutes} disabled={!config.armed} onChange={e=>pick(Number(e.target.value))}>
+            {options.map(m=><option key={m} value={m}>{durationLabel(m)}</option>)}</select></label>
           <button className={config.mode==='off'?'selected':''} aria-pressed={config.mode==='off'} disabled={!config.armed} onClick={()=>onAction(config.id,'pause')}><Icon name="pause" size={14}/>Pause</button>
         </div>
         <div className="device-reading"><Icon name={car?'bolt':'calendar'} size={26}/><div>
           <strong>{watts(power)}</strong><span>{displayed.estimated.power?'Puissance estimée · état OCPP':car?'Puissance de charge actuelle':'Puissance de chauffe actuelle'}</span>
         </div></div>
-        <button className={'start-now '+(car?'charge':'heat')} disabled={!config.armed} title={car?'Recharge manuelle jusqu’au débranchement de la voiture':'Commande manuelle temporaire de 30 minutes'} onClick={()=>onAction(config.id,'manual')}><Icon name="play" size={16}/>{car?'Charger maintenant':'Chauffer maintenant'}</button>
+        <button className={'start-now '+(car?'charge':'heat')} disabled={!config.armed} title={car?'Recharge manuelle pendant la durée choisie':'Chauffe manuelle pendant la durée choisie'} onClick={()=>manual()}><Icon name="play" size={16}/>{car?'Charger maintenant':'Chauffer maintenant'}</button>
       </div>
     </div>
+    {confirm!=null&&<ConfirmDialog title="Jour rouge Tempo" text={'Heures pleines d’un jour rouge : '+(car?'cette charge':'cette chauffe')+' sera payée au tarif le plus cher. Continuer ?'} onCancel={()=>setConfirm(null)} onConfirm={()=>{setConfirm(null);send(confirm)}}/>}
     {car&&session&&<ChargeSession value={session}/>}
     <div className="device-feedback"><span className="reason"><span className="status-dot"/>{device.reason}</span><span className="device-priority">Priorité {config.priority}</span></div>
     {car&&value!=null&&<span className="measure-date">{batteryDate?<>Batterie relevée le <time dateTime={telemetry!.measured_at!}>{batteryDate}</time></>:'Date de mesure indisponible'}</span>}

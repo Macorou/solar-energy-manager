@@ -327,3 +327,43 @@ button.start-now:disabled {opacity:.5}
   .mode-switch button>svg {display:none}
   .big-number {font-size:38px}
 }
+.mode-switch .manual-hours {display:flex;flex-direction:row;gap:0;align-items:center;flex:0 0 auto;border-left:1px solid #e4e8ee;border-right:1px solid #e4e8ee;color:#69748a}
+.mode-switch .manual-hours>span {position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.mode-switch .manual-hours select {width:auto;min-height:32px;padding:4px 2px;border:0;border-radius:0;background:transparent;font-size:11px;font-weight:500;color:inherit;text-align:center;cursor:pointer}
+.mode-switch .manual-hours select:disabled {opacity:.44;cursor:not-allowed}
+.mode-switch .manual-hours+button {border-left:0}
+.tempo-context {display:inline-flex;align-items:center;gap:6px;padding-left:12px;border-left:1px solid #d9e1ed}
+.tempo-context.bleu {color:#2a68b8}.tempo-context.blanc {color:#69748a}.tempo-context.rouge {color:#c0392b}.tempo-context.unknown {color:#9a6b12}
+.tempo-pill {background:#fde7e3;color:#a32d1f;border:1px solid #f1b9b0;padding:4px 10px;border-radius:20px;font-weight:600}
+.confirm-dialog {width:420px}
+.confirm-dialog .settings-dialog-body p {margin-top:12px;font-size:14px}
+.confirm-actions {justify-content:flex-end}
+.confirm-actions button {min-width:110px}
+:root[data-theme="dark"] .mode-switch .manual-hours {color:var(--muted);border-color:var(--line)}
+:root[data-theme="dark"] .tempo-context.bleu {color:var(--blue)}:root[data-theme="dark"] .tempo-context.blanc {color:var(--text)}:root[data-theme="dark"] .tempo-context.rouge {color:var(--error)}:root[data-theme="dark"] .tempo-context.unknown {color:var(--amber)}
+:root[data-theme="dark"] .tempo-pill {background:var(--error-bg);color:var(--error);border-color:#6b3d3d}
+@media(max-width:450px){.tempo-context {padding-left:8px}}
+/* Desktop: the duration stays beside Manuel only when the controls column has room for the three
+   modes plus the list (about 295 px with wide fallback fonts at 12 px); otherwise it takes its own
+   row under the modes. Narrower still, the mode icons go so that the labels fit. */
+.device-controls {container-type:inline-size}
+@container (max-width:339px){
+  .mode-switch {flex-wrap:wrap}
+  .mode-switch .manual-hours {order:1;flex:0 0 100%;justify-content:space-between;gap:10px;border:0;border-top:1px solid var(--line);padding:0 2px 0 10px;font-size:11px;font-weight:500}
+  .mode-switch .manual-hours>span {position:static;width:auto;height:auto;overflow:visible;clip:auto}
+  .mode-switch .manual-hours select {font-size:12px;padding:0 8px}
+  .mode-switch .manual-hours+button {border-left:1px solid var(--line)}
+}
+@container (max-width:229px){
+  .mode-switch button {gap:0}
+  .mode-switch button>svg {display:none}
+}
+/* Phones and touch screens: the duration gets its own row under the modes, at 16 px so that
+   iOS Safari does not zoom on tap, with a 44 px touch target. */
+@media(max-width:450px),(pointer:coarse){
+  .mode-switch {flex-wrap:wrap}
+  .mode-switch .manual-hours {order:1;flex:0 0 100%;justify-content:space-between;gap:12px;border:0;border-top:1px solid var(--line);padding:0 4px 0 12px;font-size:13px;font-weight:500}
+  .mode-switch .manual-hours>span {position:static;width:auto;height:auto;overflow:visible;clip:auto}
+  .mode-switch .manual-hours select {font-size:16px;min-height:44px;padding:0 10px}
+  .mode-switch .manual-hours+button {border-left:1px solid var(--line)}
+}

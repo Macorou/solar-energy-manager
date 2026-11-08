@@ -3,6 +3,7 @@ import inspect
 import json
 import time
 from dataclasses import replace
+from datetime import datetime
 from urllib.parse import urlsplit, urlunsplit
 import httpx
 import websockets
@@ -80,7 +81,19 @@ class HomeAssistantSource:
             phase_voltages={p:self.measure(c.voltage_entity,{'V':1},'V') for p,c in self.config.phases.items()},
             phase_powers={p:self.measure(c.power_entity,{'W':1,'kW':1000},'W') for p,c in self.config.phases.items()},
             phase_limits_a={p:c.max_current_a for p,c in self.config.phases.items()},
-            price=self.measure(self.config.price_entity,{'€/kWh':1,'EUR/kWh':1,'EUR/kwh':1},'€/kWh'))
+            price=self.measure(self.config.price_entity,{'€/kWh':1,'EUR/kWh':1,'EUR/kwh':1},'€/kWh'),
+            tempo_state=self.tempo_state(),tempo_changed_at=self.tempo_changed_at())
+
+    def tempo_state(self):
+        raw=self.states.get(self.config.tempo_entity) if self.config.tempo_entity and self.connected else None
+        return raw.get('state') if raw else None
+
+    def tempo_changed_at(self):
+        raw=self.states.get(self.config.tempo_entity) if self.config.tempo_entity and self.connected else None
+        try:
+            value=datetime.fromisoformat(raw['last_changed'])
+            return value if value.tzinfo else None
+        except (TypeError,KeyError,ValueError): return None
 
     def measure(self, entity, units, unit):
         if not entity or entity not in self.states: return None

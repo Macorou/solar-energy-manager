@@ -7,7 +7,7 @@ vi.mock('../api/client',async importOriginal=>({...await importOriginal<typeof i
 afterEach(()=>{cleanup();vi.clearAllMocks()})
 
 const initial:Settings={timezone:'Europe/Paris',site_limit_w:11000,export_margin_w:100,sample_max_age_s:30,grid_fallback_current_a:0,phase_control_enabled:false,phase_margin_a:1,solar_price_per_kwh:0,devices:[],vehicles:[],schedules:[],off_peak:[],
-    home_assistant:{url:'http://ha.test',grid_entity:'sensor.grid',solar_entity:'sensor.solar',house_entity:'',price_entity:'',phases:{},invert_grid:false,device_power_entities:{}},
+    home_assistant:{url:'http://ha.test',grid_entity:'sensor.grid',solar_entity:'sensor.solar',house_entity:'',price_entity:'',tempo_entity:'',phases:{},invert_grid:false,device_power_entities:{}},
     peugeot:{username:'',client_id:'',country:'fr',poll_interval_s:900,max_age_s:1800},ariston:{username:'',poll_interval_s:120,max_age_s:600},mqtt:{broker:'',topic:'sem',client_id:'',username:'',allow_self_signed:false,tls:false,discovery_prefix:'homeassistant',commands_enabled:false}}
 it('saves an optional household total sensor while retaining existing HA mappings and credentials',async()=>{
   const settings=structuredClone(initial)
@@ -30,8 +30,9 @@ it('saves a chosen phase current limit and dynamic price without inserting real 
   fireEvent.change(screen.getByLabelText('Courant réseau L1 (A ou mA)'),{target:{value:'sensor.phase_current'}})
   fireEvent.change(screen.getByLabelText('Limite L1 (A)'),{target:{value:'18'}})
   fireEvent.change(screen.getByLabelText('Entité prix actuel du réseau (€/kWh)'),{target:{value:'sensor.price'}})
+  fireEvent.change(screen.getByLabelText(/Couleur Tempo du jour/),{target:{value:'sensor.tempo'}})
   fireEvent.click(screen.getByRole('button',{name:'Enregistrer Home Assistant'}))
-  await waitFor(()=>expect(api).toHaveBeenCalledWith('/connections/home-assistant','PUT',{config:expect.objectContaining({price_entity:'sensor.price',phases:{L1:expect.objectContaining({current_entity:'sensor.phase_current',max_current_a:18})}}),token:null}))
+  await waitFor(()=>expect(api).toHaveBeenCalledWith('/connections/home-assistant','PUT',{config:expect.objectContaining({price_entity:'sensor.price',tempo_entity:'sensor.tempo',phases:{L1:expect.objectContaining({current_entity:'sensor.phase_current',max_current_a:18})}}),token:null}))
 })
 
 it('shows stored OCPP identity and retains its secret on a blank save',async()=>{

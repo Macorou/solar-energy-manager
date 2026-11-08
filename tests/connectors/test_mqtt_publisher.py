@@ -1,4 +1,5 @@
 import json
+from app import VERSION
 from app.connectors.mqtt.entities import Entity
 from app.connectors.mqtt.publisher import Publisher
 from app.storage.database import SQLiteStore
@@ -33,7 +34,7 @@ async def test_discovery_payload_shape(tmp_path):
     assert data['availability'] == [{'topic': 'sem/status'}, {'topic': 'sem/site/price/available'}]
     assert data['availability_mode'] == 'all'
     assert data['device'] == {'identifiers': ['sem_site'], 'name': 'SEM – Installation',
-                              'manufacturer': 'Solar Energy Manager', 'model': 'SEM'}
+                              'manufacturer': 'Solar Energy Manager', 'model': 'SEM', 'sw_version': VERSION}
     assert 'json_attributes_topic' not in data
     await publisher.announce([sensor(attributes={'source': 'relevée'})])
     assert json.loads(client.sent[-1][1])['json_attributes_topic'] == 'sem/site/price/attributes'

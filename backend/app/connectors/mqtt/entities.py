@@ -156,6 +156,14 @@ def _heater(device, price):
                unit='°C', device_class='temperature', precision=1, attributes={'source': source})]
 
 
+def _tempo(tempo, entity):
+    if not (tempo or {}).get('configured'): return []
+    color = tempo.get('color')
+    return [entity('tempo_color', 'Couleur Tempo', color.capitalize() if color else None),
+            entity('tempo_restriction', 'Restriction Tempo active', _binary(tempo.get('red_peak')),
+                   component='binary_sensor')]
+
+
 def _site(state, now):
     at = _time(state.get('at'))
     active = bool(state.get('running')) and at is not None and (now - at).total_seconds() < CONTROL_MAX_AGE_S
@@ -172,19 +180,21 @@ def _site(state, now):
                state_class='measurement', throttled=True),
         entity('off_peak', 'Heures creuses', _binary(state.get('off_peak')), component='binary_sensor'),
         entity('control_active', 'Pilotage actif', _binary(active), component='binary_sensor'),
-        entity('problem', 'Problème en cours', problem)]
+        entity('problem', 'Problème en cours', problem)] + _tempo(state.get('tempo'), entity)
 
 
 def build_entities(state: dict, config: SettingsDocument, now: datetime) -> list[Entity]:
     # Names and targets come from the published state; `config` only adds the commandable entities.
     from app.connectors.mqtt.commands import command_entities  # lazy: commands imports Entity from here
-    device_prices = (state.get('energy_prices') or {}).get('devices') or {}
+    prices = state.get('energy_prices') or {}
+    device_prices = prices.get('devices') or {}
     entities = _site(state, now)
     for device in state.get('devices', []):
-        price = _number(device_prices.get(device['config']['id']), 3)
         if device['config']['kind'] == 'charger':
-            entities += _charger(device, state.get('vehicles') or {}, price)
+            # The car publishes the site's grid/solar mix, charging or not. Charging sessions keep
+            # their own attribution (grid_shares).
+            entities += _charger(device, state.get('vehicles') or {}, _number(prices.get('site'), 3))
         else:
-            entities += _heater(device, price)
+            entities += _heater(device, _number(device_prices.get(device['config']['id']), 3))
     if config.mqtt.commands_enabled: entities += command_entities(config)
     return entities

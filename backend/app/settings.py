@@ -132,6 +132,7 @@ class HomeAssistantConfig(Model):
     solar_entity: str = ''
     house_entity: str = ''
     price_entity: str = ''
+    tempo_entity: str = ''
     phases: dict[Literal['L1','L2','L3'],PhaseConfig] = Field(default_factory=dict)
     invert_grid: bool = False
     device_power_entities: dict[str, str] = Field(default_factory=dict)

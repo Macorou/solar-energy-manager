@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 import pytest
 from app.connectors.mqtt.commands import CommandHandler
@@ -52,6 +53,19 @@ async def test_repeating_the_active_mode_does_not_command_the_charger_again(tmp_
     assert state.store.get('manual_controls', {}) == controls
     assert lines(state, 'INFO') == [f'Mode {option} demandé depuis Home Assistant',
                                     f'Mode {option} déjà actif (demande Home Assistant)']
+
+
+async def test_home_assistant_manual_during_red_peak_is_accepted_and_logged(tmp_path):
+    state, handler = make(tmp_path)
+    state.coordinator.red_peak_active = True
+    start = datetime.now(timezone.utc)
+    assert await handler.handle('sem', 'sem/ev/car_mode/set', 'Manuel') == ('ev', 'car_mode')
+    assert mode(state) == 'manual'
+    assert lines(state, 'INFO') == ['Manuel demandé depuis Home Assistant pendant les heures pleines rouges']
+    event = state.store.events()[0]
+    assert event['details'] == {'duration_minutes': 240, 'origin': 'home_assistant'}
+    until = datetime.fromisoformat(state.store.get('manual_controls')['ev']['until'])
+    assert timedelta(minutes=239) < until - start < timedelta(minutes=241)
 
 
 async def test_refused_manual_is_journaled_and_republished(tmp_path):

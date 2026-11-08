@@ -1274,6 +1274,11 @@ export interface components {
              * @default
              */
             price_entity: string;
+            /**
+             * Tempo Entity
+             * @default
+             */
+            tempo_entity: string;
             /** Phases */
             phases?: {
                 [key: string]: components["schemas"]["PhaseConfig"];
@@ -1337,10 +1342,9 @@ export interface components {
         ManualRequest: {
             /**
              * Duration Minutes
-             * @description Durée du mode manuel du ballon. Ignorée pour la voiture : le mode manuel reste actif jusqu’au débranchement de la voiture.
-             * @default 30
+             * @description Durée du mode manuel en minutes. Voiture : 60 à 720 par heures entières (4 h par défaut ; le débranchement termine le mode manuel plus tôt). Ballon : 1 à 720 (30 min par défaut). Une durée hors limites est refusée (409).
              */
-            duration_minutes: number;
+            duration_minutes?: number | null;
         };
         /** MqttConfig */
         MqttConfig: {

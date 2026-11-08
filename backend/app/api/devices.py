@@ -25,7 +25,9 @@ def mode_errors():
 
 
 class ManualRequest(BaseModel):
-    duration_minutes:int=Field(30,ge=1,le=720,description='Durée du mode manuel du ballon. Ignorée pour la voiture : le mode manuel reste actif jusqu’au débranchement de la voiture.')
+    duration_minutes:int|None=Field(None,description='Durée du mode manuel en minutes. Voiture : 60 à 720 par heures entières '
+        '(4 h par défaut ; le débranchement termine le mode manuel plus tôt). Ballon : 1 à 720 (30 min par défaut). '
+        'Une durée hors limites est refusée (409).')
 
 
 @router.post('/devices/{device_id}/meter-read')

@@ -69,12 +69,15 @@ class CommandHandler:
             return
         try:
             if option == CAR_MODES['planned']: apply_resume(state, device_id, mode='planned')
-            elif option == CAR_MODES['manual']: apply_manual(state, device_id, origin='home_assistant')
+            elif option == CAR_MODES['manual']: apply_manual(state, device_id, duration_minutes=240, origin='home_assistant')
             else: apply_pause(state, device_id)
         except (ModeRefused, DeviceNotFound) as error:
             journal.write('WARN', 'mqtt', f'Commande Home Assistant refusée : {option} – {error}')
             return
-        journal.write('INFO', 'mqtt', f'Mode {option} demandé depuis Home Assistant')
+        if option == CAR_MODES['manual'] and state.coordinator.red_peak_active:
+            # Accepted: it is the user's decision; the warning is shown on the Home Assistant side.
+            journal.write('INFO', 'mqtt', 'Manuel demandé depuis Home Assistant pendant les heures pleines rouges')
+        else: journal.write('INFO', 'mqtt', f'Mode {option} demandé depuis Home Assistant')
 
     @staticmethod
     def _target(state, config, key, payload):

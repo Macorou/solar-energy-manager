@@ -186,13 +186,15 @@ def _site(state, now):
 def build_entities(state: dict, config: SettingsDocument, now: datetime) -> list[Entity]:
     # Names and targets come from the published state; `config` only adds the commandable entities.
     from app.connectors.mqtt.commands import command_entities  # lazy: commands imports Entity from here
-    device_prices = (state.get('energy_prices') or {}).get('devices') or {}
+    prices = state.get('energy_prices') or {}
+    device_prices = prices.get('devices') or {}
     entities = _site(state, now)
     for device in state.get('devices', []):
-        price = _number(device_prices.get(device['config']['id']), 3)
         if device['config']['kind'] == 'charger':
-            entities += _charger(device, state.get('vehicles') or {}, price)
+            # The car publishes the site's grid/solar mix, charging or not. Charging sessions keep
+            # their own attribution (grid_shares).
+            entities += _charger(device, state.get('vehicles') or {}, _number(prices.get('site'), 3))
         else:
-            entities += _heater(device, price)
+            entities += _heater(device, _number(device_prices.get(device['config']['id']), 3))
     if config.mqtt.commands_enabled: entities += command_entities(config)
     return entities

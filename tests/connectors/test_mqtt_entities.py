@@ -71,9 +71,16 @@ def test_catalogue_keys_units_and_device_names():
     assert find(entities, 'tank', 'temperature').value == '48.5'
 
 
+def test_car_price_is_the_site_mix_whether_it_charges_or_not():
+    prices = {'site': 0.1234, 'devices': {'ev': 0.165, 'tank': 0.2}}
+    assert find(build(make_state(energy_prices=prices)), 'ev', 'price').value == '0.123'
+    prices['site'] = None  # no mix known: unavailable, never the all-or-nothing device price
+    assert find(build(make_state(energy_prices=prices)), 'ev', 'price').value is None
+
+
 def test_prices_are_three_decimals_and_none_is_unavailable():
     entities = build()
-    assert find(entities, 'ev', 'price').value == '0.110'
+    assert find(entities, 'tank', 'price').value == '0.200'
     assert find(entities, 'site', 'price').value == '0.123'
     entities = build(make_state(energy_prices={'site': None, 'devices': {'ev': None}}))
     assert find(entities, 'ev', 'price').value is None

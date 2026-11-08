@@ -2,7 +2,7 @@
 
 Gestionnaire d’énergie auto-hébergé qui pilote la recharge d’une voiture électrique et un ballon d’eau chaude selon le surplus solaire, les heures creuses et les programmes choisis. SEM décide localement et commande directement la borne et le ballon. Home Assistant lui fournit les mesures et reçoit en retour ses calculs.
 
-**Version actuelle : 0.1.35** · image privée `ghcr.io/macorou/solar-energy-manager` · déploiement Docker / Portainer
+**Version actuelle : 0.1.36** · image privée `ghcr.io/macorou/solar-energy-manager` · déploiement Docker / Portainer
 
 ![Vue d’ensemble : flux d’énergie, voiture, ballon et planning (données fictives)](docs/assets/readme/vue-ensemble.png)
 
@@ -92,7 +92,7 @@ Backend Python 3.12 (FastAPI, SQLite, bibliothèques `ocpp` et `ariston`), inter
 - Le conteneur tourne sans privilège (UID 10001), avec un système de fichiers en lecture seule hors du volume `/data`.
 - Les mots de passe et jetons des services (Peugeot, Ariston, MQTT, borne) sont chiffrés dans le volume et ne sont jamais réaffichés ni écrits dans les journaux.
 - Le cookie de session est inaccessible aux scripts et n’est pas envoyé depuis un autre site.
-- Le dépôt et l’image restent privés. Aucun identifiant, jeton ni donnée d’exploitation n’est versionné.
+- Le dépôt est public, sous licence MIT ; l’image reste privée. Aucun identifiant, jeton ni donnée d’exploitation n’est versionné.
 
 ## Développement
 
@@ -128,3 +128,7 @@ Publier une version : pousser un tag `v0.1.X`. Le workflow lance les tests backe
 ## Provenance
 
 La régulation de recharge, les profils OCPP et la lecture de batterie Peugeot reprennent du code d’[EVCC](https://github.com/evcc-io/evcc), sous licence MIT. La source utilisée et les adaptations sont décrites dans [la provenance](docs/third-party/peugeot-provenance.md) et la licence est dans [evcc-MIT.txt](docs/third-party/evcc-MIT.txt). SEM a son propre service et sa propre interface ; il ne dépend pas d’une installation EVCC.
+
+## Licence
+
+SEM est distribué sous [licence MIT](LICENSE). Le code repris d’EVCC reste soumis à sa propre licence MIT, reproduite dans [evcc-MIT.txt](docs/third-party/evcc-MIT.txt).

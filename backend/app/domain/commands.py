@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 CHARGER_START_WAIT_S = 300
+# EVCC settling time before an accepted charger command without effect is handled again.
+IGNORED_COMMAND_S = 60
 # Power set aside for a command until its effect is measurable.
 RESERVATION_S = 90
 

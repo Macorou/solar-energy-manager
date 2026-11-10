@@ -175,3 +175,25 @@ def test_reduction_watchdog_resets_after_the_physical_current_follows_the_cap():
     frame=SiteSnapshot(now,grid=sample(4350),phase_control_enabled=True,phase_margin_a=1,
         phase_currents={'L1':sample(18.9,'A')},phase_limits_a={'L1':20},device_states={'ev':state})
     assert not unapplied_overload(frame,spec,16.9*230)
+
+
+@pytest.mark.parametrize('status,transaction,resent',[
+    ('SuspendedEVSE',True,True),('SuspendedEVSE',False,False),('SuspendedEV',True,False)])
+def test_offer_ignored_by_the_station_is_sent_again_after_the_settling_time(status,transaction,resent):
+    # Wallbox fw 5 can accept a positive profile of a paused session and stay in SuspendedEVSE.
+    clock=SimulatedClock();engine=EnergyEngine(clock)
+    spec=DeviceSpec('ev','charger',min_power_w=1380,max_power_w=3680,max_current_a=16)
+    policy=DevicePolicy('ev','manual',armed=True,manual_until=clock.now()+timedelta(hours=1))
+    def frame():
+        now=clock.now();sample=lambda v:Sample(v,'W','OCPP',now,now,checked_at=now)
+        return SiteSnapshot(now,grid=sample(0),site_limit_w=11000,
+            device_states={'ev':DeviceState('ev',sample(0),status,True,vehicle_connected=True,
+                transaction_active=transaction)})
+    first=engine.evaluate(frame(),[spec],{'ev':policy},{}).commands
+    assert [c.action for c in first]==['set_power']
+    engine.command_result(first[0],True,clock.now())
+    clock.advance(59)
+    assert not engine.evaluate(frame(),[spec],{'ev':policy},{}).commands
+    clock.advance(2)
+    again=engine.evaluate(frame(),[spec],{'ev':policy},{}).commands
+    assert [(c.action,c.limit_w) for c in again]==([('set_power',first[0].limit_w)] if resent else [])

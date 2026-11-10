@@ -2,7 +2,7 @@ from dataclasses import dataclass,replace,field
 from datetime import timedelta
 import math
 import uuid
-from app.domain.commands import CommandIntent,CHARGER_START_WAIT_S,RESERVATION_S
+from app.domain.commands import CommandIntent,CHARGER_START_WAIT_S,IGNORED_COMMAND_S,RESERVATION_S
 from app.domain.devices import Reservation
 from app.domain.measurements import late
 from app.engine.budget import solar_budget_w,power_coherent,measurements_coherent
@@ -434,6 +434,14 @@ class EnergyEngine:
                 and state.observed_state=='Charging' and state.observed_power
                 and state.observed_power.usable(now,snapshot.sample_max_age_s) and state.observed_power.value>20
                 and mono-self.charger_last_control.get(spec.id,-math.inf)>=60):
+                must_change=True
+            # The station accepted the offer of its paused session but still offers nothing:
+            # sending it again lets the adapter start a new session.
+            if (spec.kind=='charger' and desired>0 and previous and state and state.connected
+                and state.observed_state=='SuspendedEVSE' and state.transaction_active
+                and not (state.observed_power and state.observed_power.usable(now,snapshot.sample_max_age_s)
+                         and state.observed_power.value>20)
+                and mono-self.charger_last_control.get(spec.id,-math.inf)>=IGNORED_COMMAND_S):
                 must_change=True
             target_changed=bool(desired and spec.kind=='water_heater' and target is not None
                 and target!=self.requested_targets.get(spec.id,state.target_temperature if state else None))

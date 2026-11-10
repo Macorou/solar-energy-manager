@@ -5,9 +5,12 @@ import asyncio
 from ocpp.v16 import call
 from app.settings import DeviceConfig
 from app.domain.devices import DeviceState,CapabilityReport
-from app.domain.commands import CommandResult
+from app.domain.commands import CommandResult,IGNORED_COMMAND_S
 from app.domain.measurements import Quality,utcnow,Sample
 from .profiles import build_profile,profile_options,PROFILE_KEYS
+
+# The Wallbox answers StopTransaction within a second of RemoteStopTransaction.
+SESSION_CLOSE_WAIT_S = 8
 
 
 class OcppRegistry:
@@ -20,6 +23,7 @@ class OcppRegistry:
         self.rebooted=set()
         self.connected_since={}
         self.suspend_requested={}
+        self.resume_requested={}
         self.profile_migrations=store.get('ocpp_profile_migrations',{})
         self.profile_values=store.get('ocpp_profile_values',{})
         self.active={}
@@ -107,6 +111,28 @@ class ChargerAdapter:
         self.registry.store.set('ocpp_profile_migrations',self.registry.profile_migrations)
         return True
 
+    async def close_ignored_session(self,station,transaction):
+        """Close a paused session whose station ignores the positive profile.
+
+        Wallbox fw 5 can accept the offer and stay in SuspendedEVSE. As for an ignored
+        zero profile, the settling time is given first; a new session (RemoteStart) then
+        applies the offer, like every evening start.
+        """
+        state=await self.read_state()
+        if not (state.connected and state.observed_state=='SuspendedEVSE'):
+            self.registry.resume_requested.pop(self.config.id,None)
+            return transaction,None
+        first=self.registry.resume_requested.setdefault(self.config.id,utcnow())
+        if (utcnow()-first).total_seconds()<IGNORED_COMMAND_S:return transaction,None
+        result=await asyncio.wait_for(station.call(call.RemoteStopTransaction(transaction_id=transaction['transaction_id'])),5)
+        if result.status!='Accepted':return transaction,'Reprise ignorée : arrêt de la session en pause refusé'
+        key=(self.config.charge_point_id,self.config.connector_id)
+        loop=asyncio.get_running_loop();deadline=loop.time()+SESSION_CLOSE_WAIT_S
+        while key in self.registry.active and loop.time()<deadline:await asyncio.sleep(.1)
+        if key in self.registry.active:return transaction,'Reprise ignorée : session en pause non fermée'
+        self.registry.resume_requested.pop(self.config.id,None)
+        return None,None
+
     async def request_meter(self):
         station=self.registry.stations.get(self.config.charge_point_id)
         if not station:return False
@@ -137,6 +163,7 @@ class ChargerAdapter:
     async def execute(self,intent):
         if intent.action=='suspend':
             self.registry.allowed_until.pop(self.config.id,None)
+            self.registry.resume_requested.pop(self.config.id,None)
             if self.config.id in self.registry.pending_start:
                 self.registry.pending_start[self.config.id]['state']='cancel_requested'
                 self.registry.save_pending()
@@ -176,6 +203,9 @@ class ChargerAdapter:
                 error=await prepare_metering(station)
                 if error:return CommandResult(intent.id,False,error=error,checked_at=utcnow())
             self.registry.suspend_requested.pop(self.config.id,None)
+            if transaction:
+                transaction,error=await self.close_ignored_session(station,transaction)
+                if error:return CommandResult(intent.id,False,error=error,checked_at=utcnow())
             profile=build_profile(self.config,intent.limit_w,transaction['transaction_id'] if transaction else None,intent.expires_at,options)
             result=await station.call(call.SetChargingProfile(connector_id=self.config.connector_id,cs_charging_profiles=profile))
             if result.status!='Accepted':

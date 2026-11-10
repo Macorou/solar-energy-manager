@@ -136,6 +136,64 @@ async def test_ignored_zero_profile_falls_back_only_after_fresh_persistent_charg
     assert calls.count('RemoteStopTransaction')==1
 
 
+def ignored_offer_station(tmp_path,monkeypatch,closes=True):
+    cfg=config();reg=OcppRegistry(SQLiteStore(tmp_path/'db'),lambda:[cfg],lambda _:None)
+    reg.active[('box',1)]={'transaction_id':42};calls=[];clock=[utcnow()]
+    monkeypatch.setattr('app.connectors.ocpp.registry.utcnow',lambda:clock[0])
+    class Wire:
+        sem_profile_values={}
+        async def call(self,message):
+            name=type(message).__name__;calls.append(name)
+            if name=='RemoteStopTransaction' and closes:reg.active.pop(('box',1),None)  # its StopTransaction
+            return SimpleNamespace(status='Accepted')
+    reg.stations['box']=Wire()
+    reg.states['ev']=DeviceState('ev',observed_state='SuspendedEVSE',connected=True)
+    offer=lambda name:CommandIntent(name,'ev','set_power',3680,clock[0]+timedelta(seconds=90))
+    return reg,ChargerAdapter(reg,cfg),calls,clock,offer
+
+
+async def test_offer_ignored_in_suspended_evse_starts_a_new_session_after_the_settling_time(tmp_path,monkeypatch):
+    reg,adapter,calls,clock,offer=ignored_offer_station(tmp_path,monkeypatch)
+    assert (await adapter.execute(offer('resume'))).accepted
+    clock[0]+=timedelta(seconds=59)
+    assert (await adapter.execute(offer('early'))).accepted
+    assert 'RemoteStopTransaction' not in calls
+    clock[0]+=timedelta(seconds=2)
+    assert (await adapter.execute(offer('retry'))).accepted
+    assert calls.count('RemoteStopTransaction')==1 and calls.count('RemoteStartTransaction')==1
+    tail=calls[calls.index('RemoteStopTransaction'):]
+    assert tail.index('SetChargingProfile')<tail.index('RemoteStartTransaction')
+    assert 'ev' not in reg.resume_requested
+
+
+@pytest.mark.parametrize('change',['applied','suspended'])
+async def test_offer_applied_or_replaced_by_a_stop_never_restarts_the_session(tmp_path,monkeypatch,change):
+    # Either event restarts the settling time: 61 s after the first offer is only 21 s after it.
+    reg,adapter,calls,clock,offer=ignored_offer_station(tmp_path,monkeypatch)
+    assert (await adapter.execute(offer('resume'))).accepted
+    clock[0]+=timedelta(seconds=40)
+    if change=='applied':
+        reg.states['ev']=DeviceState('ev',observed_state='SuspendedEV',connected=True)
+        assert (await adapter.execute(offer('adjust'))).accepted
+        reg.states['ev']=DeviceState('ev',observed_state='SuspendedEVSE',connected=True)
+    else:
+        assert (await adapter.execute(CommandIntent('pause','ev','suspend'))).accepted
+        assert (await adapter.execute(offer('resume-again'))).accepted
+    clock[0]+=timedelta(seconds=21)
+    assert (await adapter.execute(offer('retry'))).accepted
+    assert not {'RemoteStopTransaction','RemoteStartTransaction'}&set(calls)
+
+
+async def test_ignored_offer_never_starts_while_the_old_session_stays_open(tmp_path,monkeypatch):
+    monkeypatch.setattr('app.connectors.ocpp.registry.SESSION_CLOSE_WAIT_S',.05)
+    reg,adapter,calls,clock,offer=ignored_offer_station(tmp_path,monkeypatch,closes=False)
+    assert (await adapter.execute(offer('resume'))).accepted
+    clock[0]+=timedelta(seconds=61)
+    result=await adapter.execute(offer('retry'))
+    assert not result.accepted and result.error=='Reprise ignorée : session en pause non fermée'
+    assert 'RemoteStartTransaction' not in calls and reg.active[('box',1)]['transaction_id']==42
+
+
 async def test_migration_clears_only_sem_legacy_transaction_profile_after_new_cap(tmp_path):
     import zlib
     cfg=config();reg=OcppRegistry(SQLiteStore(tmp_path/'db'),lambda:[cfg],lambda _:None);calls=[]

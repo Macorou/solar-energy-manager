@@ -197,3 +197,23 @@ def test_offer_ignored_by_the_station_is_sent_again_after_the_settling_time(stat
     clock.advance(2)
     again=engine.evaluate(frame(),[spec],{'ev':policy},{}).commands
     assert [(c.action,c.limit_w) for c in again]==([('set_power',first[0].limit_w)] if resent else [])
+
+
+def test_disconnected_charger_is_never_commanded_and_keeps_its_offer():
+    # 2026-11-11 01:27: SEM restarted before the station reconnected; a stop could not be
+    # delivered, became "unknown" and then cut the running charge once it reconnected.
+    from app.domain.commands import CommandIntent
+    clock=SimulatedClock();engine=EnergyEngine(clock)
+    spec=DeviceSpec('ev','charger',min_power_w=1380,max_power_w=3680,max_current_a=16)
+    policy=DevicePolicy('ev','manual',armed=True,manual_until=clock.now()+timedelta(hours=1))
+    def frame(connected):
+        now=clock.now();sample=lambda v:Sample(v,'W','OCPP',now,now,checked_at=now)
+        return SiteSnapshot(now,grid=sample(3680),site_limit_w=11000,
+            device_states={'ev':DeviceState('ev',sample(3680),'Charging',connected,vehicle_connected=True)})
+    first=engine.evaluate(frame(True),[spec],{'ev':policy},{}).commands
+    engine.command_result(first[0],True,clock.now())
+    clock.advance(30)
+    assert not engine.evaluate(frame(False),[spec],{'ev':policy},{}).commands
+    clock.advance(30)
+    assert not engine.evaluate(frame(True),[spec],{'ev':policy},{}).commands
+    assert engine.requested['ev']==first[0].limit_w

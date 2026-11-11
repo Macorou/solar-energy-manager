@@ -426,6 +426,10 @@ class EnergyEngine:
             reasons[spec.id] = reason
             if not policy or not policy.armed:
                 continue
+            if spec.kind=='charger' and state is not None and not state.connected:
+                # Nothing reaches a disconnected station (e.g. while SEM restarts): it keeps its
+                # last limit and the decision is taken again once it reconnects.
+                continue
             step=spec.voltage*(len(spec.grid_phases) or 1)*.099 if spec.kind=='charger' else 50
             must_change = (desired>0 and (previous is None or abs(desired-previous)>=step)) \
                 or (desired==0 and (previous is None and running or previous is not None and previous>0)) \

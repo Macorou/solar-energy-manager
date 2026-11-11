@@ -106,14 +106,25 @@ class Station(ChargePoint):
         cancelled=bool(pending and pending['state']=='cancel_requested') or not self.registry.authorized(config)
         if cancelled and self.registry.on_transaction: self.registry.on_transaction(config.id)
         old=self.registry.states.get(config.id,DeviceState(config.id))
+        started=None
         try:
             stamp=datetime.fromisoformat(timestamp.replace('Z','+00:00'))
+            if stamp.tzinfo and stamp<=utcnow():started=stamp
             if stamp.tzinfo and math.isfinite(meter_start) and meter_start>=0 and (not old.energy_measured_at or stamp>=old.energy_measured_at):
                 old=replace(old,energy_wh=float(meter_start),energy_measured_at=stamp,energy_terminal=False,
                     energy_transaction_id=transaction,energy_transaction_start_wh=float(meter_start),
                     energy_transaction_started_at=stamp)
         except (ValueError,TypeError,AttributeError): pass
-        self.registry.states[config.id]=replace(old,connected=True,vehicle_connected=True,observed_state='Preparing',status_measured_at=utcnow())
+        # A status sent by the station after the start of this session stays: Preparing is
+        # only the state of a new session. Station and SEM clocks differ slightly, so the
+        # station's own transaction time is kept for later status ordering.
+        in_session=bool(old.observed_state in ('Charging','SuspendedEV','SuspendedEVSE')
+            and started and old.status_measured_at and old.status_measured_at>=started)
+        if in_session:
+            self.registry.states[config.id]=replace(old,connected=True,vehicle_connected=True)
+        else:
+            self.registry.states[config.id]=replace(old,connected=True,vehicle_connected=True,
+                observed_state='Preparing',status_measured_at=started or utcnow())
         return call_result.StartTransaction(transaction_id=transaction,
             id_tag_info={'status':'Accepted' if self.registry.authorized(config) else 'Invalid'})
 

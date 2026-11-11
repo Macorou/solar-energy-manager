@@ -275,3 +275,27 @@ async def test_offline_stop_cancels_a_pending_start_and_revokes_authorization(tm
     assert not (await ChargerAdapter(reg,cfg).execute(CommandIntent('stop','ev','suspend'))).accepted
     assert not reg.authorized(cfg)
     assert reg.pending_start['ev']['state']=='cancel_requested'
+
+
+def test_start_transaction_never_hides_a_later_station_status(tmp_path):
+    # 2026-11-11 01:28:49: Preparing, SuspendedEV, StartTransaction, SuspendedEVSE. The
+    # transaction answer set Preparing at SEM's reception time and the last status, stamped
+    # a moment earlier by the station clock, was dropped: SEM stayed on Preparing.
+    cfg=config();reg=OcppRegistry(SQLiteStore(tmp_path/'db'),lambda:[cfg],lambda _:None)
+    station=Station('box',None,reg);t0=utcnow()-timedelta(seconds=2)
+    stamp=lambda s:(t0+timedelta(seconds=s)).isoformat()
+    station.status(1,'NoError','Preparing',timestamp=stamp(0))
+    station.status(1,'NoError','SuspendedEV',timestamp=stamp(.5))
+    station.start_transaction(1,'SEM',5141070,stamp(.3))
+    assert reg.states['ev'].observed_state=='SuspendedEV'
+    station.status(1,'NoError','SuspendedEVSE',timestamp=stamp(.8))
+    assert reg.states['ev'].observed_state=='SuspendedEVSE'
+    assert ('box',1) in reg.active
+
+
+def test_start_transaction_still_marks_a_new_session_as_preparing(tmp_path):
+    cfg=config();reg=OcppRegistry(SQLiteStore(tmp_path/'db'),lambda:[cfg],lambda _:None)
+    station=Station('box',None,reg);t0=utcnow()-timedelta(seconds=5)
+    station.status(1,'NoError','Finishing',timestamp=t0.isoformat())
+    station.start_transaction(1,'SEM',1,(t0+timedelta(seconds=2)).isoformat())
+    assert reg.states['ev'].observed_state=='Preparing'

@@ -11,6 +11,7 @@ from app.engine.heater_targets import HeaterTargets
 from app.engine.phase_limits import phase_power_limit,current_credit
 from app.engine.evcc_loadpoint import PvController
 from app.engine.charger_feedback import unapplied_overload
+from app.engine.settling import PowerSteps
 from app.simulation.clock import Clock
 
 # Charger adjustments that no site or phase limit requires: smaller changes and
@@ -26,6 +27,10 @@ LIMIT_FAULT_RETRY_MAX_S = 1800
 LIMIT_FAULT_RESET_S = 7200
 # Tempo red day, peak hours: automatic modes may only use surplus (Manual is exempt).
 GRID_BLOCKED_REASON = 'Jour rouge, heures pleines : solaire seul'
+# A measure missing for at most this long after a usable read keeps what runs (never more):
+# one unavailable Home Assistant frame or a reconnection must not stop a charge or a heating.
+MEASURE_HOLD_S = 20
+GRID_HELD_REASON = 'Mesure réseau momentanément indisponible'
 
 
 def charger_goals(policy, auth):
@@ -66,6 +71,8 @@ class EnergyEngine:
         self.charger_commanded = {}
         self.charger_limit_faults = set()
         self.charger_fault_retry = {}
+        self.power_steps = PowerSteps()
+        self.measure_seen = {}
 
     def forget(self, device_id):
         self.requested.pop(device_id,None)
@@ -111,6 +118,17 @@ class EnergyEngine:
                 declined.add(spec.id)
         return declined
 
+    def held_measures(self, snapshot, mono):
+        """Measures missing for at most MEASURE_HOLD_S since their last usable read."""
+        samples={('grid',None):snapshot.grid}
+        samples|={('device',key):state.observed_power for key,state in snapshot.device_states.items()}
+        samples|={('phase',phase):sample for phase,sample in snapshot.phase_currents.items()}
+        held=set()
+        for key,sample in samples.items():
+            if sample and sample.usable(snapshot.at,snapshot.sample_max_age_s):self.measure_seen[key]=mono
+            elif mono-self.measure_seen.get(key,-math.inf)<=MEASURE_HOLD_S:held.add(key)
+        return held
+
     def evaluate(self, snapshot, specs, policies, authorizations):
         now, mono = snapshot.at, self.clock.monotonic()
         for spec in specs:
@@ -144,9 +162,14 @@ class EnergyEngine:
         unusable={key:state.observed_power for key,state in snapshot.device_states.items()
                   if not (state.observed_power and state.observed_power.usable(now,snapshot.sample_max_age_s))}
         all_power_valid=not unusable
-        # Degraded: some device readings are only late. Running devices may keep (never
-        # raise) their power; a late device counts at its maximum against the site limit.
-        degraded=bool(unusable) and all(late(sample,now,snapshot.sample_max_age_s) for sample in unusable.values())
+        on_hold=self.held_measures(snapshot,mono)
+        grid_held=not grid_valid and ('grid',None) in on_hold
+        held_phases={name for kind,name in on_hold if kind=='phase'}
+        self.power_steps.update(snapshot,mono)
+        # Degraded: some device readings are only late, or missing for a moment. Running devices may
+        # keep (never raise) their power; such a device counts at its maximum against the site limit.
+        degraded=bool(unusable) and all(late(sample,now,snapshot.sample_max_age_s) or ('device',key) in on_hold
+                                        for key,sample in unusable.items())
         known_draw=sum(value for key,value in measured.items() if key not in unusable)
         global_remaining = max(0,snapshot.site_limit_w-(snapshot.grid.value-known_draw)) \
             if grid_valid and (all_power_valid or degraded) and snapshot.site_limit_w is not None else 0
@@ -169,15 +192,22 @@ class EnergyEngine:
             offered=max(pending.get(s.id,0),self.requested.get(s.id,0))/(s.voltage*len(s.grid_phases))
             holds={}
             for i,p in enumerate(s.grid_phases):
-                actual,_=current_credit(snapshot,s,i)
+                actual,_=current_credit(snapshot,s,i,self.power_steps)
                 holds[p]=max(0,offered-actual)
                 phase_extra[p]=phase_extra.get(p,0)+holds[p]
             phase_reserves[s.id]=holds
         coherent=power_coherent(snapshot)
-        if not coherent and grid_valid and all_power_valid and snapshot.site_limit_w is not None:
+        # The site meter has not been read again since a device changed its draw: it still
+        # contains the old draw, which must not be counted on top of the device's offer.
+        settling=grid_valid and self.power_steps.stale(snapshot,'grid')
+        if (not coherent or settling) and grid_valid and all_power_valid and snapshot.site_limit_w is not None:
             # Mixed frames can maintain or reduce an existing authorization, never increase it.
             global_remaining=max(0,sum(committed.values())+min(0,snapshot.site_limit_w-snapshot.grid.value))
-            solar_remaining=max(0,sum(measured.values())-snapshot.grid.value-snapshot.export_margin_w)
+            if not coherent:
+                solar_remaining=max(0,sum(measured.values())-snapshot.grid.value-snapshot.export_margin_w)
+        elif grid_held and (all_power_valid or degraded) and snapshot.site_limit_w is not None:
+            # No site meter for a moment: what is authorized may stay, nothing more.
+            global_remaining=sum(committed.values())
         global_remaining-=sum(committed.values())
         solar_remaining-=sum(solar_committed.values())
 
@@ -286,7 +316,7 @@ class EnergyEngine:
                     reason = 'Surplus solaire'
                 if eligible and topping_up:
                     network = False
-            hard_valid = (grid_valid and (all_power_valid or degraded) and snapshot.site_limit_w is not None
+            hard_valid = ((grid_valid or grid_held) and (all_power_valid or degraded) and snapshot.site_limit_w is not None
                           and site_available>=spec.min_power_w>0)
             site_capped = False
             phase_missing = bool(snapshot.phase_control_enabled and spec.grid_phases and not all(
@@ -302,12 +332,12 @@ class EnergyEngine:
                     if amps>=spec.min_current_a else 0
                 reason = f'Mesure réseau indisponible : courant de secours {amps:g} A'
             elif eligible and hard_valid and (network or solar is not None or (running and not coherent)):
-                if degraded:
+                if degraded or grid_held:
                     # Keep what runs, start nothing: the site and phase limits below still reduce it.
                     desired = min(previous or 0,site_available)
                     site_capped = site_available<(previous or 0)
-                    reason = ('Mesure électrique en retard : puissance maintenue' if desired
-                              else 'Mesure électrique en retard : démarrage différé')
+                    reason = ((GRID_HELD_REASON if grid_held else 'Mesure électrique en retard')
+                              +(' : puissance maintenue' if desired else ' : démarrage différé'))
                 elif network:
                     desired = min(spec.max_power_w,site_available)
                     site_capped = site_available<spec.max_power_w
@@ -363,8 +393,10 @@ class EnergyEngine:
                         remaining = self.timers.remaining(spec.id+':start',policy.start_delay_s,mono)
                         reason = f'Attente de surplus stable ({remaining:.0f} s)' if enough else 'Surplus insuffisant'
             elif eligible:
-                reason = 'Mesure réseau indisponible ou limite de puissance'
-            if blocked and eligible and hard_valid and not desired and not fallback and not degraded:
+                reason = (GRID_HELD_REASON+' : démarrage différé' if grid_held and not running
+                          else 'Mesures en cours de mise à jour : démarrage différé' if settling and not running
+                          else 'Mesure réseau indisponible ou limite de puissance')
+            if blocked and eligible and hard_valid and not desired and not fallback and not degraded and not grid_held:
                 reason = GRID_BLOCKED_REASON
             if desired and spec.kind=='water_heater':
                 desired = spec.max_power_w if site_available>=spec.max_power_w else 0
@@ -407,7 +439,7 @@ class EnergyEngine:
                     and mono-self.running_since.get(spec.id,-math.inf)<CHARGER_START_WAIT_S)
                 other={p:max(0,value-phase_reserves.get(spec.id,{}).get(p,0)) for p,value in phase_extra.items()}
                 desired,phase_reason=phase_power_limit(snapshot,spec,desired,other,previous or 0,waiting_current,
-                    self.charger_start_credit.get(spec.id))
+                    self.charger_start_credit.get(spec.id),self.power_steps,held_phases)
                 for p,value in other.items(): phase_extra[p]=max(phase_extra.get(p,0),value)
                 if phase_reason: reason=phase_reason
             if desired and spec.kind=='charger':

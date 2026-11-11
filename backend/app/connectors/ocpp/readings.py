@@ -15,7 +15,8 @@ def apply_readings(registry,config,state,meters):
     for meter in meters:
         try:
             stamp=datetime.fromisoformat(meter['timestamp'].replace('Z','+00:00'))
-            if not stamp.tzinfo or stamp>now:continue
+            if not stamp.tzinfo:continue
+            stamp=min(stamp,now)  # a station clock ahead of SEM's: dated at its reception
         except (ValueError,TypeError,KeyError,AttributeError):continue
         for sample in meter.get('sampled_value',[]):
             try:

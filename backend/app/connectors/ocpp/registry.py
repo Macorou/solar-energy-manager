@@ -22,6 +22,8 @@ class OcppRegistry:
         self.meter_cache={}
         self.rebooted=set()
         self.connected_since={}
+        self.status_stamps={}  # device -> station-clock time of its latest status
+        self.clock_warned=set()
         self.suspend_requested={}
         self.resume_requested={}
         self.profile_migrations=store.get('ocpp_profile_migrations',{})
@@ -44,6 +46,7 @@ class OcppRegistry:
     def connect(self,station_id,station):
         self.stations[station_id]=station
         self.connected_since[station_id]=utcnow()
+        self.clock_warned.discard(station_id)
 
     def state(self,device_id):
         state=self.states.get(device_id,DeviceState(device_id))

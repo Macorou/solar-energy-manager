@@ -7,7 +7,7 @@ from datetime import datetime
 from urllib.parse import urlsplit, urlunsplit
 import httpx
 import websockets
-from app.domain.measurements import Quality, utcnow
+from app.domain.measurements import CLOCK_TOLERANCE_S, Quality, utcnow
 from app.domain.site import SiteSnapshot
 from app.settings import HomeAssistantConfig
 from .mapping import normalize_power
@@ -26,6 +26,7 @@ class HomeAssistantSource:
         self.error = None
         self.journal = journal
         self.logged_at = None
+        self.clock_ahead = False
         if journal: journal.redactor.register(token)
 
     async def connect(self):
@@ -42,8 +43,7 @@ class HomeAssistantSource:
             required = [self.config.grid_entity] + list(self.config.device_power_entities.values())
             if not self.config.grid_entity or any(entity not in self.states for entity in required):
                 raise ValueError('Mesures configurées introuvables')
-            for entity in required:
-                normalize_power(self.states[entity], self.received[entity])
+            self.report_clock([normalize_power(self.states[entity], self.received[entity]) for entity in required])
             self.connected, self.error = True, None
             # States are re-read every second; one success line a minute is enough.
             # The monotonic clock starts near 0 on a freshly booted host: log the first read.
@@ -59,6 +59,15 @@ class HomeAssistantSource:
         finally:
             if self.http is None:
                 await client.aclose()
+
+    def report_clock(self, samples):
+        """Measures dated beyond the clock tolerance are refused: say why, once."""
+        leads = [(sample.measured_at-sample.received_at).total_seconds() for sample in samples if sample.measured_at]
+        ahead = bool(leads) and max(leads) > CLOCK_TOLERANCE_S
+        if ahead and not self.clock_ahead and self.journal:
+            self.journal.write('WARN', 'ha',
+                f'Horloge de Home Assistant en avance de {max(leads):.0f} s sur SEM : mesures refusées')
+        self.clock_ahead = ahead
 
     def power(self, entity, invert=False):
         if not entity or entity not in self.states:

@@ -9,6 +9,17 @@ from app.domain.devices import DeviceState
 from app.domain.measurements import Sample,Quality,utcnow
 from .readings import apply_readings
 
+# A larger lead of the station clock over SEM's is reported once per connection.
+CLOCK_LEAD_WARN_S = 5
+
+
+def station_time(raw):
+    """The station's own timestamp, or None when it cannot be read."""
+    try:
+        stamp=datetime.fromisoformat(raw.replace('Z','+00:00'))
+    except (ValueError,TypeError,AttributeError):return None
+    return stamp if stamp.tzinfo else None
+
 
 class Station(ChargePoint):
     def __init__(self,station_id,connection,registry):
@@ -29,6 +40,10 @@ class Station(ChargePoint):
         except Exception as error:
             self.registry.store.journal.write('ERROR','ocpp:'+self.id,f'{action} : {type(error).__name__}')
             raise
+
+    def ignored(self,status,why,level='DEBUG'):
+        self.registry.store.journal.write(level,'ocpp:'+self.id,f'Statut {status} ignoré : {why}')
+        return call_result.StatusNotification()
 
     def config(self,connector_id):
         return next((d for d in self.registry.devices(self.id) if d.connector_id==connector_id),None)
@@ -72,11 +87,19 @@ class Station(ChargePoint):
             old=self.registry.states.get(config.id,DeviceState(config.id))
             received=utcnow();stamp=received
             if kwargs.get('timestamp'):
-                try:
-                    stamp=datetime.fromisoformat(kwargs['timestamp'].replace('Z','+00:00'))
-                    if not stamp.tzinfo or stamp>utcnow():return call_result.StatusNotification()
-                    if old.status_measured_at and stamp<old.status_measured_at:return call_result.StatusNotification()
-                except (ValueError,TypeError,AttributeError):return call_result.StatusNotification()
+                sent=station_time(kwargs['timestamp'])
+                if not sent:return self.ignored(status,'date illisible','WARN')
+                # Station messages are ordered on the station clock alone: SEM's clock differs.
+                last=self.registry.status_stamps.get(config.id) or old.status_measured_at
+                if last and sent<last:return self.ignored(status,'plus ancien que le dernier statut reçu')
+                self.registry.status_stamps[config.id]=sent
+                # On SEM's clock, a status is never later than its reception.
+                stamp=min(sent,received)
+                lead=(sent-received).total_seconds()
+                if lead>CLOCK_LEAD_WARN_S and self.id not in self.registry.clock_warned:
+                    self.registry.clock_warned.add(self.id)
+                    self.registry.store.journal.write('WARN','ocpp:'+self.id,
+                        f'Horloge de la borne en avance de {lead:.0f} s sur SEM : statuts datés à leur réception')
             if status=='Available' or config.id in self.registry.rebooted and status=='Preparing':
                 self.registry.active.pop((self.id,connector_id),None)
                 self.registry.save_transactions()
@@ -106,25 +129,26 @@ class Station(ChargePoint):
         cancelled=bool(pending and pending['state']=='cancel_requested') or not self.registry.authorized(config)
         if cancelled and self.registry.on_transaction: self.registry.on_transaction(config.id)
         old=self.registry.states.get(config.id,DeviceState(config.id))
-        started=None
+        started=station_time(timestamp)
         try:
             stamp=datetime.fromisoformat(timestamp.replace('Z','+00:00'))
-            if stamp.tzinfo and stamp<=utcnow():started=stamp
+            if stamp.tzinfo:stamp=min(stamp,utcnow())  # a station clock ahead of SEM's
             if stamp.tzinfo and math.isfinite(meter_start) and meter_start>=0 and (not old.energy_measured_at or stamp>=old.energy_measured_at):
                 old=replace(old,energy_wh=float(meter_start),energy_measured_at=stamp,energy_terminal=False,
                     energy_transaction_id=transaction,energy_transaction_start_wh=float(meter_start),
                     energy_transaction_started_at=stamp)
         except (ValueError,TypeError,AttributeError): pass
         # A status sent by the station after the start of this session stays: Preparing is
-        # only the state of a new session. Station and SEM clocks differ slightly, so the
-        # station's own transaction time is kept for later status ordering.
+        # only the state of a new session. Both times compared are the station's own.
+        last=self.registry.status_stamps.get(config.id) or old.status_measured_at
         in_session=bool(old.observed_state in ('Charging','SuspendedEV','SuspendedEVSE')
-            and started and old.status_measured_at and old.status_measured_at>=started)
+            and started and last and last>=started)
         if in_session:
             self.registry.states[config.id]=replace(old,connected=True,vehicle_connected=True)
         else:
+            if started:self.registry.status_stamps[config.id]=max(started,last) if last else started
             self.registry.states[config.id]=replace(old,connected=True,vehicle_connected=True,
-                observed_state='Preparing',status_measured_at=started or utcnow())
+                observed_state='Preparing',status_measured_at=min(started,utcnow()) if started else utcnow())
         return call_result.StartTransaction(transaction_id=transaction,
             id_tag_info={'status':'Accepted' if self.registry.authorized(config) else 'Invalid'})
 
@@ -140,7 +164,8 @@ class Station(ChargePoint):
                 and (self.id,config.connector_id) not in self.registry.active):
                 try:
                     stamp=datetime.fromisoformat(timestamp.replace('Z','+00:00'))
-                    if (stamp.tzinfo and stamp<=utcnow() and math.isfinite(meter_stop) and meter_stop>=0
+                    if stamp.tzinfo:stamp=min(stamp,utcnow())
+                    if (stamp.tzinfo and math.isfinite(meter_stop) and meter_stop>=0
                         and (not old.energy_measured_at or stamp>=old.energy_measured_at)):
                         self.registry.states[config.id]=replace(old,energy_wh=float(meter_stop),
                             energy_measured_at=stamp,energy_terminal=True)
@@ -154,11 +179,17 @@ class Station(ChargePoint):
                     old=self.meter_identity(old,value)
                     try:
                         stamp=datetime.fromisoformat(timestamp.replace('Z','+00:00'))
+                        if stamp.tzinfo:stamp=min(stamp,utcnow())
                         if stamp.tzinfo and math.isfinite(meter_stop) and meter_stop>=0 and (not old.energy_measured_at or stamp>=old.energy_measured_at):
                             old=replace(old,energy_wh=float(meter_stop),energy_measured_at=stamp,energy_terminal=True)
                     except (ValueError,TypeError,AttributeError): pass
-                    received=utcnow()
-                    self.registry.states[config.id]=replace(old,observed_state='Finishing',status_measured_at=received,
+                    received=utcnow();stopped=station_time(timestamp)
+                    # Dated by the station like its statuses: the status it sends right after
+                    # the end of the session must not look older than this one.
+                    last=self.registry.status_stamps.get(config.id)
+                    if stopped:self.registry.status_stamps[config.id]=max(stopped,last) if last else stopped
+                    self.registry.states[config.id]=replace(old,observed_state='Finishing',
+                        status_measured_at=min(stopped,received) if stopped else received,
                         status_received_at=received,
                         observed_power=Sample(0,'W','OCPP fin de transaction',received,received,Quality.ESTIMATED,checked_at=received))
                 del self.registry.active[key]

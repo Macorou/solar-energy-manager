@@ -17,7 +17,7 @@ class Dispatcher:
 
     def save(self): self.store.set('runtime_commands',self.records)
 
-    async def dispatch(self,intent,adapter,confirmation_timeout_s=90):
+    async def dispatch(self,intent,adapter,confirmation_timeout_s=90,power_before_w=None):
         async with self.locks.setdefault(intent.device_id,asyncio.Lock()):
             prior=self.records.get(intent.device_id)
             if prior and prior['id']==intent.id:
@@ -28,7 +28,8 @@ class Dispatcher:
                 'power_w':intent.limit_w or 0,'sent_at':now.isoformat(),
                 'expires_at':intent.expires_at.isoformat() if intent.expires_at else None,
                 'confirm_by':(now+timedelta(seconds=confirmation_timeout_s)).isoformat(),
-                'reason':intent.reason,'status':'sending','target_temperature':intent.target_temperature}
+                'reason':intent.reason,'status':'sending','target_temperature':intent.target_temperature,
+                'power_before_w':power_before_w}
             renewal=bool(prior and prior['status'] in ('accepted','observed')
                 and intent.reason in ('Renouvellement du profil autorisé','Migration du profil EVCC')
                 and intent.action==prior['action']=='set_power' and intent.limit_w
@@ -87,6 +88,15 @@ class Dispatcher:
                 and sent<state.measured_at<=snapshot.at
                 and (snapshot.at-state.measured_at).total_seconds()<=snapshot.sample_max_age_s
                 and power.checked_at and power.checked_at>sent and 0<=power.value<=20)
+            # The dedicated meter shows the effect long before the cloud read: a drop to
+            # zero of a heater that was heating when the stop was sent, or a draw appearing
+            # on an idle one. An unchanged zero still needs the native OFF read.
+            before=record.get('power_before_w')
+            meter_ok=bool(state.connected and not state.fault and power.measured_at>sent
+                and power.checked_at and power.checked_at>sent)
+            meter_stop=bool(heater_stop and meter_ok and before is not None and before>20 and 0<=power.value<=20)
+            meter_start=bool(config and config.kind=='water_heater' and desired and record['action']=='set_power'
+                and meter_ok and before is not None and before<=20)
             charger_stop=bool(config and config.kind=='charger' and not desired and record['action']=='suspend')
             status_seen=state.status_received_at or state.status_measured_at
             native_charger_stop=bool(charger_stop and state.connected and not state.fault
@@ -123,7 +133,7 @@ class Dispatcher:
             if heater_stop:
                 # A fresh native OFF read plus checked idle HA power can confirm
                 # an unchanged zero; this never confirms the effect of a start.
-                if not native_stop: continue
+                if not (native_stop or meter_stop): continue
             elif charger_stop:
                 if not native_charger_stop:continue
             elif config and config.kind=='charger' and desired:
@@ -149,10 +159,32 @@ class Dispatcher:
             target=record.get('target_temperature')
             if target is None and config: target=config.target
             if desired and config and config.kind=='water_heater' and target is not None:
-                matched=matched and state.target_temperature==target and state.observed_state=='on'
+                matched=matched and state.target_temperature==target and (state.observed_state=='on' or meter_start)
             if matched:
                 record['status']='observed'; observed.append(key)
-                self.store.append_event({'kind':'command_observed','device_id':key,
-                    'details':{'power_w':power.value,'action':record['action']}})
+                details={'power_w':power.value,'action':record['action']}
+                if (meter_stop and not native_stop) or (meter_start and state.observed_state!='on'):
+                    record['effect']=details['effect']='power';record['observed_at']=snapshot.at.isoformat()
+                self.store.append_event({'kind':'command_observed','device_id':key,'details':details})
         if observed: self.save()
         return observed
+
+    def redrawn_heaters(self,snapshot,configs):
+        """Heaters drawing again after a stop confirmed by the meter alone.
+
+        Such a drop can coincide with the thermostat while the heater stays on: its
+        stop must then be sent again.
+        """
+        keys=[]
+        for key,record in self.records.items():
+            config=configs.get(key)
+            if not (config and config.kind=='water_heater' and record['action']=='suspend'
+                    and record['status']=='observed' and record.get('effect')=='power'
+                    and record.get('observed_at') and not record.get('redrawn')):continue
+            state=snapshot.device_states.get(key)
+            power=state.observed_power if state else None
+            if (power and power.usable(snapshot.at,snapshot.sample_max_age_s) and power.value>20
+                    and power.measured_at>datetime.fromisoformat(record['observed_at'])):
+                record['redrawn']=True;keys.append(key)
+        if keys:self.save()
+        return keys

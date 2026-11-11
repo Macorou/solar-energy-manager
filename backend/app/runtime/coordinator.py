@@ -380,6 +380,9 @@ class Coordinator:
                     if key in self.engine.network_stop_pending: self.engine.heater_targets.reset(key)
                     self.engine.network_stop_pending.discard(key)
                     self.engine.network_stop_issued.discard(key)
+            for key in self.dispatcher.redrawn_heaters(snapshot,configs):
+                self.engine.forget(key)
+                self.store.append_event({'kind':'heater_redrawn_after_stop','device_id':key,'details':{}})
             self.release_charger_reservations(snapshot,configs)
             snapshot=replace(snapshot,reservations=tuple(self.reservations.values()),
                 transition_blocked=any(r['status']!='observed' and configs.get(key)
@@ -571,7 +574,12 @@ class Coordinator:
                     2*current.ariston.poll_interval_s+30 if device.kind=='water_heater' else 90)
                 if device.kind=='charger' and command.action=='set_power' and command.limit_w:
                     window=max(window,CHARGER_START_WAIT_S)
-                result=await self.dispatcher.dispatch(command,self.adapters[command.device_id],window)
+                before=None
+                if device.kind=='water_heater':
+                    state=self.snapshot.device_states.get(command.device_id)
+                    sample=state.observed_power if state else None
+                    if sample and sample.usable(self.snapshot.at,self.snapshot.sample_max_age_s):before=sample.value
+                result=await self.dispatcher.dispatch(command,self.adapters[command.device_id],window,before)
                 if device.kind=='charger':self.engine.command_result(command,result.accepted,result.checked_at or utcnow())
                 if device.kind=='charger' and result.accepted:
                     self.dispatcher.records[command.device_id]['profile_persistent']=True

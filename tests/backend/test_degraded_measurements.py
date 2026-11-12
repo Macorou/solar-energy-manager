@@ -64,10 +64,10 @@ def test_a_late_reading_never_starts_or_raises_a_device():
 
 def test_a_late_device_counts_at_its_maximum_against_the_site_limit():
     clock, engine = charging_engine()
-    # 4500 W - (3000 W grid - 2530 W car) - 2000 W heater assumed at maximum = 2030 W for the car.
+    # 4500 W - (3000 W grid - 2530 W car) - 2000 W heater assumed at maximum = 2030 W for the car: 8 A.
     batch = engine.evaluate(site(clock.now(), tank_age=40, site_limit=4500), [CAR, TANK], MANUAL, {})
     assert batch.commands[0].action == 'set_power'
-    assert batch.commands[0].limit_w == pytest.approx(8.8*230)
+    assert batch.commands[0].limit_w == pytest.approx(8*230)
 
 
 def test_a_late_own_current_keeps_the_offer_while_the_phase_has_room():

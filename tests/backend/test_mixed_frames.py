@@ -17,11 +17,11 @@ from app.simulation.clock import SimulatedClock
 
 CAR = DeviceSpec('ev', 'charger', min_power_w=1380, max_power_w=4002, max_current_a=20, priority=2)
 TANK = DeviceSpec('tank', 'water_heater', min_power_w=2570, max_power_w=2570, priority=1)
-OFFER_W = 17.4*230  # 4002 W
+OFFER_W = 17*230  # 3910 W
 
 
 class Night:
-    """Off-peak hours: house 500 W, heater 2570 W, car 17.4 A on L1 (phase limit 20 A)."""
+    """Off-peak hours: house 500 W, heater 2570 W, car 17 A on L1 (phase limit 20 A)."""
 
     def __init__(self, phases=False):
         self.clock = SimulatedClock(); self.engine = EnergyEngine(self.clock); self.phases = phases
@@ -57,7 +57,7 @@ class Night:
                                        Quality.FRESH if charging else Quality.ESTIMATED, checked_at=now),
             status, True, vehicle_connected=True, transaction_active=True, status_measured_at=self.car_at,
             # The last current sent by the station dates from before its pause.
-            currents={'L1': Sample(17.4, 'A', 'OCPP', now if charging else self.car_at-timedelta(seconds=1),
+            currents={'L1': Sample(17, 'A', 'OCPP', now if charging else self.car_at-timedelta(seconds=1),
                                    now, checked_at=now)})
         tank = DeviceState('tank', Sample(self.tank_w, 'W', 'HA', now, now, checked_at=now), 'on', True,
                            temperature=50, target_temperature=55)
@@ -91,7 +91,7 @@ def test_running_heater_survives_a_car_pause_seen_before_the_site_meter_is_read_
 def test_paused_car_keeps_its_offer_while_the_phase_meter_still_contains_its_current():
     night = Night(phases=True)
     assert night.tick().commands == ()
-    batch = night.pause_seen_before_the_meters()  # L1 still shows 19 A, the car's 17.4 A included
+    batch = night.pause_seen_before_the_meters()  # L1 still shows 19 A, the car's 17 A included
     assert batch.commands == ()
     assert batch.reasons['ev'] == 'Commande manuelle'
     night.read_meters(3070, 1.6)
@@ -119,6 +119,7 @@ def test_heater_stopped_by_its_thermostat_is_not_counted_twice_either():
 
 def test_mixed_frames_are_bounded_when_the_site_meter_is_never_read_again():
     night = Night()
+    night.limit_w = 10900
     night.tick()
     assert night.pause_seen_before_the_meters().commands == ()
     batch = night.tick(SETTLING_MAX_S)  # same old reading: back to the plain calculation
@@ -135,3 +136,18 @@ def test_nothing_starts_until_the_site_meter_shows_the_change():
     batch = night.pause_seen_before_the_meters()
     assert batch.commands == ()
     assert batch.reasons['tank'] == 'Mesures en cours de mise à jour : démarrage différé'
+
+
+def test_a_first_reading_that_still_averages_the_car_does_not_end_the_wait():
+    """2026-11-12 22:52: 4.6 s after the pause, the Meross still showed 17.6 A on L1 (the Linky: 2 A)."""
+    night = Night(phases=True)
+    assert night.tick().commands == ()
+    assert night.pause_seen_before_the_meters().commands == ()
+    night.clock.advance(3)
+    night.read_meters(night.grid_w, night.phase_a)  # a new reading, same old draw
+    batch = night.tick(1)
+    assert batch.commands == ()
+    assert batch.reasons['ev'] == 'Commande manuelle'
+    night.clock.advance(11)
+    night.read_meters(3070, 2)  # the next one shows the pause
+    assert night.tick(1).commands == ()

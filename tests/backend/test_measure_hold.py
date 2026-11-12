@@ -13,7 +13,7 @@ from app.simulation.clock import SimulatedClock
 CAR = DeviceSpec('ev', 'charger', min_power_w=1380, max_power_w=4002, max_current_a=20, priority=2,
                  grid_phases=('L1',))
 TANK = DeviceSpec('tank', 'water_heater', min_power_w=2570, max_power_w=2570, priority=1)
-OFFER_W = 17.4*230
+OFFER_W = 17*230
 HELD = 'Mesure réseau momentanément indisponible : puissance maintenue'
 
 
@@ -41,7 +41,7 @@ class Site:
         status, power = self.car
         car = DeviceState('ev', Sample(power, 'W', 'OCPP', now, now, checked_at=now), status, True,
             vehicle_connected=status != 'Available', transaction_active=status == 'Charging',
-            currents={'L1': Sample(17.4 if power else 0, 'A', 'OCPP', now, now, checked_at=now)})
+            currents={'L1': Sample(17 if power else 0, 'A', 'OCPP', now, now, checked_at=now)})
         tank = DeviceState('tank', ha(2570), 'on', True, temperature=50, target_temperature=55)
         snapshot = SiteSnapshot(now, grid=ha(7070, ok=grid), solar=ha(0), site_limit_w=11000,
             device_states={'tank': tank, 'ev': car}, phase_control_enabled=True, phase_margin_a=1,

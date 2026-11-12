@@ -67,9 +67,9 @@ def test_a_phase_limit_reduction_is_never_delayed_by_the_deadband_or_pacing():
     engine.charger_last_control['ev'] = clock.monotonic()
     clock.advance(2)
     manual = {'ev': DevicePolicy('ev', 'manual', armed=True)}
-    # 11 A + (20 A - 1 A margin) - 19.3 A measured: 10.7 A allowed, only 0.3 A below the offer.
+    # 11 A + (20 A - 1 A margin) - 19.3 A measured: 10.7 A allowed, sent as 10 A.
     commands = engine.evaluate(charging(clock.now(), 1000, phase_current=19.3, limit=20), [SPEC], manual, {}).commands
-    assert len(commands) == 1 and commands[0].limit_w == pytest.approx(10.7*230)
+    assert len(commands) == 1 and commands[0].limit_w == pytest.approx(10*230)
 
 
 TANK = DeviceSpec('tank', 'water_heater', min_power_w=1000, max_power_w=1000, priority=2)

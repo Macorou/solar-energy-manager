@@ -83,7 +83,7 @@ async def test_observed_authorization_does_not_hide_unapplied_physical_limit(tmp
     from app.simulation.clock import SimulatedClock
     from app.domain.commands import CommandResult
     from app.api.devices import disarm
-    clock=SimulatedClock(utcnow());now=clock.now();cap=16.9*230;calls=[]
+    clock=SimulatedClock(utcnow());now=clock.now();cap=16*230;calls=[]
     class Adapter:
         async def execute(self,intent):calls.append(intent);return CommandResult(intent.id,True)
     store=SQLiteStore(tmp_path/'db');adapter=Adapter()
@@ -103,12 +103,12 @@ async def test_observed_authorization_does_not_hide_unapplied_physical_limit(tmp
             phase_margin_a=1,phase_currents={'L1':sample(grid,'A')},phase_limits_a={'L1':20},
             device_states={'ev':DeviceState('ev',sample(actual*230),status,True,
                 vehicle_connected=True,currents={'L1':sample(actual,'A')},
-                offered_current=sample(16.9,'A'),status_measured_at=stamp,
+                offered_current=sample(16,'A'),status_measured_at=stamp,
                 transaction_active=True,start_pending=False)})
     await runtime.tick(frame())
     assert runtime.dispatcher.records['ev']['status']=='observed'
-    clock.advance(30);await runtime.tick(frame(16.9,18.976) if applied else frame())
-    clock.advance(31);await runtime.tick(frame(16.9,18.976) if applied else frame())
+    clock.advance(30);await runtime.tick(frame(16,18.076) if applied else frame())
+    clock.advance(31);await runtime.tick(frame(16,18.076) if applied else frame())
     await asyncio.gather(*runtime.command_tasks.values())
     if applied:
         assert not calls

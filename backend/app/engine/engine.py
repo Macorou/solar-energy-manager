@@ -18,6 +18,10 @@ from app.simulation.clock import Clock
 # faster repetitions only make the car and the station chase measurement noise.
 CHARGER_DEADBAND_A = 0.5
 CHARGER_ADJUST_INTERVAL_S = 15
+# A charger limit follows the household noise on its phase: whole amps only, and an
+# increase must win at least CHARGER_RAISE_A and hold for CHARGER_RAISE_S.
+CHARGER_RAISE_A = 1
+CHARGER_RAISE_S = 60
 # A car in SuspendedEV with a usable offer for this long is declining the charge.
 CHARGER_DECLINED_S = 120
 # A charger that ignored its cap under a measured overload is stopped, then retried after
@@ -444,12 +448,15 @@ class EnergyEngine:
                 if phase_reason: reason=phase_reason
             if desired and spec.kind=='charger':
                 unit=spec.voltage*(len(spec.grid_phases) or 1)
-                desired=math.floor(min(desired/unit,spec.max_current_a)*10+1e-9)/10*unit
-                # An increase never protects anything: also skip the small ones
-                # left after a phase limit, which follows household noise.
-                if previous and desired>previous and (mono-self.charger_last_control.get(spec.id,-math.inf)<30
-                        or desired-previous<CHARGER_DEADBAND_A*unit):
+                desired=math.floor(min(desired/unit,spec.max_current_a)+1e-9)*unit
+                # A decrease goes out at once; an increase never protects anything.
+                rising=bool(previous and desired>=previous+CHARGER_RAISE_A*unit-1e-6)
+                if previous and desired>previous and not self.timers.reached(
+                        spec.id+':raise',rising,CHARGER_RAISE_S,mono):
                     desired=previous
+                if not rising: self.timers.reached(spec.id+':raise',False,0,mono)
+            else:
+                self.timers.reached(spec.id+':raise',False,0,mono)
             occupied = max(desired,committed.get(spec.id,0))
             if not network:
                 tolerance_spent += max(0,desired-max(0,solar_available))

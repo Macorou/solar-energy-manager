@@ -44,7 +44,7 @@ def test_evcc_grid_phase_limiter_replays_live_overload_without_cascade():
     decisions=[]
     for _ in range(4):
         decisions+=list(engine.evaluate(replace(frame,at=clock.now()),[spec],{'ev':policy},{}).commands)
-        assert engine.requested['ev']==pytest.approx(16.9*230)
+        assert engine.requested['ev']==pytest.approx(16*230)
         clock.advance(2)
     assert len(decisions)==1
     assert decisions[0].action=='set_power'
@@ -93,7 +93,7 @@ def test_pv_control_does_not_reapply_import_to_its_new_offer_every_two_seconds()
     commands=[]
     for _ in range(4):
         commands+=list(engine.evaluate(replace(snapshot,at=clock.now()),[spec],{'ev':policy},{}).commands)
-        assert engine.requested['ev']==pytest.approx(2254)
+        assert engine.requested['ev']==pytest.approx(9*230)
         clock.advance(2)
     assert len(commands)==1
 
@@ -133,7 +133,7 @@ def test_unapplied_cap_with_persistent_physical_overload_suspends_and_latches(ki
     spec=DeviceSpec('ev','charger',min_power_w=1380,max_power_w=6000,
         grid_phases=('L1',),max_current_a=20)
     policy=DevicePolicy('ev','manual',armed=True,manual_until=now+timedelta(hours=1))
-    cap=16.9*230
+    cap=16*230
     engine.requested['ev']=cap
     engine.command_result(CommandIntent('cap','ev','set_power',cap),True,now)
     def frame():
@@ -142,7 +142,7 @@ def test_unapplied_cap_with_persistent_physical_overload_suspends_and_latches(ki
             phase_control_enabled=kind=='phase',phase_margin_a=1,
             phase_currents={'L1':sample(22.376,'A')},phase_limits_a={'L1':20},
             device_states={'ev':DeviceState('ev',sample(4669),'Charging',True,
-                currents={'L1':sample(20.3,'A')},offered_current=sample(16.9,'A'))})
+                currents={'L1':sample(20.3,'A')},offered_current=sample(16,'A'))})
     assert not engine.evaluate(frame(),[spec],{'ev':policy},{}).commands
     clock.advance(59)
     assert not engine.evaluate(frame(),[spec],{'ev':policy},{}).commands

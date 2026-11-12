@@ -21,18 +21,23 @@ def test_evcc_delta_limit_credits_measured_charge_and_reduces_overload():
 
 @pytest.mark.parametrize('phase,expected',[('L1',2530),('L2',3680)])
 def test_engine_applies_only_used_phase_without_cloud_grace(phase,expected):
-    now=utcnow(); s=lambda v,u='W':Sample(v,u,'test',now,now)
-    snapshot=SiteSnapshot(now,grid=s(4000),solar=s(0),site_limit_w=12000,
-        device_states={'ev':DeviceState('ev',s(2300),'Charging',True,vehicle_connected=True,
-            currents={'L1':s(10,'A')})},
-        phase_currents={'L1':s(18,'A'),'L2':s(4,'A'),'L3':s(4,'A')},
-        phase_limits_a={'L1':20,'L2':20,'L3':20},phase_margin_a=1,phase_control_enabled=True)
+    from app.simulation.clock import SimulatedClock
+    from app.engine.engine import CHARGER_RAISE_S
+    clock=SimulatedClock(utcnow())
+    def frame():
+        now=clock.now(); s=lambda v,u='W':Sample(v,u,'test',now,now)
+        return SiteSnapshot(now,grid=s(4000),solar=s(0),site_limit_w=12000,
+            device_states={'ev':DeviceState('ev',s(2300),'Charging',True,vehicle_connected=True,
+                currents={'L1':s(10,'A')})},
+            phase_currents={'L1':s(18,'A'),'L2':s(4,'A'),'L3':s(4,'A')},
+            phase_limits_a={'L1':20,'L2':20,'L3':20},phase_margin_a=1,phase_control_enabled=True)
     spec=DeviceSpec('ev','charger',min_power_w=1380,max_power_w=3700,
         grid_phases=(phase,),voltage=230,min_current_a=6,max_current_a=16)
-    engine=EnergyEngine();engine.requested['ev']=2300
-    batch=engine.evaluate(snapshot,[spec],{'ev':DevicePolicy('ev','manual',armed=True,
-        manual_until=now+timedelta(hours=1))},{})
-    assert batch.commands[0].limit_w==expected
+    engine=EnergyEngine(clock);engine.requested['ev']=2300
+    policies={'ev':DevicePolicy('ev','manual',armed=True,manual_until=clock.now()+timedelta(hours=1))}
+    assert engine.evaluate(frame(),[spec],policies,{}).commands==()  # an increase holds for a minute
+    clock.advance(CHARGER_RAISE_S)
+    assert engine.evaluate(frame(),[spec],policies,{}).commands[0].limit_w==expected
 
 
 def test_ha_reads_amperes_and_price_without_power_unit_confusion():
@@ -227,14 +232,14 @@ def test_first_current_can_arrive_after_charging_status_without_a_premature_stop
             phase_currents={'L1':s(1.5 if status=='Preparing' else amps,'A')},
             phase_limits_a={'L1':20},phase_margin_a=1,phase_control_enabled=True)
     initial=engine.evaluate(frame('Preparing',1.5),[spec],{'ev':policy},{})
-    assert initial.commands[0].limit_w==4025
+    assert initial.commands[0].limit_w==3910
     clock.advance(7)
     waiting=engine.evaluate(frame('Charging',18.5),[spec],{'ev':policy},{})
     assert not waiting.commands
     assert 'premier courant' in waiting.reasons['ev']
     clock.advance(3)
     overload=engine.evaluate(frame('Charging',22),[spec],{'ev':policy},{})
-    assert overload.commands[0].limit_w==3335
+    assert overload.commands[0].limit_w==3220
     clock.advance(290)
     timeout=engine.evaluate(frame('Charging',15),[spec],{'ev':policy},{})
     assert timeout.commands[0].action=='suspend'
@@ -270,7 +275,7 @@ def test_lost_current_during_an_established_charge_gets_no_startup_wait():
     assert lost.reasons['ev']=='Courant réel de recharge indisponible'
 
 
-@pytest.mark.parametrize('elapsed,expected',[(7,2415),(299,2415),(300,0)])
+@pytest.mark.parametrize('elapsed,expected',[(7,2300),(299,2300),(300,0)])
 def test_preparing_after_start_cannot_raise_profile_or_extend_first_current_timeout(elapsed,expected):
     from app.simulation.clock import SimulatedClock
     clock=SimulatedClock();engine=EnergyEngine(clock)
@@ -282,7 +287,7 @@ def test_preparing_after_start_cannot_raise_profile_or_extend_first_current_time
             device_states={'ev':DeviceState('ev',s(0),'Preparing',True,start_pending=pending,transaction_active=False)},
             phase_currents={'L1':s(amps,'A')},phase_limits_a={'L1':20},phase_margin_a=1,phase_control_enabled=True)
     initial=engine.evaluate(frame(8.5),[spec],{'ev':policy},{})
-    assert initial.commands[0].limit_w==2415
+    assert initial.commands[0].limit_w==2300
     clock.advance(elapsed)
     result=engine.evaluate(frame(1,pending=True),[spec],{'ev':policy},{})
     assert engine.requested['ev']==expected

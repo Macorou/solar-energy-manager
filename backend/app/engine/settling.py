@@ -5,15 +5,21 @@ while the site and phase meters keep their last reading: until they are read aga
 still contain the old draw (or not yet the new one). Counting the device at its new
 power against such a reading counts it twice, or not at all.
 """
+from datetime import timedelta
+
 POWER_STEP_W = 300
 # Bound for a meter that is never read again (it reports on change only and did not change).
 SETTLING_MAX_S = 30
+# Some meters (a Meross energy monitor for one) publish, right after a change, a reading
+# that still averages the seconds before it: a meter is read again only once it has a
+# reading taken at least this long after its first new one.
+REREAD_S = 5
 
 
 class PowerSteps:
     def __init__(self):
         self.seen = {}   # device -> last usable measured power
-        self.steps = {}  # device -> when its step was seen, and the date of each meter reading behind it
+        self.steps = {}  # device -> when its step was seen, the meter readings behind it, and those still pending
 
     @staticmethod
     def stamps(snapshot):
@@ -34,14 +40,22 @@ class PowerSteps:
                 behind = {name: stamp for name, stamp in stamps.items()
                           if not (same_clock and stamp >= power.measured_at)}
                 if behind:
-                    self.steps[key] = {'at': mono, 'stamps': behind}
+                    self.steps[key] = {'at': mono, 'stamps': behind, 'first': {}}
         for key, step in list(self.steps.items()):
-            read_again = all(stamps.get(name) != stamp for name, stamp in step['stamps'].items())
-            if read_again or mono-step['at'] >= SETTLING_MAX_S:
+            step['pending'] = {name for name, old in step['stamps'].items()
+                               if not self.read_again(step, name, old, stamps.get(name))}
+            if not step['pending'] or mono-step['at'] >= SETTLING_MAX_S:
                 del self.steps[key]
+
+    @staticmethod
+    def read_again(step, name, old, stamp):
+        if stamp is None:
+            return True  # no reading at all: the missing measure is handled on its own
+        if stamp == old:
+            return False
+        first = step['first'].setdefault(name, stamp)
+        return stamp >= first+timedelta(seconds=REREAD_S)
 
     def stale(self, snapshot, meter, device_id=None) -> bool:
         """True while `meter` has not been read again since a step of `device_id` (or of any device)."""
-        stamp = self.stamps(snapshot).get(meter)
-        return stamp is not None and any(step['stamps'].get(meter) == stamp
-            for key, step in self.steps.items() if device_id in (None, key))
+        return any(meter in step['pending'] for key, step in self.steps.items() if device_id in (None, key))

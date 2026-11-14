@@ -224,7 +224,20 @@ class EnergyEngine:
             deadline = auth.expires_at.timestamp() if auth and auth.expires_at else math.inf
             return (not protected,spec.priority,deadline,spec.id)
 
-        for spec in sorted(specs,key=order):
+        def gives_way(spec):
+            # A car charging on the sun, which can come down to its minimum on its own.
+            policy=policies.get(spec.id)
+            return bool(spec.kind=='charger' and policy and policy.mode not in ('manual','off')
+                        and not self.network_allowed.get(spec.id,False) and spec.id not in self.charger_limit_faults)
+
+        ordered=sorted(specs,key=order)
+        for index,spec in enumerate(ordered):
+            # Priority: a lower-priority car charging on the sun hands its surplus back to a heater,
+            # down to its own minimum. Without it the car, started on a surplus too small for the
+            # heater, keeps every later gain and the heater never starts (2026-11-14).
+            room=sum(max(0,solar_committed.get(other.id,0)-other.min_power_w) for other in ordered[index+1:]
+                     if other.priority>spec.priority and gives_way(other)) if spec.kind=='water_heater' else 0
+            waiting=False
             if spec.kind=='water_heater': spec=replace(spec,min_power_w=spec.max_power_w)
             site_available=global_remaining+committed.get(spec.id,0)
             solar_available=solar_remaining+solar_committed.get(spec.id,0)
@@ -377,7 +390,7 @@ class EnergyEngine:
                         desired=0
                 elif running:
                     tolerance = max(0,min(policy.import_tolerance_w,shared_tolerance-tolerance_spent))
-                    deficient = solar_available+tolerance < spec.min_power_w
+                    deficient = solar_available+room+tolerance < spec.min_power_w
                     stopped = self.timers.reached(spec.id+':stop',deficient,policy.stop_delay_s,mono)
                     # Red peak: no minimum run on the grid either.
                     minimum_run = not blocked and mono-self.running_since.get(spec.id,mono)<policy.min_run_s
@@ -385,14 +398,15 @@ class EnergyEngine:
                         reason = 'Surplus insuffisant : suspension'
                     else:
                         desired = min(spec.max_power_w,site_available,
-                            max(spec.min_power_w,solar_available))
+                            max(spec.min_power_w,solar_available+room))
                         reason = 'Passage de nuage : temporisation' if deficient else 'Surplus solaire'
                 else:
-                    enough = coherent and solar_available>=max(spec.min_power_w,policy.start_surplus_w)
+                    enough = coherent and solar_available+room>=max(spec.min_power_w,policy.start_surplus_w)
+                    waiting = enough
                     ready = self.timers.reached(spec.id+':start',enough,policy.start_delay_s,mono)
                     cooldown = mono-self.stopped_at.get(spec.id,-math.inf)>=policy.restart_delay_s
                     if ready and cooldown:
-                        desired = min(spec.max_power_w,site_available,solar_available)
+                        desired = min(spec.max_power_w,site_available,solar_available+room)
                     else:
                         remaining = self.timers.remaining(spec.id+':start',policy.start_delay_s,mono)
                         reason = f'Attente de surplus stable ({remaining:.0f} s)' if enough else 'Surplus insuffisant'
@@ -459,9 +473,12 @@ class EnergyEngine:
                 self.timers.reached(spec.id+':raise',False,0,mono)
             occupied = max(desired,committed.get(spec.id,0))
             if not network:
-                tolerance_spent += max(0,desired-max(0,solar_available))
+                tolerance_spent += max(0,desired-max(0,solar_available+room))
             global_remaining-=occupied-committed.get(spec.id,0)
             solar_remaining-=occupied-committed.get(spec.id,0)
+            if waiting and not desired and spec.id not in self.network_stop_pending:
+                # While the heater waits for its surplus to hold, no one after it starts or grows on it.
+                solar_remaining-=min(spec.min_power_w,max(0,solar_available))
             reasons[spec.id] = reason
             if not policy or not policy.armed:
                 continue

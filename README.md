@@ -2,7 +2,7 @@
 
 Gestionnaire d’énergie auto-hébergé qui pilote la recharge d’une voiture électrique et un ballon d’eau chaude selon le surplus solaire, les heures creuses et les programmes choisis. SEM décide localement et commande directement la borne et le ballon. Home Assistant lui fournit les mesures et reçoit en retour ses calculs.
 
-**Version actuelle : 0.1.41** · image privée `ghcr.io/macorou/solar-energy-manager` · déploiement Docker / Portainer
+**Version actuelle : 0.1.42** · image privée `ghcr.io/macorou/solar-energy-manager` · déploiement Docker / Portainer
 
 ![Vue d’ensemble : flux d’énergie, voiture, ballon et planning (données fictives)](docs/assets/readme/vue-ensemble.png)
 

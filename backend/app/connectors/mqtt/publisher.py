@@ -36,6 +36,7 @@ class Publisher:
             if entity.component == 'select': data['options'] = list(entity.options or ())
             if entity.component == 'number':
                 data |= {'min': entity.minimum, 'max': entity.maximum, 'step': entity.step}
+            if entity.component == 'switch': data |= {'payload_on': 'ON', 'payload_off': 'OFF'}
         return data
 
     async def announce(self, entities: list[Entity]) -> None:

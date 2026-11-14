@@ -253,6 +253,15 @@ def test_one_target_number_per_program_of_the_car():
     assert not [e for e in entities if e.group == 'tank' and e.command]
 
 
+def test_one_switch_per_program_of_the_car():
+    entities = build(config=commands_config())
+    switches = [e for e in entities if e.component == 'switch']
+    assert [(e.group, e.key, e.name, e.value) for e in switches] == [
+        ('ev', 'program_week_enabled', 'Programme – Semaine', 'ON'),
+        ('ev', 'program_we_enabled', 'Programme – Week-end', 'OFF')]
+    assert all(e.command and e.device_name == 'SEM – Wallbox' for e in switches)
+
+
 def test_tempo_entities_published_only_when_configured():
     keys = lambda s: {e.key for e in build(s) if e.group == 'site'}
     assert not keys(make_state()) & {'tempo_color', 'tempo_restriction'}

@@ -17,7 +17,7 @@ PROVIDER_ERRORS = {
 class Entity:
     group: str  # 'site' or a SEM device id
     key: str
-    component: str  # 'sensor', 'binary_sensor', 'select' or 'number'
+    component: str  # 'sensor', 'binary_sensor', 'select', 'number' or 'switch'
     name: str
     device_name: str
     value: str | None  # None means unavailable; binary values are 'ON'/'OFF'

@@ -12,6 +12,10 @@ def program_key(program_id: str) -> str:
     return f'program_{program_id}_target'
 
 
+def program_switch_key(program_id: str) -> str:
+    return f'program_{program_id}_enabled'
+
+
 def command_entities(config: SettingsDocument) -> list[Entity]:
     entities = []
     for device in config.devices:
@@ -21,9 +25,13 @@ def command_entities(config: SettingsDocument) -> list[Entity]:
         entities.append(Entity(device.id, MODE_KEY, 'select', 'Mode de la voiture', name,
                                CAR_MODES.get(device.mode, 'None'), command=True, options=tuple(CAR_MODES.values())))
         if not device.vehicle_id: continue
+        programs = [program for program in config.schedules if program.vehicle_id == device.vehicle_id]
         entities += [Entity(device.id, program_key(program.id), 'number', f'Objectif – {program.name}', name,
                             _short(program.target_soc), unit='%', command=True, minimum=1, maximum=100, step=1)
-                     for program in config.schedules if program.vehicle_id == device.vehicle_id]
+                     for program in programs]
+        entities += [Entity(device.id, program_switch_key(program.id), 'switch', f'Programme – {program.name}', name,
+                            'ON' if program.enabled else 'OFF', command=True)
+                     for program in programs]
     return entities
 
 
@@ -50,10 +58,12 @@ class CommandHandler:
             config = SettingsDocument.model_validate(state.store.load_settings())
             if not config.mqtt.commands_enabled: return None
             payload = payload.strip()
-            if not any((e.group, e.key) == (device_id, key) for e in command_entities(config)):
+            entity = next((e for e in command_entities(config) if (e.group, e.key) == (device_id, key)), None)
+            if entity is None:
                 journal.write('WARN', 'mqtt', f'Commande Home Assistant ignorée : cible inconnue {_cut(device_id)}/{_cut(key)}')
                 return None
             if key == MODE_KEY: self._mode(state, config, device_id, payload)
+            elif entity.component == 'switch': self._enabled(state, config, key, payload)
             else: self._target(state, config, key, payload)
             return device_id, key
 
@@ -96,3 +106,17 @@ class CommandHandler:
             journal.write('WARN', 'mqtt', f'Commande Home Assistant ignorée : {error}')
             return
         journal.write('INFO', 'mqtt', f'Objectif du programme « {program.name} » réglé à {value:g} % depuis Home Assistant')
+
+    @staticmethod
+    def _enabled(state, config, key, payload):
+        journal = state.store.journal
+        program = next(p for p in config.schedules if program_switch_key(p.id) == key)
+        if payload not in ('ON', 'OFF'):
+            journal.write('WARN', 'mqtt', f'Commande Home Assistant ignorée : état invalide « {_cut(payload)} »')
+            return
+        program.enabled = payload == 'ON'
+        try: save_programs(state.store, config.schedules)
+        except ValueError as error:
+            journal.write('WARN', 'mqtt', f'Commande Home Assistant ignorée : {error}')
+            return
+        journal.write('INFO', 'mqtt', f'Programme « {program.name} » {"activé" if program.enabled else "désactivé"} depuis Home Assistant')

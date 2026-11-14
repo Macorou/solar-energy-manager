@@ -155,6 +155,17 @@ async def test_discovery_of_command_entities(tmp_path):
     assert 'command_topic' not in config['homeassistant/sensor/sem_site/price/config']
 
 
+async def test_discovery_of_a_program_switch(tmp_path):
+    client, publisher = make(tmp_path)
+    switch = Entity('ev', 'program_week_enabled', 'switch', 'Programme – Semaine', 'SEM – Wallbox', 'ON', command=True)
+    await publisher.announce([switch])
+    data = json.loads(dict((t, p) for t, p, r in client.sent)['homeassistant/switch/sem_ev/program_week_enabled/config'])
+    assert data['command_topic'] == 'sem/ev/program_week_enabled/set'
+    assert data['state_topic'] == 'sem/ev/program_week_enabled/state'
+    assert (data['payload_on'], data['payload_off']) == ('ON', 'OFF')
+    assert 'options' not in data and 'min' not in data
+
+
 async def test_select_unknown_state_is_published_as_None(tmp_path):
     client, publisher = make(tmp_path)
     select = Entity('ev', 'car_mode', 'select', 'Mode de la voiture', 'SEM – Wallbox', 'None', command=True,

@@ -142,3 +142,43 @@ async def test_command_waits_for_the_coordinator_lock(tmp_path):
         assert not task.done() and mode(state) == 'solar'
     assert await asyncio.wait_for(task, 2) == ('ev', 'car_mode')
     assert mode(state) == 'off'
+
+
+def enabled(state): return {p['id']: p['enabled'] for p in state.store.load_settings()['schedules']}
+
+
+async def test_program_switch_turns_the_program_off_and_on(tmp_path):
+    state, handler = make(tmp_path)
+    assert await handler.handle('sem', 'sem/ev/program_semaine_enabled/set', 'OFF') == ('ev', 'program_semaine_enabled')
+    assert enabled(state) == {'semaine': False, 'autre': True}
+    assert await handler.handle('sem', 'sem/ev/program_semaine_enabled/set', ' ON\n') == ('ev', 'program_semaine_enabled')
+    assert enabled(state) == {'semaine': True, 'autre': True}
+    assert targets(state) == {'semaine': 80, 'autre': 70}
+    assert lines(state, 'INFO') == ['Programme « Semaine » désactivé depuis Home Assistant',
+                                    'Programme « Semaine » activé depuis Home Assistant']
+
+
+@pytest.mark.parametrize('payload', ['on', 'true', '1', '', 'X' * 500])
+async def test_invalid_switch_payloads_change_nothing(tmp_path, payload):
+    state, handler = make(tmp_path)
+    assert await handler.handle('sem', 'sem/ev/program_semaine_enabled/set', payload) == ('ev', 'program_semaine_enabled')
+    assert enabled(state) == {'semaine': True, 'autre': True}
+    assert len(lines(state, 'WARN')) == 1 and lines(state, 'WARN')[0].startswith('Commande Home Assistant ignorée : ')
+    assert 'X' * 41 not in lines(state, 'WARN')[0]
+
+
+async def test_a_program_that_would_conflict_stays_off(tmp_path):
+    state, handler = make(tmp_path)
+    config = state.store.load_settings()
+    config['schedules'].append({'id': 'tot', 'name': 'Tôt', 'vehicle_id': 'car', 'earliest_start': '23:00',
+                                'enabled': False})
+    state.store.save_settings(config)
+    assert await handler.handle('sem', 'sem/ev/program_tot_enabled/set', 'ON') == ('ev', 'program_tot_enabled')
+    assert enabled(state)['tot'] is False
+    assert lines(state, 'WARN') == ['Commande Home Assistant ignorée : Programme ou véhicule non valide']
+
+
+async def test_switches_of_another_vehicle_are_ignored(tmp_path):
+    state, handler = make(tmp_path)
+    assert await handler.handle('sem', 'sem/ev/program_autre_enabled/set', 'OFF') is None
+    assert enabled(state) == {'semaine': True, 'autre': True}

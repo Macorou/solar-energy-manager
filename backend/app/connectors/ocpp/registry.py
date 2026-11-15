@@ -11,6 +11,10 @@ from .profiles import build_profile,profile_options,PROFILE_KEYS
 
 # The Wallbox answers StopTransaction within a second of RemoteStopTransaction.
 SESSION_CLOSE_WAIT_S = 8
+# It opens the session about a second after accepting RemoteStartTransaction. An accepted start
+# still without a session after this delay was ignored (2026-11-15: the station stayed in
+# Finishing); kept pending, it would forbid confirming any stop and any new start.
+START_PENDING_S = 60
 
 
 class OcppRegistry:
@@ -48,6 +52,18 @@ class OcppRegistry:
         self.connected_since[station_id]=utcnow()
         self.clock_warned.discard(station_id)
 
+    def start_pending(self,device_id):
+        entry=self.pending_start.get(device_id)
+        if not entry:return False
+        try:at=datetime.fromisoformat(entry['at'])
+        except (KeyError,TypeError,ValueError):return True
+        if (utcnow()-at).total_seconds()<START_PENDING_S:return True
+        self.pending_start.pop(device_id,None);self.save_pending()
+        config=self.config(device_id)
+        self.store.journal.write('WARN','ocpp:'+(config.charge_point_id if config else device_id),
+            'Démarrage accepté par la borne sans ouverture de session : abandonné')
+        return False
+
     def state(self,device_id):
         state=self.states.get(device_id,DeviceState(device_id))
         config=self.config(device_id)
@@ -61,7 +77,7 @@ class OcppRegistry:
             state=replace(state,observed_power=Sample(0,'W',
                 'OCPP estimation état '+state.observed_state,utcnow(),utcnow(),Quality.ESTIMATED))
         return replace(state,transaction_active=(config.charge_point_id,config.connector_id) in self.active,
-            start_pending=device_id in self.pending_start,
+            start_pending=self.start_pending(device_id),
             connected_since=self.connected_since.get(config.charge_point_id),rebooted=device_id in self.rebooted)
 
     def authorized(self,config):
@@ -201,7 +217,7 @@ class ChargerAdapter:
                     accepted=result.status=='Accepted'
                 return CommandResult(intent.id,accepted,False,
                     error=None if accepted else 'Suspension refusée',checked_at=utcnow())
-            if self.metering_required and not transaction and self.config.id not in self.registry.pending_start:
+            if self.metering_required and not transaction and not self.registry.start_pending(self.config.id):
                 from .metering import prepare_metering
                 error=await prepare_metering(station)
                 if error:return CommandResult(intent.id,False,error=error,checked_at=utcnow())
@@ -218,7 +234,7 @@ class ChargerAdapter:
                     cs_charging_profiles=build_profile(self.config,0,None,None,options)))
                 return CommandResult(intent.id,False,error='Ancien profil de recharge non supprimé',checked_at=utcnow())
             self.registry.allowed_until[self.config.id]=intent.expires_at or utcnow()+timedelta(seconds=90)
-            if not transaction and self.config.id not in self.registry.pending_start:
+            if not transaction and not self.registry.start_pending(self.config.id):
                 self.registry.pending_start[self.config.id]={'state':'sending','at':utcnow().isoformat()}
                 self.registry.save_pending()
                 result=await station.call(call.RemoteStartTransaction(id_tag='SEM',connector_id=self.config.connector_id))
